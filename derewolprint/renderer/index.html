@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;">
+  <title>DerewolPrint</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="renderer.css">
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <span>Derewol<b>Print</b></span>
+    </div>
+    <nav>
+      <div class="nav-item active">Jobs</div>
+      <div class="nav-item">Historique</div>
+      <div class="nav-item">Paramètres</div>
+    </nav>
+    <div class="printer-status">
+      <div class="dot"></div>
+      <span id="printer-name">Imprimante connectée</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Jobs en attente</div>
+      <div class="badge" id="job-count">0 job</div>
+    </div>
+
+    <div class="jobs-list" id="jobs-list">
+      <div class="empty-state">
+        <div class="empty-icon">📄</div>
+        <p>Aucun job en attente</p>
+        <span>Les fichiers autorisés apparaîtront ici</span>
+      </div>
+    </div>
+  </div>
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-icon">⚠️</div>
+    <h3>Rejeter ce job ?</h3>
+    <p>Le fichier sera supprimé et le client devra renvoyer sa demande.</p>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="modal-cancel">Annuler</button>
+      <button class="modal-confirm" id="modal-confirm">Oui, rejeter</button>
+    </div>
+  </div>
+</div>
+  <script src="renderer.js"></script>
+</body>
+</html>
