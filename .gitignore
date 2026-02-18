@@ -1,0 +1,42 @@
+# Fichiers et dossiers à ignorer pour accélérer les pushes
+# Next / Node
+node_modules/
+.next/
+out/
+
+# NPM cache (présent dans le repo) et autres caches
+npm-cache/
+.npm/
+tmp/
+_logs/
+
+# Build / dist
+dist/
+build/
+release/
+release-builds/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environnements
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Editors
+.vscode/
+.idea/
+
+# Electron / app-specific large assets (décidez si vous voulez tracker)
+# Si vos assets dans `derewolprint/assets/` sont volumineux, laisser ce dossier ignoré
+# pour accélérer les commits/push ; sinon retirez la ligne ci-dessous.
+derewolprint/assets/
+node_modules
