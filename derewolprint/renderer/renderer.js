@@ -49,25 +49,61 @@ function confirmJob(id) {
   const card = document.getElementById(id);
   const btn = card.querySelector('.btn-print');
   const btnReject = card.querySelector('.btn-reject');
+  const printerName = document.getElementById('printer-select').value;
 
-  // Désactive boutons
   btn.textContent = 'Impression...';
   btn.disabled = true;
   btn.style.opacity = '0.7';
   btn.style.cursor = 'not-allowed';
-
   btnReject.disabled = true;
   btnReject.style.opacity = '0.3';
   btnReject.style.cursor = 'not-allowed';
-
-  // Appel backend
-  if (window.derewol?.confirmPrint) window.derewol.confirmPrint(id);
-
-  // futur : retirer du store si impression réussie
+  // Ajoute bouton annuler
+  const btnCancel = document.createElement('button');
+  btnCancel.textContent = 'Annuler';
+  btnCancel.className = 'btn-cancel';
+  btnCancel.addEventListener('click', () => {
+    btn.textContent = 'Imprimer';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btnReject.disabled = false;
+    btnReject.style.opacity = '1';
+    btnReject.style.cursor = 'pointer';
+    btnCancel.remove();
+    console.log('[PRINT] Annulé par imprimeur');
+  });
+  card.querySelector('.job-actions').appendChild(btnCancel);
+  if (window.derewol?.confirmPrint) window.derewol.confirmPrint(id, printerName);
 }
 
-
 initBridge();
+
+// ── Détecte l'imprimante au démarrage ────────────────────────
+window.derewol.getPrinters().then(printers => {
+  const select = document.getElementById('printer-select');
+  const dot = document.getElementById('printer-dot');
+
+  // Filtre les imprimantes virtuelles
+  const blacklist = ['onenote', 'pdf', 'fax', 'xps', 'microsoft'];
+  const realPrinters = printers.filter(p => 
+    !blacklist.some(b => p.name.toLowerCase().includes(b))
+  );
+
+  if (realPrinters.length === 0) {
+    select.innerHTML = '<option>Aucune imprimante physique</option>';
+    dot.style.background = '#ff6b6b';
+    return;
+  }
+
+  select.innerHTML = realPrinters.map(p => `
+    <option value="${p.name}">${p.name}</option>
+  `).join('');
+
+  const hp = realPrinters.find(p => p.name.toLowerCase().includes('hp'));
+  if (hp) select.value = hp.name;
+  dot.style.background = 'var(--jaune)';
+});
 
 // ── Abonnement store pour UI automatique ─────────────────────
 jobStore.subscribe((jobs) => {
