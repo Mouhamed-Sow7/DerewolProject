@@ -354,3 +354,14 @@ nav { flex: 1; position: relative; }
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* Blur sur le contenu des jobs */
+.job-name {
+  filter: blur(4px);
+  user-select: none;
+  transition: filter 0.3s ease;
+}
+
+.job-name.revealed {
+  filter: blur(0px);
+}

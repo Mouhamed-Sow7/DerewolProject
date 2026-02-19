@@ -3,6 +3,7 @@ const path = require('path');
 const { decryptFile, secureDelete, hashFile } = require('../services/crypto');
 const supabase = require('../services/supabase');
 const { startPolling } = require('../services/polling');
+const { log, logError } = require('../services/logger');
 const pdfToPrinter = require('pdf-to-printer');
 const { getAvailablePrinters, getDefaultPrinter } = require('../services/printer');
 let mainWindow = null;
@@ -23,13 +24,17 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    autoHideMenuBar:true,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       nodeIntegration: false,
       contextIsolation: true
     }
   });
+
+  // Protection anti-capture écran
+  mainWindow.setContentProtection(true);
+
   mainWindow.loadFile('renderer/index.html');
 }
 
@@ -43,6 +48,7 @@ ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
   
   processingJobs.add(jobId);
   console.log('[PRINT] Job confirmé :', jobId);
+  log('PRINT_START', { jobId, printer: printerName });
 
   try {
     const { data: job, error } = await supabase
@@ -92,6 +98,7 @@ ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
       console.log('[PRINT] Impression vers :', printerName);
       await pdfToPrinter.print(tmpPath, { printer: printerName });
       console.log('[PRINT] Envoyé à l\'imprimante ✅');
+      log('PRINT_SUCCESS', { jobId, printer: printerName, hash: hashFile(decryptedBuffer) });
 
       // Marque comme completed DANS TOUS LES CAS
       await supabase
@@ -120,11 +127,13 @@ ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
 
   } catch (err) {
     console.error('[PRINT] Erreur :', err.message);
+    logError('PRINT_FAILED', err, { jobId });
     return { success: false, error: err.message };
   }
 });
 ipcMain.handle('job:reject', async (event, jobId) => {
   console.log('[REJECT] Job rejeté :', jobId);
+  log('JOB_REJECTED', { jobId });
 
   try {
     // 1. Récupère les infos du job
@@ -154,6 +163,7 @@ ipcMain.handle('job:reject', async (event, jobId) => {
         console.error('[REJECT] Erreur suppression storage :', deleteError.message);
       } else {
         console.log('[REJECT] Fichier supprimé du storage ✅');
+        log('STORAGE_DELETED', { jobId, storagePath });
       }
     }
 
@@ -185,6 +195,8 @@ ipcMain.handle('log:write', async (event, message) => {
 
 // ── Boot ───────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  log('APP_START', { version: '1.0.0' });
+
   // Nettoyage spooler au démarrage
   const { execSync } = require('child_process');
   try {
