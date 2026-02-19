@@ -34,6 +34,7 @@ export default function renderJobs(jobs, { onPrint, onReject } = {}) {
   // Génère le HTML de chaque job
   list.innerHTML = jobs.map(job => `
     <div class="job-card" id="${job.id}" style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
+      <input type="checkbox" class="job-checkbox" data-id="${job.id}">
       <div class="job-info">
         <div class="job-name">${job.fileName}</div>
         <div class="job-meta">Client : ${job.clientId} · ${job.size} · ${job.time}</div>
@@ -52,5 +53,10 @@ export default function renderJobs(jobs, { onPrint, onReject } = {}) {
 
   document.querySelectorAll('.btn-reject').forEach(btn => {
     btn.addEventListener('click', () => onReject?.(btn.dataset.id));
+  });
+
+  // Events checkboxes
+  document.querySelectorAll('.job-checkbox').forEach(cb => {
+    cb.addEventListener('change', window.updateSelectionBar);
   });
 }

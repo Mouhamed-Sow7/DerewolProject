@@ -302,3 +302,55 @@ nav { flex: 1; position: relative; }
 .btn-cancel:hover { 
   background: #ff6b6b20; 
 }
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 32px;
+  background: var(--jaune-pale, #fdf6d8);
+  border-bottom: 1.5px solid #f5c84250;
+}
+
+.selection-info {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.btn-select-all {
+  background: transparent;
+  border: 1.5px solid var(--vert);
+  color: var(--vert);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 8px;
+}
+
+.btn-select-all:hover { background: var(--vert-pale); }
+
+.btn-reject-selected {
+  background: #e53935;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-reject-selected:hover { background: #c62828; }
+
+.job-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--vert);
+  cursor: pointer;
+  flex-shrink: 0;
+}

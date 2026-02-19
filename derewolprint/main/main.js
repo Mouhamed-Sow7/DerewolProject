@@ -6,6 +6,7 @@ const { startPolling } = require('../services/polling');
 const pdfToPrinter = require('pdf-to-printer');
 const { getAvailablePrinters, getDefaultPrinter } = require('../services/printer');
 let mainWindow = null;
+const processingJobs = new Set();
 
 // ── Connexion Supabase ─────────────────────────────────────────
 async function testConnection() {
@@ -22,6 +23,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    autoHideMenuBar:true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       nodeIntegration: false,
@@ -33,6 +35,13 @@ function createWindow() {
 
 // ── IPC Handlers ───────────────────────────────────────────────
 ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
+  // Bloque si déjà en cours
+  if (processingJobs.has(jobId)) {
+    console.log('[PRINT] Job déjà en cours, ignoré :', jobId);
+    return { success: false, error: 'Job déjà en cours' };
+  }
+  
+  processingJobs.add(jobId);
   console.log('[PRINT] Job confirmé :', jobId);
 
   try {
@@ -65,6 +74,12 @@ ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
     const encryptedBuffer = Buffer.from(arrayBuffer);
 
     const decryptedBuffer = decryptFile(encryptedBuffer, file.encrypted_key);
+    
+    // Vérifie que le buffer est valide avant impression
+    if (!decryptedBuffer || decryptedBuffer.length < 100) {
+      throw new Error('Fichier invalide ou trop petit');
+    }
+
     console.log('[PRINT] Hash fichier :', hashFile(decryptedBuffer));
 
     const os = require('os');
@@ -77,18 +92,29 @@ ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
       console.log('[PRINT] Impression vers :', printerName);
       await pdfToPrinter.print(tmpPath, { printer: printerName });
       console.log('[PRINT] Envoyé à l\'imprimante ✅');
+
+      // Marque comme completed DANS TOUS LES CAS
+      await supabase
+        .from('print_jobs')
+        .update({ status: 'completed' })
+        .eq('id', jobId);
+
+    } catch(err) {
+      console.error('[PRINT] Erreur :', err.message);
+      // Marque quand même comme completed pour stopper le polling
+      await supabase
+        .from('print_jobs')
+        .update({ status: 'completed' })
+        .eq('id', jobId);
+      
     } finally {
-      // Suppression GARANTIE même si impression échoue
+      processingJobs.delete(jobId);
+      // Suppression GARANTIE dans tous les cas
       if (fs.existsSync(tmpPath)) {
         secureDelete(tmpPath);
-        console.log('[PRINT] Fichier temporaire supprimé ✅');
+        console.log('[PRINT] Temp supprimé ✅');
       }
     }
-
-    await supabase
-      .from('print_jobs')
-      .update({ status: 'completed' })
-      .eq('id', jobId);
 
     return { success: true, jobId };
 
@@ -98,9 +124,58 @@ ipcMain.handle('job:confirm', async (event, jobId, printerName) => {
   }
 });
 ipcMain.handle('job:reject', async (event, jobId) => {
-  console.log('[PRINT] Job rejeté :', jobId);
-  // Bloc 6 : suppression sécurisée
-  return { success: true, jobId };
+  console.log('[REJECT] Job rejeté :', jobId);
+
+  try {
+    // 1. Récupère les infos du job
+    const { data: job, error } = await supabase
+      .from('print_jobs')
+      .select(`
+        id,
+        file_groups (
+          files ( storage_path )
+        )
+      `)
+      .eq('id', jobId)
+      .single();
+
+    if (error || !job) throw new Error('Job introuvable');
+
+    const storagePath = job.file_groups?.files?.[0]?.storage_path;
+
+    // 2. Supprime le fichier dans Supabase Storage
+    if (storagePath) {
+      const { error: deleteError } = await supabase
+        .storage
+        .from('derewol-files')
+        .remove([storagePath]);
+
+      if (deleteError) {
+        console.error('[REJECT] Erreur suppression storage :', deleteError.message);
+      } else {
+        console.log('[REJECT] Fichier supprimé du storage ✅');
+      }
+    }
+
+    // 3. Met à jour le statut job → rejected
+    await supabase
+      .from('print_jobs')
+      .update({ status: 'rejected' })
+      .eq('id', jobId);
+
+    // 4. Met à jour le statut file_group → deleted
+    await supabase
+      .from('file_groups')
+      .update({ status: 'deleted' })
+      .eq('id', job.file_groups?.id);
+
+    console.log('[REJECT] Job clôturé ✅');
+    return { success: true, jobId };
+
+  } catch (err) {
+    console.error('[REJECT] Erreur :', err.message);
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('log:write', async (event, message) => {

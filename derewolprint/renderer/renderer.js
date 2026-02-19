@@ -18,29 +18,47 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.remove('active');
 }
 
+// ── Gère la barre de sélection ────────────────────────────────
+function updateSelectionBar() {
+  const checked = document.querySelectorAll('.job-checkbox:checked');
+  const bar = document.getElementById('selection-bar');
+  const count = document.getElementById('selection-count');
+
+  if (checked.length > 0) {
+    bar.style.display = 'flex';
+    count.textContent = checked.length + ' sélectionné' + (checked.length > 1 ? 's' : '');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+// Expose updateSelectionBar au global
+window.updateSelectionBar = updateSelectionBar;
+
 // ── Confirme le rejet d'un job ───────────────────────────────
 function confirmReject() {
-  if (!pendingRejectId) return;
-
-  const card = document.getElementById(pendingRejectId);
-
-  // Animation disparition
-  card.style.transition = 'opacity 0.3s ease, height 0.3s ease, margin 0.3s ease';
-  card.style.opacity = '0';
-  card.style.height = card.offsetHeight + 'px';
-  requestAnimationFrame(() => {
-    card.style.height = '0';
-    card.style.margin = '0';
-    card.style.padding = '0';
+  const ids = Array.isArray(pendingRejectId) ? pendingRejectId : [pendingRejectId];
+  
+  ids.forEach(id => {
+    const card = document.getElementById(id);
+    if (!card) return;
+    card.style.transition = 'opacity 0.3s ease, height 0.3s ease, margin 0.3s ease';
+    card.style.opacity = '0';
+    card.style.height = card.offsetHeight + 'px';
+    requestAnimationFrame(() => {
+      card.style.height = '0';
+      card.style.margin = '0';
+      card.style.padding = '0';
+    });
+    setTimeout(() => card.remove(), 300);
+    if (window.derewol?.rejectJob) window.derewol.rejectJob(id);
+    jobStore.removeJob(id);
   });
-  setTimeout(() => card.remove(), 300);
 
-  // Appel backend
-  if (window.derewol?.rejectJob) window.derewol.rejectJob(pendingRejectId);
-
-  // Retirer du store
-  jobStore.removeJob(pendingRejectId);
-
+  // Reset titre modal
+  document.querySelector('#modal-overlay .modal h3').textContent = 'Rejeter ce job ?';
+  pendingRejectId = null;
+  updateSelectionBar();
   closeModal();
 }
 
@@ -111,6 +129,27 @@ jobStore.subscribe((jobs) => {
     onPrint: confirmJob,
     onReject: showRejectModal
   });
+});
+
+// ── Sélection multiple ───────────────────────────────────────
+// Tout sélectionner
+document.getElementById('btn-select-all').addEventListener('click', () => {
+  const checkboxes = document.querySelectorAll('.job-checkbox');
+  const allChecked = [...checkboxes].every(cb => cb.checked);
+  checkboxes.forEach(cb => cb.checked = !allChecked);
+  updateSelectionBar();
+});
+
+// Rejeter la sélection
+document.getElementById('btn-reject-selected').addEventListener('click', () => {
+  const checked = document.querySelectorAll('.job-checkbox:checked');
+  if (checked.length === 0) return;
+  
+  // Réutilise le modal existant avec confirmation
+  pendingRejectId = [...checked].map(cb => cb.dataset.id);
+  document.getElementById('modal-overlay').classList.add('active');
+  document.querySelector('#modal-overlay .modal h3').textContent = 
+    `Rejeter ${checked.length} job${checked.length > 1 ? 's' : ''} ?`;
 });
 
 // ── Modale boutons ─────────────────────────────────────────
