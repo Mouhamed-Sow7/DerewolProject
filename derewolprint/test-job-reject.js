@@ -72,27 +72,13 @@ startxref
     }
     console.log('✓ Fichier uploadé dans Supabase Storage:', storagePath);
 
-    // 4. Créer un print_job
-    const { data: jobData, error: jobError } = await supabase
-      .from('print_jobs')
-      .insert({
-        print_token: `test-${Date.now()}`,
-        status: 'queued'
-      })
-      .select()
-      .single();
-
-    if (jobError) {
-      throw new Error('Job creation failed: ' + jobError.message);
-    }
-    const jobId = jobData.id;
-    console.log('✓ Job créé avec ID:', jobId);
-
-    // 5. Créer un file_group
+    // 4. Créer un file_group
     const { data: fileGroupData, error: fgError } = await supabase
       .from('file_groups')
       .insert({
-        owner_id: 'test-user-123'
+        owner_id: 'test-user-123',
+        status: 'waiting',
+        expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
       })
       .select()
       .single();
@@ -103,7 +89,7 @@ startxref
     const fileGroupId = fileGroupData.id;
     console.log('✓ File group créé avec ID:', fileGroupId);
 
-    // 6. Créer un fichier dans file_group
+    // 5. Créer un fichier dans file_group
     const { error: fileError } = await supabase
       .from('files')
       .insert({
@@ -117,6 +103,24 @@ startxref
       throw new Error('File creation failed: ' + fileError.message);
     }
     console.log('✓ Fichier enregistré dans la DB');
+
+    // 6. Créer un print_job LIÉ au file_group
+    const { data: jobData, error: jobError } = await supabase
+      .from('print_jobs')
+      .insert({
+        group_id: fileGroupId,
+        print_token: `test-${Date.now()}`,
+        status: 'queued',
+        expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString()
+      })
+      .select()
+      .single();
+
+    if (jobError) {
+      throw new Error('Job creation failed: ' + jobError.message);
+    }
+    const jobId = jobData.id;
+    console.log('✓ Job créé avec ID:', jobId);
 
     // Nettoyer le fichier local
     fs.unlinkSync(testPdfPath);

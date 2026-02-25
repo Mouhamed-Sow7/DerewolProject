@@ -1,12 +1,41 @@
 import '../styles/globals.css';
-import { SessionProvider } from '../context/SessionContext';
+import '../styles/dashboard.css';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 
-function MyApp({ Component, pageProps }) {
+// ── Toast global ──────────────────────────────────────────────
+function Toast({ message, type, visible }) {
+  if (!visible) return null;
   return (
-    <SessionProvider>
-      <Component {...pageProps} />
-    </SessionProvider>
+    <div className={`toast toast--${type || 'success'} ${visible ? 'toast--visible' : ''}`}>
+      {message}
+    </div>
   );
 }
 
-export default MyApp;
+export default function App({ Component, pageProps }) {
+  const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
+  const router = useRouter();
+
+  // ── Enregistrement Service Worker ─────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('[SW] Enregistré :', reg.scope))
+        .catch(err => console.warn('[SW] Erreur :', err));
+    }
+  }, []);
+
+  function showToast(message, type = 'success') {
+    setToast({ message, type, visible: true });
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), 3000);
+  }
+
+  return (
+    <>
+      <Component {...pageProps} showToast={showToast} />
+      <Toast {...toast} />
+    </>
+  );
+}

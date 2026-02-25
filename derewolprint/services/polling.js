@@ -6,21 +6,11 @@ async function fetchPendingJobs() {
   const { data, error } = await supabase
     .from('print_jobs')
     .select(`
-      id,
-      status,
-      print_token,
-      created_at,
-      expires_at,
+      id, status, print_token, created_at, expires_at,
+      copies_requested, copies_remaining,
       file_groups (
-        id,
-        owner_id,
-        status,
-        files (
-          id,
-          file_name,
-          storage_path,
-          encrypted_key
-        )
+        id, owner_id, status,
+        files ( id, file_name, storage_path, encrypted_key )
       )
     `)
     .eq('status', 'queued')
@@ -31,16 +21,16 @@ async function fetchPendingJobs() {
     return [];
   }
 
+  if (data && data.length > 0) {
+    console.log('[POLLING] Jobs trouvés :', data.length);
+  }
+
   return data || [];
 }
 
 function startPolling(onJobsReceived, intervalMs = 10000) {
   console.log('[POLLING] Démarrage — intervalle', intervalMs / 1000 + 's');
-
-  // Première vérification immédiate
   fetchPendingJobs().then(onJobsReceived);
-
-  // Puis toutes les X secondes
   pollingInterval = setInterval(async () => {
     const jobs = await fetchPendingJobs();
     onJobsReceived(jobs);
