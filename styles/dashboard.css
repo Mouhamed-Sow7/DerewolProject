@@ -12,8 +12,8 @@
   content: "";
   position: fixed; inset: 0;
   background-image:
-    repeating-linear-gradient(45deg, #ffffff08 0 2px, transparent 2px 14px),
-    repeating-linear-gradient(-45deg, #ffffff08 0 2px, transparent 2px 14px);
+    repeating-linear-gradient(45deg, #ffffff08 0px, #ffffff08 2px, transparent 2px, transparent 14px),
+    repeating-linear-gradient(-45deg, #ffffff08 0px, #ffffff08 2px, transparent 2px, transparent 14px);
   pointer-events: none; z-index: 0;
 }
 
@@ -177,3 +177,65 @@
   .db-section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
   .db-btn-upload { width: 100%; text-align: center; }
 }
+
+/* Card expirée — légèrement grisée */
+.db-card--expired {
+  opacity: 0.75;
+  border-color: #d1d5db;
+}
+
+/* Message expiré */
+.db-msg--expired {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
