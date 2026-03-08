@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline';">
+  <title>Configuration — DerewolPrint</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --vert: #1e4d2b; --jaune: #f5c842; --noir: #111510; --muted: #7a8c78; --border: #d4dbd2; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #faf8f2; color: var(--noir);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
+    }
+
+    .card {
+      width: 460px; padding: 44px 40px;
+      background: #fff; border-radius: 20px;
+      box-shadow: 0 8px 40px #00000012;
+    }
+
+    /* Logo */
+    .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+    .logo-mark { width: 38px; height: 38px; background: var(--jaune); border-radius: 10px; flex-shrink: 0; }
+    .logo-text { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--noir); }
+    .logo-text b { color: var(--vert); }
+
+    h2 { font-family: 'Playfair Display', serif; font-size: 22px; margin-bottom: 8px; }
+    .subtitle { font-size: 14px; color: var(--muted); margin-bottom: 32px; line-height: 1.5; }
+
+    /* Form */
+    .field { margin-bottom: 20px; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--noir); }
+
+    input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      color: var(--noir); background: #fff; outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--vert); }
+    input.error { border-color: #e53935; }
+
+    .field-hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+    .field-error { font-size: 12px; color: #e53935; margin-top: 5px; display: none; }
+
+    /* Slug preview */
+    .slug-preview {
+      font-size: 12px; color: var(--vert); margin-top: 5px;
+      font-family: monospace; font-weight: 600;
+    }
+
+    /* Availability badge */
+    .avail { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; margin-top: 5px; }
+    .avail.ok   { color: #166534; }
+    .avail.nok  { color: #e53935; }
+    .avail.checking { color: var(--muted); }
+
+    /* Bouton */
+    .btn-submit {
+      width: 100%; padding: 14px;
+      background: var(--vert); color: #fff;
+      border: none; border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+      margin-top: 8px;
+    }
+    .btn-submit:hover:not(:disabled) { background: #2e6e3e; }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .step-indicator { font-size: 12px; color: var(--muted); text-align: center; margin-bottom: 28px; }
+
+    /* Success */
+    .success-screen { display: none; text-align: center; }
+    .success-icon { font-size: 52px; margin-bottom: 16px; }
+    .success-screen h2 { margin-bottom: 8px; }
+    .success-screen p { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.5; }
+    .btn-continue {
+      padding: 14px 32px; background: var(--jaune); color: var(--noir);
+      border: none; border-radius: 10px; font-family: 'DM Sans', sans-serif;
+      font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-continue:hover { background: #f0be30; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Logo -->
+  <div class="logo">
+    <div class="logo-mark"></div>
+    <span class="logo-text">Derewol<b>Print</b></span>
+  </div>
+
+  <!-- Formulaire setup -->
+  <div id="form-screen">
+    <div class="step-indicator">Configuration initiale — 1 seule fois</div>
+    <h2>Bienvenue 👋</h2>
+    <p class="subtitle">Configurez votre espace d'impression. Ces informations seront liées à votre QR code client.</p>
+
+    <div class="field">
+      <label>Nom de votre boutique</label>
+      <input type="text" id="input-name" placeholder="Ex: Copy Express Dakar" maxlength="60">
+      <div class="field-hint">Affiché sous le QR code et sur le tableau de bord client</div>
+      <div class="field-error" id="err-name">Veuillez saisir un nom</div>
+    </div>
+
+    <div class="field">
+      <label>Identifiant unique (slug)</label>
+      <input type="text" id="input-slug" placeholder="Ex: copy-express-dakar" maxlength="40">
+      <div class="slug-preview" id="slug-preview"></div>
+      <div id="slug-avail" class="avail" style="display:none"></div>
+      <div class="field-error" id="err-slug">Slug invalide ou déjà pris</div>
+    </div>
+
+    <button class="btn-submit" id="btn-register" disabled>Créer mon espace →</button>
+  </div>
+
+  <!-- Succès -->
+  <div class="success-screen" id="success-screen">
+    <div class="success-icon">✅</div>
+    <h2>Espace créé !</h2>
+    <p id="success-msg"></p>
+    <button class="btn-continue" id="btn-continue">Ouvrir DerewolPrint</button>
+  </div>
+
+</div>
+
+<script>
+  const inputName = document.getElementById('input-name');
+  const inputSlug = document.getElementById('input-slug');
+  const slugPreview = document.getElementById('slug-preview');
+  const slugAvail = document.getElementById('slug-avail');
+  const btnRegister = document.getElementById('btn-register');
+  const errName = document.getElementById('err-name');
+  const errSlug = document.getElementById('err-slug');
+
+  let slugValid = false;
+  let checkTimeout = null;
+
+  // Auto-génère le slug depuis le nom
+  inputName.addEventListener('input', () => {
+    const slug = inputName.value
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40);
+    inputSlug.value = slug;
+    onSlugChange(slug);
+  });
+
+  inputSlug.addEventListener('input', () => {
+    onSlugChange(inputSlug.value);
+  });
+
+  function onSlugChange(slug) {
+    slug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+    inputSlug.value = slug;
+
+    const BASE_URL = 'https://testpwa.nom-de-domaine.xyz';
+    slugPreview.textContent = slug ? `${BASE_URL}/p/${slug}` : '';
+
+    slugValid = false;
+    btnRegister.disabled = true;
+    errSlug.style.display = 'none';
+
+    if (slug.length < 3) {
+      slugAvail.style.display = 'none';
+      return;
+    }
+
+    slugAvail.style.display = 'inline-flex';
+    slugAvail.className = 'avail checking';
+    slugAvail.textContent = '⏳ Vérification...';
+
+    clearTimeout(checkTimeout);
+    checkTimeout = setTimeout(async () => {
+      const result = await window.derewol.checkSlug(slug);
+      if (result.available) {
+        slugAvail.className = 'avail ok';
+        slugAvail.textContent = '✅ Disponible';
+        slugValid = true;
+        validateForm();
+      } else {
+        slugAvail.className = 'avail nok';
+        slugAvail.textContent = '❌ Déjà utilisé';
+        slugValid = false;
+        btnRegister.disabled = true;
+      }
+    }, 600);
+  }
+
+  function validateForm() {
+    const nameOk = inputName.value.trim().length >= 2;
+    btnRegister.disabled = !(nameOk && slugValid);
+  }
+
+  inputName.addEventListener('input', validateForm);
+
+  // Enregistrement
+  btnRegister.addEventListener('click', async () => {
+    const name = inputName.value.trim();
+    const slug = inputSlug.value.trim();
+
+    btnRegister.disabled = true;
+    btnRegister.textContent = 'Création en cours...';
+
+    const result = await window.derewol.registerPrinter({ name, slug });
+
+    if (result.success) {
+      document.getElementById('form-screen').style.display = 'none';
+      const successScreen = document.getElementById('success-screen');
+      successScreen.style.display = 'block';
+      document.getElementById('success-msg').textContent =
+        `Votre QR code est prêt. Les clients pourront scanner et envoyer leurs fichiers directement à "${name}".`;
+
+      document.getElementById('btn-continue').addEventListener('click', () => {
+        window.derewol.setupDone(result.config);
+      });
+    } else {
+      btnRegister.disabled = false;
+      btnRegister.textContent = 'Créer mon espace →';
+      alert('Erreur : ' + result.error);
+    }
+  });
+</script>
+</body>
+</html>

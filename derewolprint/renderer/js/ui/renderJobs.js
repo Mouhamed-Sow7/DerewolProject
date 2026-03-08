@@ -1,6 +1,6 @@
 // renderer/js/ui/renderJobs.js
 
-// Store copies par fichier — { jobId_fileId: copies }
+// Store copies par fichier
 const copiesPerFile = {};
 
 function getFileCopies(jobId, fileId) {
@@ -12,7 +12,7 @@ function setFileCopies(jobId, fileId, val) {
 
 export { getFileCopies };
 
-export default function renderJobs(groups, { onPrint, onReject } = {}) {
+export default function renderJobs(groups, { onPrint, onReject, onRejectFile } = {}) {
   const list = document.getElementById('jobs-list');
   const count = document.getElementById('job-count');
 
@@ -39,16 +39,37 @@ export default function renderJobs(groups, { onPrint, onReject } = {}) {
     const fileRows = group.items.map(item => {
       const copies = getFileCopies(item.jobId, item.fileId);
       return `
-        <div class="file-row" data-job-id="${item.jobId}" data-file-id="${item.fileId}">
+        <div class="file-row" id="file-row-${item.jobId}-${item.fileId}"
+          data-job-id="${item.jobId}"
+          data-file-id="${item.fileId}"
+          data-file-group-id="${item.fileGroupId}">
+
           <div class="file-row-name-wrap">
             <span class="file-row-icon">📄</span>
             <span class="file-row-name" title="${item.fileName}">${item.fileName}</span>
           </div>
-          <div class="file-row-copies">
-            <button class="copies-btn minus" data-job-id="${item.jobId}" data-file-id="${item.fileId}">−</button>
-            <span class="copies-count" id="fc-${item.jobId}-${item.fileId}">${copies}</span>
-            <button class="copies-btn plus" data-job-id="${item.jobId}" data-file-id="${item.fileId}">+</button>
+
+          <div class="file-row-right">
+            <!-- Copies par fichier -->
+            <div class="file-row-copies">
+              <button class="copies-btn minus"
+                data-job-id="${item.jobId}"
+                data-file-id="${item.fileId}">−</button>
+              <span class="copies-count" id="fc-${item.jobId}-${item.fileId}">${copies}</span>
+              <button class="copies-btn plus"
+                data-job-id="${item.jobId}"
+                data-file-id="${item.fileId}">+</button>
+            </div>
+
+            <!-- Rejet fichier individuel -->
+            <button class="btn-reject-file"
+              data-job-id="${item.jobId}"
+              data-file-id="${item.fileId}"
+              data-file-name="${item.fileName}"
+              data-group-id="${group.id}"
+              title="Retirer ce fichier">✕</button>
           </div>
+
         </div>`;
     }).join('');
 
@@ -67,11 +88,11 @@ export default function renderJobs(groups, { onPrint, onReject } = {}) {
         </div>
         <div class="job-actions">
           <button class="btn-print" data-id="${group.id}">🖨️ Imprimer tout</button>
-          <button class="btn-reject" data-id="${group.id}">Rejeter</button>
+          <button class="btn-reject" data-id="${group.id}">Tout rejeter</button>
         </div>
       </div>
 
-      <!-- Fichiers avec copies par fichier -->
+      <!-- Fichiers avec rejet individuel -->
       <div class="job-files-list">
         ${fileRows}
       </div>
@@ -79,7 +100,7 @@ export default function renderJobs(groups, { onPrint, onReject } = {}) {
     </div>`;
   }).join('');
 
-  // ── Events copies par fichier ─────────────────────────────
+  // ── Events copies ─────────────────────────────────────────
   document.querySelectorAll('.copies-btn.minus').forEach(btn => {
     btn.addEventListener('click', () => {
       const { jobId, fileId } = btn.dataset;
@@ -98,6 +119,24 @@ export default function renderJobs(groups, { onPrint, onReject } = {}) {
     });
   });
 
+  // ── Rejet fichier individuel ──────────────────────────────
+  document.querySelectorAll('.btn-reject-file').forEach(btn => {
+    btn.addEventListener('click', () => {
+      onRejectFile?.({
+        jobId: btn.dataset.jobId,
+        fileId: btn.dataset.fileId,
+        fileName: btn.dataset.fileName,
+        groupId: btn.dataset.groupId,
+      });
+    });
+  });
+
+  // ── Rejet groupe entier ───────────────────────────────────
+  document.querySelectorAll('.btn-reject').forEach(btn => {
+    btn.addEventListener('click', () => onReject?.(btn.dataset.id));
+  });
+
+  // ── Impression ────────────────────────────────────────────
   document.querySelectorAll('.btn-print').forEach(btn => {
     btn.addEventListener('click', () => {
       const group = jobStore_getGroup(btn.dataset.id);
@@ -105,15 +144,11 @@ export default function renderJobs(groups, { onPrint, onReject } = {}) {
     });
   });
 
-  document.querySelectorAll('.btn-reject').forEach(btn => {
-    btn.addEventListener('click', () => onReject?.(btn.dataset.id));
-  });
-
   document.querySelectorAll('.job-checkbox').forEach(cb => {
     cb.addEventListener('change', window.updateSelectionBar);
   });
 }
 
-// Helper — accès store depuis renderJobs
+// Helper accès store
 let jobStore_getGroup = () => null;
 export function setStoreRef(fn) { jobStore_getGroup = fn; }

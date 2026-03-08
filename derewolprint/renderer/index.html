@@ -2,67 +2,230 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' https://cdnjs.cloudflare.com;">
   <title>DerewolPrint</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="renderer.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
+
+  <!-- ── Sidebar ──────────────────────────────────────────── -->
   <div class="sidebar">
     <div class="logo">
       <div class="logo-mark"></div>
       <span>Derewol<b>Print</b></span>
     </div>
+
     <nav>
-      <div class="nav-item active">Jobs</div>
-      <div class="nav-item">Historique</div>
-      <div class="nav-item">Paramètres</div>
+      <div class="nav-item active" data-view="jobs">
+        <span class="nav-icon">🖨️</span> Jobs
+      </div>
+      <div class="nav-item" data-view="history">
+        <span class="nav-icon">📋</span> Historique
+      </div>
+      <div class="nav-item" data-view="qr">
+        <span class="nav-icon">📱</span> Mon QR Code
+      </div>
+      <div class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙️</span> Paramètres
+      </div>
     </nav>
+
     <div class="printer-status">
-  <div class="dot" id="printer-dot"></div>
-  <select id="printer-select">
-    <option>Chargement...</option>
-  </select>
-</div>
+      <div class="dot" id="printer-dot"></div>
+      <select id="printer-select">
+        <option>Chargement...</option>
+      </select>
+    </div>
   </div>
 
+  <!-- ── Main ─────────────────────────────────────────────── -->
   <div class="main">
-    <div class="topbar">
-      <div class="topbar-title">Jobs en attente</div>
-      <div class="badge" id="job-count">0 job</div>
+
+    <!-- ── VUE JOBS ──────────────────────────────────────── -->
+    <div class="view" id="view-jobs">
+      <div class="topbar">
+        <div class="topbar-title">Jobs en attente</div>
+        <div class="badge" id="job-count">0 job</div>
+      </div>
+
+      <div class="selection-bar" id="selection-bar" style="display:none">
+        <div class="selection-info">
+          <span id="selection-count">0 sélectionné</span>
+        </div>
+        <div class="selection-actions">
+          <button class="btn-select-all" id="btn-select-all">Tout sélectionner</button>
+          <button class="btn-reject-selected" id="btn-reject-selected">Rejeter la sélection</button>
+        </div>
+      </div>
+
+      <div class="jobs-list" id="jobs-list">
+        <div class="empty-state">
+          <div class="empty-icon">📄</div>
+          <p>Aucun job en attente</p>
+          <span>Les fichiers envoyés apparaîtront ici</span>
+        </div>
+      </div>
     </div>
 
-    <div class="selection-bar" id="selection-bar" style="display:none">
-      <div class="selection-info">
-        <span id="selection-count">0 sélectionné</span>
+    <!-- ── VUE HISTORIQUE ────────────────────────────────── -->
+    <div class="view" id="view-history" style="display:none">
+      <div class="topbar">
+        <div class="topbar-title">Historique</div>
+        <div class="badge" id="history-count">—</div>
       </div>
-      <div class="selection-actions">
-        <button class="btn-select-all" id="btn-select-all">Tout sélectionner</button>
-        <button class="btn-reject-selected" id="btn-reject-selected">Rejeter la sélection</button>
+
+      <div class="history-filters">
+        <input type="text" id="filter-client" placeholder="🔍 Filtrer par client (DW-...)" class="filter-input">
+        <input type="date" id="filter-date" class="filter-input">
+        <select id="filter-status" class="filter-input">
+          <option value="">Tous les statuts</option>
+          <option value="completed">Terminés</option>
+          <option value="rejected">Rejetés</option>
+          <option value="expired">Expirés</option>
+        </select>
+        <button class="btn-filter-clear" id="btn-filter-clear">✕ Effacer</button>
+      </div>
+
+      <div class="history-list" id="history-list">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <p>Aucun historique</p>
+          <span>Les impressions et rejets apparaîtront ici</span>
+        </div>
       </div>
     </div>
 
-    <div class="jobs-list" id="jobs-list">
-      <div class="empty-state">
-        <div class="empty-icon">📄</div>
-        <p>Aucun job en attente</p>
-        <span>Les fichiers autorisés apparaîtront ici</span>
+    <!-- ── VUE QR CODE ────────────────────────────────────── -->
+    <div class="view" id="view-qr" style="display:none">
+      <div class="topbar">
+        <div class="topbar-title">Mon QR Code</div>
+        <button class="badge" id="btn-print-qr" style="cursor:pointer;border:none;">🖨️ Imprimer</button>
+      </div>
+
+      <div class="qr-container">
+
+        <!-- Zone imprimable -->
+        <div class="qr-printable" id="qr-printable">
+
+          <!-- Logo Derewol en haut -->
+          <div class="qr-logo">
+            <div class="qr-logo-mark"></div>
+            <span class="qr-logo-text">Derewol<b>Print</b></span>
+          </div>
+
+          <!-- QR Code au milieu -->
+          <div class="qr-code-wrap">
+            <canvas id="qr-canvas"></canvas>
+          </div>
+
+          <!-- Nom boutique en bas -->
+          <div class="qr-shop-name" id="qr-shop-name">—</div>
+          <div class="qr-url" id="qr-url">—</div>
+
+        </div>
+
+        <!-- Actions -->
+        <div class="qr-actions">
+          <button class="btn-qr-action" id="btn-download-qr">📥 Télécharger PNG</button>
+          <button class="btn-qr-action" id="btn-copy-url">🔗 Copier le lien</button>
+        </div>
+
+        <p class="qr-note">
+          Ce QR code est permanent — même si vous perdez l'image, revenez ici pour le re-télécharger.
+        </p>
+
+      </div>
+    </div>
+
+    <!-- ── VUE PARAMÈTRES ─────────────────────────────────── -->
+    <div class="view" id="view-settings" style="display:none">
+      <div class="topbar">
+        <div class="topbar-title">Paramètres</div>
+      </div>
+
+      <div class="settings-list">
+
+        <div class="settings-item">
+          <div class="settings-item-info">
+            <div class="settings-item-label">Mode sombre</div>
+            <div class="settings-item-desc">Thème foncé pour travailler la nuit</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="setting-darkmode">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-item">
+          <div class="settings-item-info">
+            <div class="settings-item-label">Langue</div>
+            <div class="settings-item-desc">Langue de l'interface</div>
+          </div>
+          <select id="setting-lang" class="settings-select">
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+            <option value="wo">Wolof</option>
+          </select>
+        </div>
+
+        <div class="settings-item">
+          <div class="settings-item-info">
+            <div class="settings-item-label">Imprimante par défaut</div>
+            <div class="settings-item-desc">Pré-sélectionnée au démarrage</div>
+          </div>
+          <select id="setting-printer" class="settings-select">
+            <option value="">Auto-détection</option>
+          </select>
+        </div>
+
+        <div class="settings-item">
+          <div class="settings-item-info">
+            <div class="settings-item-label">Son de notification</div>
+            <div class="settings-item-desc">Bip à l'arrivée d'un nouveau job</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="setting-sound" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-item">
+          <div class="settings-item-info">
+            <div class="settings-item-label">Fréquence de vérification</div>
+            <div class="settings-item-desc">Intervalle entre chaque vérification des jobs</div>
+          </div>
+          <select id="setting-polling" class="settings-select">
+            <option value="5000">5 secondes</option>
+            <option value="10000" selected>10 secondes</option>
+            <option value="30000">30 secondes</option>
+          </select>
+        </div>
+
+        <div class="settings-version">
+          DerewolPrint v1.0.0 — Derewol © 2026
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Modale rejet ───────────────────────────────────────── -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-icon">⚠️</div>
+      <h3>Rejeter ce job ?</h3>
+      <p>Le fichier sera supprimé et le client devra renvoyer sa demande.</p>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="modal-cancel">Annuler</button>
+        <button class="modal-confirm" id="modal-confirm">Oui, rejeter</button>
       </div>
     </div>
   </div>
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <div class="modal-icon">⚠️</div>
-    <h3>Rejeter ce job ?</h3>
-    <p>Le fichier sera supprimé et le client devra renvoyer sa demande.</p>
-    <div class="modal-actions">
-      <button class="modal-cancel" id="modal-cancel">Annuler</button>
-      <button class="modal-confirm" id="modal-confirm">Oui, rejeter</button>
-    </div>
-  </div>
-</div>
-<script type="module" src="renderer.js"></script>
 
-
+  <script type="module" src="renderer.js"></script>
 </body>
 </html>

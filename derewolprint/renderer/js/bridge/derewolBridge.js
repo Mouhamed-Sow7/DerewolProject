@@ -29,26 +29,31 @@ export function initBridge() {
 
     jobs.forEach(job => {
       const clientId = job.file_groups?.owner_id || 'Inconnu';
+      const jobId = job.id;
+      const fileGroupId = job.file_groups?.id;
 
       if (!map[clientId]) {
         map[clientId] = {
-          id: job.id,
+          // id unique du groupe = clientId (stable)
+          id: `grp-${clientId}`,
           clientId,
           time: new Date(job.created_at).toLocaleTimeString(),
-          // Chaque entrée = { jobId, fileName, copies }
-          items: [],
+          items: [], // { jobId, fileGroupId, fileId, fileName }
         };
       }
 
-      // Un job = un file_group = plusieurs fichiers possibles
       const files = job.file_groups?.files || [];
       files.forEach(f => {
-        if (!map[clientId].items.find(x => x.jobId === job.id && x.fileId === f.id)) {
+        // Évite les doublons
+        const exists = map[clientId].items.find(
+          x => x.jobId === jobId && x.fileId === f.id
+        );
+        if (!exists) {
           map[clientId].items.push({
-            jobId: job.id,
+            jobId,           // print_jobs.id → utilisé pour IPC
+            fileGroupId,     // file_groups.id → utilisé pour rejet/update
             fileId: f.id,
             fileName: f.file_name,
-            copies: 1, // défaut — modifiable par imprimeur
           });
         }
       });
@@ -57,7 +62,6 @@ export function initBridge() {
     const formatted = Object.values(map);
     const currentJobs = jobStore.getJobs();
 
-    // Signature — détecte ajout/suppression
     const sig = arr => arr
       .map(g => `${g.clientId}:${g.items.map(i => i.fileId).join(',')}`)
       .sort().join('|');
