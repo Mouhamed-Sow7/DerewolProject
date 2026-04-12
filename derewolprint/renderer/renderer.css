@@ -375,6 +375,17 @@ nav {
   margin-top: 2px;
 }
 
+.job-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
 .job-actions {
   display: flex;
   gap: 8px;
@@ -990,40 +1001,6 @@ body.dark-mode .qr-logo-text {
    ACTIVATION MODAL ════════════════════════════════════════════════
    ════════════════════════════════════════════════════════════════ */
 
-#activation-modal,
-#subscription-overlay {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 99999 !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-#activation-modal .activation-backdrop,
-#subscription-overlay .sub-overlay-backdrop {
-  position: absolute !important;
-  inset: 0 !important;
-  background: rgba(0, 0, 0, 0.8) !important;
-  backdrop-filter: blur(4px) !important;
-  z-index: 0 !important;
-}
-
-#activation-modal .activation-box,
-#subscription-overlay .sub-overlay-box {
-  position: relative !important;
-  z-index: 1 !important;
-  background: var(--surface) !important;
-  border-radius: 20px !important;
-  padding: 32px 28px !important;
-  width: 100% !important;
-  max-width: 420px !important;
-  max-height: 90vh !important;
-  overflow-y: auto !important;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5) !important;
-}
-
 .activation-backdrop {
   position: fixed;
   top: 0;
@@ -1036,6 +1013,7 @@ body.dark-mode .qr-logo-text {
   justify-content: center;
   z-index: 9999;
   backdrop-filter: blur(4px);
+  padding: 20px;
 }
 
 .activation-backdrop.show {
@@ -1043,17 +1021,20 @@ body.dark-mode .qr-logo-text {
 }
 
 .activation-modal {
+  position: relative;
   background: var(--surface);
-  border-radius: var(--radius);
+  border-radius: 20px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  width: 90%;
-  max-width: 480px;
+  width: 95% !important;
+  max-width: 600px !important;
   max-height: 85vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   color: var(--text);
+  z-index: 10000;
   animation: slideUpModal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
 }
 
 @keyframes slideUpModal {
@@ -1068,7 +1049,7 @@ body.dark-mode .qr-logo-text {
 }
 
 .act-header {
-  padding: 24px;
+  padding: 28px 24px !important;
   border-bottom: 1px solid var(--border);
   text-align: center;
   background: var(--topbar-bg);
@@ -1130,7 +1111,7 @@ body.dark-mode .qr-logo-text {
 
 .act-panels {
   flex: 1;
-  padding: 24px;
+  padding: 28px !important;
 }
 
 .act-panel {
@@ -1200,8 +1181,8 @@ body.dark-mode .act-trial-card {
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 12px 20px;
-  font-size: 14px;
+  padding: 14px !important;
+  font-size: 15px !important;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1227,8 +1208,8 @@ body.dark-mode .act-trial-card {
 .act-plan {
   background: var(--card-bg);
   border: 2px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 20px !important;
   margin-bottom: 12px;
   text-align: center;
   cursor: pointer;

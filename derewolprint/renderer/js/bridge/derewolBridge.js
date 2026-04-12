@@ -70,6 +70,7 @@ export function initBridge() {
         map[grpKey] = {
           id: grpKey,
           clientId,
+          status: job.file_groups?.status || job.status || "waiting",
           time: new Date(job.created_at).toLocaleTimeString("fr-FR", {
             hour: "2-digit",
             minute: "2-digit",

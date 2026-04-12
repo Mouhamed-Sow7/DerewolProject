@@ -103,13 +103,55 @@ function startPolling(onJobsReceived, printerId, intervalMs = 1000) {
   currentIntervalMs = intervalMs;
 
   let lastCallTime = 0;
+  let previousJobsJson = "";
+
+  function normalizeJobs(jobsArray) {
+    return JSON.stringify(
+      (jobsArray || [])
+        .map((job) => ({
+          id: job.id,
+          status: job.status,
+          print_token: job.print_token,
+          created_at: job.created_at,
+          expires_at: job.expires_at,
+          file_id: job.file_id,
+          copies_requested: job.copies_requested,
+          copies_remaining: job.copies_remaining,
+          file_groups: {
+            id: job.file_groups?.id,
+            owner_id: job.file_groups?.owner_id,
+            status: job.file_groups?.status,
+            printer_id: job.file_groups?.printer_id,
+            files: (job.file_groups?.files || []).map((f) => ({
+              id: f.id,
+              file_name: f.file_name,
+              storage_path: f.storage_path,
+            })),
+          },
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    );
+  }
 
   async function tick() {
     try {
       await expireStaleGroups(printerId);
       const jobs = await fetchPendingJobs(printerId);
 
-      // Force une mise à jour même si rien n'a changé (heartbeat)
+      // ═══════════════════════════════════════════════════════════
+      // DIFF STRATEGY: Only notify if jobs changed
+      // ═══════════════════════════════════════════════════════════
+
+      const currentJobsJson = normalizeJobs(jobs);
+
+      if (currentJobsJson === previousJobsJson) {
+        // No changes — skip UI update
+        return;
+      }
+
+      previousJobsJson = currentJobsJson;
+
+      // Only call callback if data actually changed
       if (jobs.length > 0) {
         lastCallTime = Date.now();
         console.log(

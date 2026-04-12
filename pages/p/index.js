@@ -31,7 +31,7 @@ const C = {
 
 const TRANSLATIONS = {
   fr: {
-    dropHere: "Glissez vos PDF ici",
+    dropHere: "Glissez vos fichiers ici",
     orClick: "ou appuyez pour sélectionner",
     maxFiles: ({ n }) =>
       `${n} fichier${n > 1 ? "s" : ""} restant${n > 1 ? "s" : ""}`,
@@ -49,14 +49,14 @@ const TRANSLATIONS = {
     waitingMsg: "En attente de l'imprimeur",
     printingMsg: "Impression en cours...",
     completedMsg: "Terminé — fichiers supprimés",
-    rejectedMsg: "Rejeté par l'imprimeur",
+    rejectedMsg: "Rejeté — fichier supprimé",
     expiredMsg: "Délai dépassé — renvoyez vos fichiers",
     connecting: "Connexion...",
     notFound: "Espace introuvable",
     notFoundDesc: "Ce QR code n'est plus valide.",
   },
   en: {
-    dropHere: "Drop your PDFs here",
+    dropHere: "Drop your files here",
     orClick: "or tap to select",
     maxFiles: ({ n }) => `${n} file${n > 1 ? "s" : ""} remaining`,
     totalCopies: "Total copies",
@@ -73,14 +73,14 @@ const TRANSLATIONS = {
     waitingMsg: "Waiting for the printer",
     printingMsg: "Printing in progress...",
     completedMsg: "Done — files deleted",
-    rejectedMsg: "Rejected by printer",
+    rejectedMsg: "Rejected — file deleted",
     expiredMsg: "Expired — please resend",
     connecting: "Connecting...",
     notFound: "Space not found",
     notFoundDesc: "This QR code is no longer valid.",
   },
   wo: {
-    dropHere: "Tëj sa PDF fii",
+    dropHere: "Tëj sa dosye yi fii",
     orClick: "walla dëkk",
     maxFiles: ({ n }) => `${n} dosye${n > 1 ? "i" : ""} des`,
     totalCopies: "Jàmm kopi yi",
@@ -97,7 +97,7 @@ const TRANSLATIONS = {
     waitingMsg: "Xaar jëfandikukat bi",
     printingMsg: "Da ngay jëfandikoo...",
     completedMsg: "Jeex na — dosye yi bokk",
-    rejectedMsg: "Bàyyi na",
+    rejectedMsg: "Bàyyi na — dosye bu bokk",
     expiredMsg: "Xaar bi jeex na — yónni ci kanam",
     connecting: "Da ngay bind...",
     notFound: "Amul fenn",
@@ -136,26 +136,28 @@ function usePrintStatus(ownerId) {
   return { groups, loading };
 }
 
+function getFileIconClass(fileName) {
+  const ext = fileName?.split(".")?.pop()?.toLowerCase() || "";
+  switch (ext) {
+    case "pdf":
+      return "fa-file-pdf";
+    case "doc":
+    case "docx":
+      return "fa-file-word";
+    case "xls":
+    case "xlsx":
+      return "fa-file-excel";
+    default:
+      return "fa-file-lines";
+  }
+}
+
 function FileList({ files, fileCopies, onSetCopies, onRemove, C, t }) {
   const [expanded, setExpanded] = useState(false);
   const THRESHOLD = 3;
   const visible = expanded ? files : files.slice(0, THRESHOLD);
   const hidden = files.length - THRESHOLD;
-  const copiesBtnStyle = {
-    width: 24,
-    height: 24,
-    borderRadius: "50%",
-    border: `1px solid ${C.border}`,
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: 14,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: C.text,
-    fontFamily: "Inter, sans-serif",
-    padding: 0,
-  };
+
   return (
     <div style={{ marginBottom: 12 }}>
       {visible.map((file, i) => (
@@ -172,8 +174,8 @@ function FileList({ files, fileCopies, onSetCopies, onRemove, C, t }) {
             border: `1px solid ${C.border}`,
           }}
         >
-          <span style={{ fontSize: 16, color: "#dc2626", flexShrink: 0 }}>
-            <i className="fa-solid fa-file-pdf" />
+          <span style={{ fontSize: 16, color: "#3b82f6", flexShrink: 0 }}>
+            <i className={`fa-solid ${getFileIconClass(file.name)}`} />
           </span>
           <span
             style={{
@@ -188,38 +190,6 @@ function FileList({ files, fileCopies, onSetCopies, onRemove, C, t }) {
           >
             {file.name}
           </span>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-            }}
-          >
-            <button
-              onClick={() => onSetCopies(i, (fileCopies[i] || 1) - 1)}
-              style={copiesBtnStyle}
-            >
-              −
-            </button>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                minWidth: 18,
-                textAlign: "center",
-                color: C.text,
-              }}
-            >
-              {fileCopies[i] || 1}
-            </span>
-            <button
-              onClick={() => onSetCopies(i, (fileCopies[i] || 1) + 1)}
-              style={copiesBtnStyle}
-            >
-              +
-            </button>
-          </div>
           <button
             onClick={() => onRemove(i)}
             style={{
@@ -667,11 +637,34 @@ export default function PrinterSPA({ showToast }) {
     setLangState(l);
     if (typeof window !== "undefined") localStorage.setItem("dw_lang", l);
   }
-  function getFileCopy(i) {
-    return fileCopies[i] || 1;
+
+  function getFileKey(file) {
+    if (!slug || !file || !file.name) return null;
+    return `${slug}_${file.name}_${file.size}_${file.lastModified || 0}`;
   }
-  function setFileCopy(i, val) {
-    setFileCopies((prev) => ({ ...prev, [i]: Math.max(1, Math.min(20, val)) }));
+
+  function getFileCopy(file, index) {
+    const cacheKey = getFileKey(file);
+    if (typeof window !== "undefined" && cacheKey) {
+      const stored = localStorage.getItem(cacheKey);
+      if (stored) {
+        return Math.max(1, Math.min(20, parseInt(stored, 10) || 1));
+      }
+    }
+    return fileCopies[cacheKey] || fileCopies[index] || 1;
+  }
+
+  function setFileCopy(file, val, index) {
+    const newVal = Math.max(1, Math.min(20, val));
+    const cacheKey = getFileKey(file);
+    setFileCopies((prev) => ({
+      ...prev,
+      [cacheKey || index]: newVal,
+    }));
+
+    if (typeof window !== "undefined" && cacheKey) {
+      localStorage.setItem(cacheKey, String(newVal));
+    }
   }
 
   useEffect(() => {
@@ -751,16 +744,18 @@ export default function PrinterSPA({ showToast }) {
   }
 
   function removeFile(i) {
+    const removed = selected[i];
     setSelected((prev) => prev.filter((_, idx) => idx !== i));
-    setFileCopies((prev) => {
-      const next = {};
-      Object.keys(prev).forEach((k) => {
-        const ki = parseInt(k);
-        if (ki < i) next[ki] = prev[k];
-        else if (ki > i) next[ki - 1] = prev[k];
-      });
-      return next;
-    });
+    if (removed) {
+      const cacheKey = getFileKey(removed);
+      if (cacheKey) {
+        setFileCopies((prev) => {
+          const next = { ...prev };
+          delete next[cacheKey];
+          return next;
+        });
+      }
+    }
   }
 
   async function handlePreview(storagePath, fileName) {
@@ -771,8 +766,17 @@ export default function PrinterSPA({ showToast }) {
       const { data } = await supabase.storage
         .from("derewol-files")
         .createSignedUrl(storagePath, 120);
+
       if (data?.signedUrl) {
-        setPreviewUrl(data.signedUrl);
+        const isPdf = /\.pdf$/i.test(fileName || "");
+        const openDirectly = /Android/i.test(navigator.userAgent) || !isPdf;
+
+        if (openDirectly) {
+          window.open(data.signedUrl, "_blank");
+          setPreviewUrl(null);
+        } else {
+          setPreviewUrl(data.signedUrl);
+        }
       } else {
         setPreviewUrl(null);
       }
@@ -805,7 +809,7 @@ export default function PrinterSPA({ showToast }) {
           groupId,
           ownerId: session.owner_id,
           printerId: printer.id,
-          copies: getFileCopy(i),
+          copies: getFileCopy(selected[i], i),
         });
       }
       await updateFilesCount(groupId, selected.length);
@@ -1073,10 +1077,7 @@ export default function PrinterSPA({ showToast }) {
               {t("totalCopies")}
             </span>
             <span style={{ color: C.green, fontWeight: 800, fontSize: 18 }}>
-              {Object.entries(fileCopies).reduce((sum, [k, v]) => {
-                const idx = parseInt(k);
-                return idx < selected.length ? sum + v : sum;
-              }, 0) || selected.length}
+              {selected.reduce((sum, file, i) => sum + getFileCopy(file, i), 0)}
             </span>
           </div>
         )}
@@ -1174,7 +1175,8 @@ export default function PrinterSPA({ showToast }) {
                 flex: 1,
               }}
             >
-              <i className="fa-solid fa-file-pdf" /> {previewName}
+              <i className={`fa-solid ${getFileIconClass(previewName)}`} />{" "}
+              {previewName}
             </span>
             <button
               onClick={() => setPreviewUrl(null)}

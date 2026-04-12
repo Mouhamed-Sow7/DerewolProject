@@ -15,7 +15,21 @@ function showActivationModal(subscription) {
   const backdrop = document.getElementById("activation-backdrop");
   const modal = document.getElementById("activation-modal");
 
-  if (!backdrop || !modal) return;
+  console.log("[MODAL] showActivationModal called");
+  console.log("[MODAL] backdrop element:", backdrop);
+  console.log("[MODAL] modal element:", modal);
+
+  if (!backdrop || !modal) {
+    console.error(
+      "[MODAL] ERROR: Elements not found — backdrop or modal is null/undefined",
+    );
+    return;
+  }
+
+  console.log("[MODAL] Before adding show class:", {
+    backdropClasses: backdrop.className,
+    modalClasses: modal.className,
+  });
 
   const titleEl = modal.querySelector(".act-title");
   const descEl = modal.querySelector(".act-description");
@@ -37,11 +51,24 @@ function showActivationModal(subscription) {
   }
 
   backdrop.classList.add("show");
+  modal.classList.add("show");
+
+  console.log("[MODAL] ✅ After adding show class:", {
+    backdropClasses: backdrop.className,
+    modalClasses: modal.className,
+    backdropDisplay: window.getComputedStyle(backdrop).display,
+    modalDisplay: window.getComputedStyle(modal).display,
+  });
 }
 
 function hideActivationModal() {
   const backdrop = document.getElementById("activation-backdrop");
-  if (backdrop) backdrop.classList.remove("show");
+  if (backdrop) {
+    backdrop.classList.remove("show");
+    console.log("[MODAL] hideActivationModal — 'show' class removed");
+  } else {
+    console.warn("[MODAL] hideActivationModal — backdrop not found");
+  }
 }
 
 function toggleActivationTab(tabName) {
@@ -68,85 +95,105 @@ function formatActivationCode(input) {
 
 let __actBound = false;
 function bindActivationModal() {
-  if (__actBound) return;
+  if (__actBound) {
+    console.log("[MODAL] bindActivationModal already called — skipping");
+    return;
+  }
   __actBound = true;
+
+  console.log("[MODAL] bindActivationModal — Starting setup");
 
   // Tabs trial / subscription
   document.querySelectorAll(".act-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
+      console.log("[MODAL] Tab clicked:", tab.dataset.actTab);
+
       document
         .querySelectorAll(".act-tab")
         .forEach((t) => t.classList.remove("active"));
+
       tab.classList.add("active");
-      const name = tab.dataset.tab;
-      const panelTrial = document.getElementById("panel-trial");
-      const panelSub = document.getElementById("panel-subscription");
-      if (panelTrial)
-        panelTrial.style.display = name === "trial" ? "block" : "none";
-      if (panelSub)
-        panelSub.style.display = name === "subscription" ? "block" : "none";
+      const name = tab.dataset.actTab; // ← FIXED: data-act-tab not data-tab
+
+      // Get the panel matching this tab
+      const panels = document.querySelectorAll(
+        `.act-panel[id="act-panel-${name}"]`,
+      );
+
+      panels.forEach((panel) => {
+        panel.classList.toggle("active", tab.dataset.actTab === name);
+      });
     });
   });
 
+  console.log("[MODAL] Tabs binding complete");
+
   // Bouton essai gratuit
-  const trialBtn = document.getElementById("btn-start-trial");
+  const trialBtn =
+    document.getElementById("act-btn-activate") ||
+    document.querySelector(".act-btn-activate");
+
   if (trialBtn) {
+    console.log("[MODAL] Trial button found");
     trialBtn.addEventListener("click", async () => {
+      if (!window.derewol?.activateTrial) {
+        console.warn("[MODAL] window.derewol.activateTrial not available");
+        return;
+      }
+
       trialBtn.disabled = true;
-      trialBtn.textContent = "Activation...";
+      trialBtn.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin"></i> Activation...';
+
       try {
         const res = await window.derewol.activateTrial();
+        console.log("[MODAL] Trial activation response:", res);
+
         if (res?.success) {
-          const overlay =
-            document.getElementById("activation-modal") ||
-            document.getElementById("subscription-overlay");
-          if (overlay) overlay.style.display = "none";
+          const backdrop = document.getElementById("activation-backdrop");
+          if (backdrop) backdrop.classList.remove("show");
+
           const s = await window.derewol.subscriptionCheck();
           handleSubscriptionStatus(s);
         } else {
           trialBtn.disabled = false;
-          trialBtn.textContent = "Démarrer l'essai gratuit";
+          trialBtn.innerHTML =
+            '<i class="fa-solid fa-play"></i> Démarrer mon essai';
           alert(res?.error || "Erreur activation essai");
         }
       } catch (e) {
+        console.error("[MODAL] Trial activation error:", e);
         trialBtn.disabled = false;
-        trialBtn.textContent = "Démarrer l'essai gratuit";
+        trialBtn.innerHTML =
+          '<i class="fa-solid fa-play"></i> Démarrer mon essai';
       }
     });
+  } else {
+    console.warn("[MODAL] Trial button not found");
   }
 
-  // Formatage code activation
-  const codeInput =
-    document.getElementById("act-code-input") ||
-    document.getElementById("sub-activation-code");
+  // Code input formatting
+  const codeInput = document.getElementById("act-code-input");
   if (codeInput) {
     codeInput.addEventListener("input", (e) => {
-      let val = String(e.target.value || "")
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "");
-      if (val.startsWith("DW")) {
-        const rest = val.slice(2);
-        const parts = ["DW"];
-        for (let i = 0; i < rest.length && parts.length < 4; i += 4) {
-          parts.push(rest.slice(i, i + 4));
-        }
-        val = parts.join("-");
-      }
-      e.target.value = val;
+      formatActivationCode(e.target);
     });
+  } else {
+    console.warn("[MODAL] Code input not found");
   }
 
   // Bouton activer code
-  const codeBtn =
-    document.getElementById("act-code-btn") ||
-    document.getElementById("sub-activate-btn");
-  const errorEl =
-    document.getElementById("act-code-error") ||
-    document.getElementById("sub-activation-error");
+  const codeBtn = document.getElementById("act-code-btn");
+  const errorEl = document.getElementById("act-code-error");
+
   if (codeBtn) {
     codeBtn.addEventListener("click", async () => {
-      const code = codeInput?.value || "";
+      if (!codeInput) return;
+
+      const code = codeInput.value || "";
+
       if (errorEl) errorEl.style.display = "none";
+
       if (code.replace(/[\s\-]/g, "").length < 10) {
         if (errorEl) {
           errorEl.textContent = "Code invalide";
@@ -154,46 +201,65 @@ function bindActivationModal() {
         }
         return;
       }
+
+      if (!window.derewol?.subscriptionActivate) {
+        console.warn(
+          "[MODAL] window.derewol.subscriptionActivate not available",
+        );
+        return;
+      }
+
       codeBtn.disabled = true;
-      const prev = codeBtn.innerHTML;
-      codeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      const prevHTML = codeBtn.innerHTML;
+      codeBtn.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin"></i> Vérification...';
+
       try {
         const res = await window.derewol.subscriptionActivate(code);
+        console.log("[MODAL] Code activation response:", res);
+
         if (res?.success) {
-          const overlay =
-            document.getElementById("activation-modal") ||
-            document.getElementById("subscription-overlay");
-          if (overlay) overlay.style.display = "none";
+          const backdrop = document.getElementById("activation-backdrop");
+          if (backdrop) backdrop.classList.remove("show");
+
+          codeBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
+          setTimeout(() => location.reload(), 1500);
         } else {
           if (errorEl) {
             errorEl.textContent = res?.error || "Code invalide";
             errorEl.style.display = "block";
           }
           codeBtn.disabled = false;
-          codeBtn.innerHTML = prev;
+          codeBtn.innerHTML = prevHTML;
         }
       } catch (e) {
+        console.error("[MODAL] Code activation error:", e);
+
         if (errorEl) {
           errorEl.textContent = "Erreur réseau";
           errorEl.style.display = "block";
         }
         codeBtn.disabled = false;
-        codeBtn.innerHTML = prev;
+        codeBtn.innerHTML = prevHTML;
       }
     });
+  } else {
+    console.warn("[MODAL] Code button not found");
   }
 
   // WhatsApp link
-  const waLink =
-    document.getElementById("act-whatsapp-link") ||
-    document.getElementById("sub-whatsapp-btn");
+  const waLink = document.getElementById("act-whatsapp-link");
   if (waLink) {
     const slug = window.__printerCfg?.slug || "—";
     const msg = encodeURIComponent(
       `Bonjour, je veux activer DerewolPrint.\nBoutique: ${slug}\nMerci.`,
     );
     waLink.href = `https://wa.me/221781220391?text=${msg}`;
+  } else {
+    console.warn("[MODAL] WhatsApp button not found");
   }
+
+  console.log("[MODAL] bindActivationModal complete");
 }
 
 function handleSubscriptionStatus(sub) {
@@ -222,7 +288,7 @@ function handleSubscriptionStatus(sub) {
   } else {
     overlay.style.display = "none";
     if (sub?.daysLeft !== undefined && sub.daysLeft <= 5 && sub.daysLeft > 0) {
-      console.warn(`[SUB] ⚠️ Expire dans ${sub.daysLeft} jour(s)`);
+      console.warn(`[SUB] WARNING: Expires in ${sub.daysLeft} day(s)`);
     }
   }
 }
@@ -923,12 +989,52 @@ applyPollingInterval();
 
 initBridge();
 
-// Initialize acceptance modal for trial & payment conditions
-// Wait for DOM to be ready before binding
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bindAcceptanceModal);
-} else {
+// ═══════════════════════════════════════════════════════════════
+// EXPOSE MODAL FUNCTIONS GLOBALLY ═══════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+
+window.showActivationModal = showActivationModal;
+window.hideActivationModal = hideActivationModal;
+window.toggleActivationTab = toggleActivationTab;
+window.formatActivationCode = formatActivationCode;
+
+window.showAcceptanceModal = showAcceptanceModal;
+window.hideAcceptanceModal = hideAcceptanceModal;
+
+// Log for debugging
+console.log("[DEREWOL] Modal functions exposed globally:", {
+  showActivationModal: typeof window.showActivationModal,
+  hideActivationModal: typeof window.hideActivationModal,
+  toggleActivationTab: typeof window.toggleActivationTab,
+  formatActivationCode: typeof window.formatActivationCode,
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INITIALIZE MODALS ═════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("[DEREWOL] DOM READY — Initializing modals");
+
+  // Initialize acceptance modal for trial & payment conditions
   bindAcceptanceModal();
+
+  // Initialize activation modal
+  bindActivationModal();
+
+  // Auto-show activation modal for testing (will be removed in production)
+  setTimeout(() => {
+    console.log("[DEREWOL] Testing modal visibility (delayed 1 second)");
+    // Uncomment to test auto-show:
+    // window.showActivationModal({ status: "inactive" });
+  }, 1000);
+});
+
+// If DOM is already loaded, initialize immediately
+if (document.readyState !== "loading") {
+  console.log("[DEREWOL] DOM already loaded — Initializing modals");
+  bindAcceptanceModal();
+  bindActivationModal();
 }
 
 // Imprimantes sidebar

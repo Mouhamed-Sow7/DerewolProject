@@ -108,7 +108,8 @@
             <option value="expired">Expirés</option>
           </select>
           <button class="btn-filter-clear" id="btn-filter-clear">
-            ✕ Effacer
+            <i class="fa-solid fa-xmark"></i>
+            Effacer
           </button>
         </div>
 
@@ -372,33 +373,38 @@
           <!-- Panel Essai -->
           <div class="act-panel active" id="act-panel-trial">
             <div class="act-trial-card">
-              <div class="act-trial-icon">⭐</div>
+              <div class="act-trial-icon">
+                <i class="fa-solid fa-star"></i>
+              </div>
               <div class="act-trial-title">Essai gratuit</div>
               <div class="act-trial-duration">7 jours</div>
               <div class="act-trial-text">
                 Accès complet à toutes les fonctionnalités sans engagement.
               </div>
-              <button class="act-btn-activate">Démarrer mon essai</button>
+              <button class="act-btn-activate">
+                <i class="fa-solid fa-play"></i>
+                Démarrer mon essai
+              </button>
             </div>
           </div>
 
           <!-- Panel Abonnement -->
           <div class="act-panel" id="act-panel-subscription">
             <div class="act-plans">
+              <div class="act-plan">
+                <div class="act-plan-months">1 mois</div>
+                <div class="act-plan-price">5 000 FCFA</div>
+              </div>
               <div class="act-plan act-plan--popular">
                 <div class="act-plan-badge">POPULAIRE</div>
                 <div class="act-plan-months">3 mois</div>
-                <div class="act-plan-price">25 000 FCFA</div>
+                <div class="act-plan-price">12 500 FCFA</div>
                 <div class="act-plan-discount">-17%</div>
               </div>
               <div class="act-plan">
-                <div class="act-plan-months">1 mois</div>
-                <div class="act-plan-price">10 000 FCFA</div>
-              </div>
-              <div class="act-plan">
-                <div class="act-plan-months">2 mois</div>
-                <div class="act-plan-price">18 000 FCFA</div>
-                <div class="act-plan-discount">-10%</div>
+                <div class="act-plan-months">6 mois</div>
+                <div class="act-plan-price">25 500 FCFA</div>
+                <div class="act-plan-discount">-29%</div>
               </div>
             </div>
 
@@ -433,4 +439,3 @@
     <script type="module" src="renderer.js"></script>
   </body>
 </html>
-
