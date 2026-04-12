@@ -94,33 +94,21 @@ export function initBridge() {
     });
 
     const formatted = Object.values(map);
-    const currentSig = sig(currentJobs);
-    const newSig = sig(formatted);
 
-    console.log(
-      "[SIGNATURE] Avant:",
-      currentSig.substring(0, 40) + "...",
-      "Après:",
-      newSig.substring(0, 40) + "...",
-      "Identique:",
-      currentSig === newSig,
-    );
+    // SILENT POLLING: Strict comparison, NO forced heartbeat
+    // Use JSON.stringify for deep comparison
+    const currentSig = JSON.stringify(currentJobs);
+    const newSig = JSON.stringify(formatted);
 
-    // IMPORTANT: Mise à jour sur changement DE SIGNATURE
-    // OU si jobs.length > 0 (force heartbeat toutes les X secondes)
-    if (
-      currentSig !== newSig ||
-      (formatted.length > 0 && timeSinceUpdate > 5000)
-    ) {
+    // Update ONLY if data changed - no unnecessary re-renders
+    if (currentSig !== newSig) {
       const hasNew = formatted.some(
         (g) => !currentJobs.find((c) => c.id === g.id),
       );
 
       if (hasNew) {
-        console.log("[NEW JOBS] Nouveaux jobs détectés - son activé");
+        console.log("[NEW JOBS] Nouveaux jobs - notification audio activée");
         playNotification();
-      } else if (formatted.length > 0) {
-        console.log("[HEARTBEAT] Mise à jour forcée du DOM (5s écoulées)");
       }
 
       lastUpdateTime = currentTime;

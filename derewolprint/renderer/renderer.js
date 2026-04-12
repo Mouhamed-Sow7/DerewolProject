@@ -397,7 +397,7 @@ function renderHistory() {
   if (filtered.length === 0) {
     list.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">📋</div>
+        <div class="empty-icon"><i class="fa-solid fa-clipboard"></i></div>
         <p>Aucun résultat</p>
         <span>Modifiez les filtres ou attendez des impressions</span>
       </div>`;
@@ -424,7 +424,7 @@ function renderHistory() {
       <div class="history-item-left">
         <div class="history-file-name" title="${h.file_name}">${h.file_name}</div>
         <div class="history-meta">
-          👤 ${h.display_id || h.owner_id}
+          <i class="fa-solid fa-user"></i> ${h.display_id || h.owner_id}
           ${h.copies > 0 ? ` · ${h.copies} copie${h.copies > 1 ? "s" : ""}` : ""}
           ${h.printer_name ? ` · ${h.printer_name}` : ""}
         </div>
@@ -655,7 +655,7 @@ function confirmJob(groupId, group) {
   btnCancel.className = "btn-cancel";
   btnCancel.addEventListener("click", () => {
     printingGroups.delete(groupId);
-    btn.textContent = "🖨️ Imprimer tout";
+    btn.innerHTML = '<i class="fa-solid fa-print"></i> Imprimer tout';
     btn.disabled = false;
     btn.style.opacity = "1";
     if (btnReject) {
@@ -707,8 +707,12 @@ async function initQRView() {
     document.getElementById("btn-copy-url").addEventListener("click", () => {
       navigator.clipboard.writeText(qrConfig.url);
       const btn = document.getElementById("btn-copy-url");
-      btn.textContent = "✅ Copié !";
-      setTimeout(() => (btn.textContent = "🔗 Copier le lien"), 2000);
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Copié !';
+      setTimeout(
+        () =>
+          (btn.innerHTML = '<i class="fa-solid fa-link"></i> Copier le lien'),
+        2000,
+      );
     });
 
     document

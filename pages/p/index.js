@@ -708,18 +708,40 @@ export default function PrinterSPA({ showToast }) {
   }, []);
 
   function addFiles(newFiles) {
-    const pdfs = Array.from(newFiles).filter(
-      (f) => f.type === "application/pdf",
-    );
-    const valid = pdfs.filter((f) => {
+    // Supported file types: PDF, Word, Excel
+    const SUPPORTED_TYPES = [
+      "application/pdf",
+      "application/msword", // .doc
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+      "application/vnd.ms-excel", // .xls
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    ];
+
+    // Also check by file extension for Android compatibility
+    const isValidByExtension = (filename) => {
+      const ext = filename.split(".").pop().toLowerCase();
+      return ["pdf", "doc", "docx", "xls", "xlsx"].includes(ext);
+    };
+
+    const validFiles = Array.from(newFiles).filter((f) => {
+      const isSupportedType =
+        SUPPORTED_TYPES.includes(f.type) || isValidByExtension(f.name);
+      if (!isSupportedType) {
+        showToast?.(
+          `"${f.name}" - type non supporté. Utilisez PDF, Word ou Excel.`,
+          "error",
+        );
+        return false;
+      }
       if (f.size > MAX_SIZE_MB * 1024 * 1024) {
         showToast?.(`"${f.name}" dépasse ${MAX_SIZE_MB}MB`, "error");
         return false;
       }
       return true;
     });
+
     setSelected((prev) => {
-      const combined = [...prev, ...valid];
+      const combined = [...prev, ...validFiles];
       if (combined.length > MAX_FILES) {
         showToast?.(`Maximum ${MAX_FILES} fichiers`, "error");
         return combined.slice(0, MAX_FILES);
@@ -1001,7 +1023,7 @@ export default function PrinterSPA({ showToast }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/pdf"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             multiple
             style={{ display: "none" }}
             onChange={(e) => addFiles(e.target.files)}
