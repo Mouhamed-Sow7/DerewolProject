@@ -67,8 +67,10 @@ function showActivationModal(subscription) {
 
 function hideActivationModal() {
   const backdrop = document.getElementById("activation-backdrop");
+  const modal = document.getElementById("activation-modal");
   if (backdrop) {
     backdrop.classList.remove("show");
+    if (modal) modal.classList.remove("show");
     console.log("[MODAL] hideActivationModal — 'show' class removed");
   } else {
     console.warn("[MODAL] hideActivationModal — backdrop not found");
@@ -82,10 +84,13 @@ function toggleActivationTab(tabName) {
   tabs.forEach((tab) => tab.classList.remove("active"));
   panels.forEach((panel) => panel.classList.remove("active"));
 
-  document
-    .querySelector(`[data-act-tab="${tabName}"]`)
-    ?.classList.add("active");
-  document.getElementById(`act-panel-${tabName}`)?.classList.add("active");
+  const activeTab = document.querySelector(`[data-act-tab="${tabName}"]`);
+  const activePanel = document.getElementById(`act-panel-${tabName}`);
+  
+  if (activeTab) activeTab.classList.add("active");
+  if (activePanel) activePanel.classList.add("active");
+  
+  console.log(`[MODAL] Switched to tab: ${tabName}`);
 }
 
 function formatActivationCode(input) {
@@ -97,7 +102,16 @@ function formatActivationCode(input) {
   input.value = full;
 }
 
+// ─── Z-INDEX CONSTANTS ───────────────────────────────────
+const MODAL_Z_INDEXES = {
+  backdrop: "99999",
+  activation: "100000",
+  acceptance: "100001",
+};
+
 let activationInitialized = false;
+let acceptanceInitialized = false;
+
 function bindActivationModal() {
   if (activationInitialized) {
     console.log("[MODAL] bindActivationModal already called — skipping");
@@ -107,41 +121,35 @@ function bindActivationModal() {
 
   console.log("[MODAL] bindActivationModal — Starting setup");
 
+  // Set z-index for activation modal
+  const modal = document.getElementById("activation-modal");
+  const backdrop = document.getElementById("activation-backdrop");
+  if (modal) modal.style.zIndex = MODAL_Z_INDEXES.activation;
+  if (backdrop) backdrop.style.zIndex = MODAL_Z_INDEXES.backdrop;
+
   // Prevent ESC key from closing modal
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
+  const activationEscHandler = (e) => {
+    const backdrop = document.getElementById("activation-backdrop");
+    if (e.key === "Escape" && backdrop?.classList.contains("show")) {
       e.preventDefault();
-      console.log("[MODAL] ESC key prevented");
+      console.log("[MODAL] ESC key prevented on activation modal");
     }
-  });
+  };
+  document.addEventListener("keydown", activationEscHandler);
 
   // Prevent backdrop click from closing modal
-  const backdrop = document.getElementById("activation-backdrop");
-  if (backdrop) {
-    backdrop.onclick = null;
-    backdrop.style.pointerEvents = "auto";
+  const modalBackdrop = document.getElementById("activation-backdrop");
+  if (modalBackdrop) {
+    modalBackdrop.onclick = null;
+    modalBackdrop.style.pointerEvents = "auto";
   }
 
   // Tabs trial / subscription
   document.querySelectorAll(".act-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      console.log("[MODAL] Tab clicked:", tab.dataset.actTab);
-
-      document
-        .querySelectorAll(".act-tab")
-        .forEach((t) => t.classList.remove("active"));
-
-      tab.classList.add("active");
-      const name = tab.dataset.actTab; // ← FIXED: data-act-tab not data-tab
-
-      // Get the panel matching this tab
-      const panels = document.querySelectorAll(
-        `.act-panel[id="act-panel-${name}"]`,
-      );
-
-      panels.forEach((panel) => {
-        panel.classList.toggle("active", tab.dataset.actTab === name);
-      });
+      const tabName = tab.dataset.actTab;
+      console.log("[MODAL] Tab clicked:", tabName);
+      toggleActivationTab(tabName);
     });
   });
 
@@ -284,7 +292,7 @@ function bindActivationModal() {
   }
 
   console.log("[MODAL] bindActivationModal complete");
-}
+  activationInitialized = true;
 
 function handleSubscriptionStatus(sub) {
   const overlay =
@@ -306,9 +314,11 @@ function handleSubscriptionStatus(sub) {
 
   if (blocked) {
     overlay.style.display = "flex";
-    overlay.style.zIndex = "99999";
+    overlay.style.zIndex = MODAL_Z_INDEXES.activation;
     console.log("[SUB] Overlay affiché — abonnement expiré/requis");
-    bindActivationModal();
+    if (!activationInitialized) {
+      bindActivationModal();
+    }
   } else {
     overlay.style.display = "none";
     if (sub?.daysLeft !== undefined && sub.daysLeft <= 5 && sub.daysLeft > 0) {
@@ -358,27 +368,46 @@ function hideAcceptanceModal() {
 }
 
 function bindAcceptanceModal() {
-  console.log("bindAcceptanceModal called");
+  if (acceptanceInitialized) {
+    console.log("[MODAL] bindAcceptanceModal already called — skipping");
+    return;
+  }
+  acceptanceInitialized = true;
+
+  console.log("[MODAL] bindAcceptanceModal called");
 
   const backdrop = document.getElementById("acceptance-backdrop");
   const modal = document.getElementById("acceptance-modal");
 
-  console.log("Looking for modal elements...");
-  console.log("backdrop:", backdrop);
-  console.log("modal:", modal);
+  console.log("[MODAL] Looking for modal elements...");
+  console.log("[MODAL] backdrop:", backdrop);
+  console.log("[MODAL] modal:", modal);
 
   if (!backdrop || !modal) {
-    console.error("Modal elements not found in bindAcceptanceModal!");
+    console.error("[MODAL] Modal elements not found in bindAcceptanceModal!");
     return;
   }
 
-  console.log("Modal elements found, binding events...");
+  // Set z-index for acceptance modal
+  modal.style.zIndex = MODAL_Z_INDEXES.acceptance;
+  backdrop.style.zIndex = MODAL_Z_INDEXES.backdrop;
+
+  console.log("[MODAL] Modal elements found, binding events...");
 
   const cancelBtn = modal.querySelector("#acc-btn-cancel");
   const acceptBtn = modal.querySelector("#acc-btn-accept");
 
-  console.log("cancelBtn:", cancelBtn);
-  console.log("acceptBtn:", acceptBtn);
+  console.log("[MODAL] cancelBtn:", cancelBtn);
+  console.log("[MODAL] acceptBtn:", acceptBtn);
+
+  // Prevent ESC key from closing modal
+  const acceptanceEscHandler = (e) => {
+    if (e.key === "Escape" && backdrop?.classList.contains("show")) {
+      e.preventDefault();
+      console.log("[MODAL] ESC key prevented on acceptance modal");
+    }
+  };
+  document.addEventListener("keydown", acceptanceEscHandler);
 
   // Cancel button
   if (cancelBtn) {
@@ -442,10 +471,10 @@ function bindAcceptanceModal() {
     });
   }
 
-  // Close on backdrop click
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) hideAcceptanceModal();
-  });
+  // Prevent backdrop click from closing modal (but allow closing via button)
+  backdrop.onclick = null;
+  backdrop.style.pointerEvents = "auto";
+  console.log("[MODAL] bindAcceptanceModal complete");
 }
 
 // ── Paramètres persistants ────────────────────────────────────

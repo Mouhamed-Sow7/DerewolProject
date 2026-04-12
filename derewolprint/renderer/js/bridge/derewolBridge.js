@@ -96,11 +96,15 @@ export function initBridge() {
       const exists = map[grpKey].items.find((x) => x.jobId === job.id);
 
       if (!exists) {
+        // CRITICAL: Map file-level status (rejected is at file level, not job)
+        const fileStatus = linkedFile.status || job.status || "pending";
+
         map[grpKey].items.push({
           jobId: job.id,
           fileGroupId: job.file_groups?.id,
           fileId: linkedFile.id,
           fileName: linkedFile.file_name,
+          fileStatus: fileStatus,
         });
       }
     });

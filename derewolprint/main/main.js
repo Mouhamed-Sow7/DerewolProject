@@ -600,19 +600,64 @@ async function verifyPrinterExists() {
   }
 }
 
+// ── Check Access Status (source of truth = database) ──────────────
+async function checkAccess() {
+  if (!printerCfg?.id) {
+    console.log("[ACCESS] No printer config → inactive");
+    return { status: "inactive" };
+  }
+
+  try {
+    const sub = await checkSubscription(printerCfg.id);
+
+    if (sub.valid === true) {
+      console.log("[ACCESS] ✓ Subscription active");
+      return { status: "active" };
+    }
+
+    if (sub.trial_active === true) {
+      const now = new Date();
+      const expire = new Date(sub.trial_expires_at);
+
+      if (now < expire) {
+        const daysLeft = Math.ceil((expire - now) / (1000 * 60 * 60 * 24));
+        console.log(`[ACCESS] Trial active (${daysLeft} days left)`);
+        return {
+          status: "trial",
+          daysLeft,
+          trial_expires_at: sub.trial_expires_at,
+        };
+      } else {
+        console.log("[ACCESS] Trial expired");
+        return { status: "expired" };
+      }
+    }
+
+    console.log("[ACCESS] No valid subscription → inactive");
+    return { status: "inactive" };
+  } catch (err) {
+    console.error("[ACCESS] Error checking subscription:", err.message);
+    return { status: "inactive" };
+  }
+}
+
 // ── Helpers boot ────────────────────────────────────────────────
 function launchApp(isFreshRegistration = false) {
   createMainWindow();
 
-  // Auto-trigger activation modal after fresh registration
-  if (isFreshRegistration && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.on("did-finish-load", () => {
-      console.log("[BOOT] Fresh registration — triggering activation modal");
-      mainWindow.webContents.send("show:activation-modal", {
-        status: "inactive",
-      });
-    });
-  }
+  // ALWAYS check access status on window load (source of truth = database)
+  mainWindow.webContents.on("did-finish-load", async () => {
+    console.log("[BOOT] Window loaded — checking access status from DB");
+    const access = await checkAccess();
+
+    if (access.status !== "active") {
+      console.log("[BOOT] Access denied, forcing modal:", access.status);
+      mainWindow.webContents.send("show:activation-modal", access);
+    } else {
+      console.log("[BOOT] Access granted — showing main app");
+      mainWindow.webContents.send("app:ready", { status: "active" });
+    }
+  });
 
   startPolling((jobs) => {
     if (mainWindow && !mainWindow.isDestroyed()) {

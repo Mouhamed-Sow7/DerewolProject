@@ -53,6 +53,21 @@ body {
     color 0.3s;
 }
 
+/* ── BLOCK UI WHEN NOT ACTIVE (Supabase source of truth) ── */
+body.blocked .sidebar,
+body.blocked .main,
+body.blocked [role="main"] {
+  pointer-events: none;
+  filter: blur(3px);
+  opacity: 0.5;
+}
+
+body.blocked .activation-backdrop {
+  pointer-events: auto;
+  filter: none;
+  opacity: 1;
+}
+
 /* =============================================
    SIDEBAR
 ============================================= */

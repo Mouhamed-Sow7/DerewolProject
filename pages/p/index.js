@@ -310,7 +310,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       icon: "fa-clock",
     },
   };
-  const sc = statusConfig[status] || statusConfig.waiting;
+  const sc = statusConfig[displayStatus] || statusConfig.waiting;
   return (
     <div
       style={{
@@ -389,8 +389,18 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 <i className={`fa-solid ${sc.icon}`} style={{ fontSize: 11 }} />
                 {sc.label}
               </span>
-              {status === "waiting" && job?.expires_at && (
-                <CountdownPill expiresAt={job.expires_at} />
+              {haRejectedFile && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "#e53935",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    marginLeft: 4,
+                  }}
+                >
+                  <i className="fa-solid fa-alert-triangle" /> Fichier supprimé
+                </span>
               )}
             </div>
           </div>
@@ -456,7 +466,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
               >
                 {f.file_name}
               </span>
-              {f.storage_path && status !== "rejected" && (
+              {f.storage_path && f.status !== "rejected" && (
                 <button
                   onClick={() => onPreview(f.storage_path, f.file_name)}
                   style={{
@@ -478,14 +488,14 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                   <i className="fa-regular fa-eye" /> Voir
                 </button>
               )}
-              {status === "rejected" && (
+              {f.status === "rejected" && (
                 <span
                   style={{
                     background: "#fee2e2",
                     border: "none",
                     borderRadius: 6,
                     padding: "4px 10px",
-                    color: "#dc2626",
+                    color: "#e53935",
                     fontSize: 12,
                     fontWeight: 600,
                     display: "flex",
@@ -495,7 +505,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                     fontFamily: "Inter, sans-serif",
                   }}
                 >
-                  <i className="fa-solid fa-circle-exclamation" /> Rejeté
+                  <i className="fa-solid fa-xmark-circle" /> Supprimé
                 </span>
               )}
             </div>
