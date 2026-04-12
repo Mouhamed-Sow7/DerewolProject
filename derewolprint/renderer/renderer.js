@@ -86,10 +86,10 @@ function toggleActivationTab(tabName) {
 
   const activeTab = document.querySelector(`[data-act-tab="${tabName}"]`);
   const activePanel = document.getElementById(`act-panel-${tabName}`);
-  
+
   if (activeTab) activeTab.classList.add("active");
   if (activePanel) activePanel.classList.add("active");
-  
+
   console.log(`[MODAL] Switched to tab: ${tabName}`);
 }
 
@@ -293,6 +293,7 @@ function bindActivationModal() {
 
   console.log("[MODAL] bindActivationModal complete");
   activationInitialized = true;
+}
 
 function handleSubscriptionStatus(sub) {
   const overlay =
