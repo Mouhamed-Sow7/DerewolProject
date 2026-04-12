@@ -54,6 +54,12 @@ export function initBridge() {
     );
 
     const currentJobs = jobStore.getJobs();
+    const currentJobMap = new Map(
+      currentJobs.map((g) => [
+        g.id,
+        new Set(g.items.map((item) => item.jobId)),
+      ]),
+    );
     const map = {};
 
     (jobs || []).forEach((job) => {
@@ -95,16 +101,16 @@ export function initBridge() {
 
     const formatted = Object.values(map);
 
-    // SILENT POLLING: Strict comparison, NO forced heartbeat
-    // Use JSON.stringify for deep comparison
-    const currentSig = JSON.stringify(currentJobs);
-    const newSig = JSON.stringify(formatted);
+    const currentSig = sig(currentJobs);
+    const newSig = sig(formatted);
 
     // Update ONLY if data changed - no unnecessary re-renders
     if (currentSig !== newSig) {
-      const hasNew = formatted.some(
-        (g) => !currentJobs.find((c) => c.id === g.id),
-      );
+      const hasNew = formatted.some((group) => {
+        const previousJobIds = currentJobMap.get(group.id);
+        if (!previousJobIds) return true;
+        return group.items.some((item) => !previousJobIds.has(item.jobId));
+      });
 
       if (hasNew) {
         console.log("[NEW JOBS] Nouveaux jobs - notification audio activée");

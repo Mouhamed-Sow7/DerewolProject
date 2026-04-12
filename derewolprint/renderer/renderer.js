@@ -378,6 +378,12 @@ function saveSettings() {
   localStorage.setItem("derewol_settings", JSON.stringify(settings));
 }
 
+function applyPollingInterval() {
+  if (!window.derewol?.setPollingInterval) return;
+  const interval = Math.max(1000, Number(settings.polling) || 1000);
+  window.derewol.setPollingInterval(interval);
+}
+
 function applyDarkMode(enabled) {
   document.body.classList.toggle("dark-mode", enabled);
 }
@@ -547,6 +553,7 @@ document.getElementById("setting-sound").addEventListener("change", (e) => {
 document.getElementById("setting-polling").addEventListener("change", (e) => {
   settings.polling = parseInt(e.target.value);
   saveSettings();
+  applyPollingInterval();
 });
 document.getElementById("setting-printer").addEventListener("change", (e) => {
   settings.printer = e.target.value;
@@ -912,6 +919,7 @@ function roundRect(ctx, x, y, w, h, r) {
 loadSettings();
 applyDarkMode(settings.darkmode);
 window.__derewolSoundEnabled = settings.sound;
+applyPollingInterval();
 
 initBridge();
 
