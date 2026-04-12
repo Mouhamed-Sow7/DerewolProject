@@ -1023,10 +1023,11 @@ body.dark-mode .qr-logo-text {
 .activation-modal {
   position: relative;
   background: var(--surface);
-  border-radius: 20px;
+  border-radius: 18px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  width: 95% !important;
-  max-width: 600px !important;
+  width: 95%;
+  max-width: 520px;
+  min-height: 400px;
   max-height: 85vh;
   overflow-y: auto;
   display: flex;
@@ -1067,14 +1068,14 @@ body.dark-mode .qr-logo-text {
 }
 
 .act-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text);
   margin-bottom: 8px;
 }
 
 .act-description {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -1111,7 +1112,7 @@ body.dark-mode .qr-logo-text {
 
 .act-panels {
   flex: 1;
-  padding: 28px !important;
+  padding: 28px;
 }
 
 .act-panel {

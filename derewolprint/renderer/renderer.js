@@ -53,6 +53,10 @@ function showActivationModal(subscription) {
   backdrop.classList.add("show");
   modal.classList.add("show");
 
+  // Prevent modal from closing on backdrop click or ESC
+  backdrop.onclick = null;
+  backdrop.style.pointerEvents = "auto";
+
   console.log("[MODAL] ✅ After adding show class:", {
     backdropClasses: backdrop.className,
     modalClasses: modal.className,
@@ -93,15 +97,30 @@ function formatActivationCode(input) {
   input.value = full;
 }
 
-let __actBound = false;
+let activationInitialized = false;
 function bindActivationModal() {
-  if (__actBound) {
+  if (activationInitialized) {
     console.log("[MODAL] bindActivationModal already called — skipping");
     return;
   }
-  __actBound = true;
+  activationInitialized = true;
 
   console.log("[MODAL] bindActivationModal — Starting setup");
+
+  // Prevent ESC key from closing modal
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      console.log("[MODAL] ESC key prevented");
+    }
+  });
+
+  // Prevent backdrop click from closing modal
+  const backdrop = document.getElementById("activation-backdrop");
+  if (backdrop) {
+    backdrop.onclick = null;
+    backdrop.style.pointerEvents = "auto";
+  }
 
   // Tabs trial / subscription
   document.querySelectorAll(".act-tab").forEach((tab) => {
@@ -150,11 +169,13 @@ function bindActivationModal() {
         console.log("[MODAL] Trial activation response:", res);
 
         if (res?.success) {
-          const backdrop = document.getElementById("activation-backdrop");
-          if (backdrop) backdrop.classList.remove("show");
-
-          const s = await window.derewol.subscriptionCheck();
-          handleSubscriptionStatus(s);
+          trialBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
+          setTimeout(() => {
+            const backdrop = document.getElementById("activation-backdrop");
+            if (backdrop) backdrop.classList.remove("show");
+            const s = window.derewol?.subscriptionCheck?.() || {};
+            handleSubscriptionStatus(s);
+          }, 1000);
         } else {
           trialBtn.disabled = false;
           trialBtn.innerHTML =
@@ -196,7 +217,8 @@ function bindActivationModal() {
 
       if (code.replace(/[\s\-]/g, "").length < 10) {
         if (errorEl) {
-          errorEl.textContent = "Code invalide";
+          errorEl.innerHTML =
+            '<i class="fa-solid fa-exclamation"></i> Code invalide';
           errorEl.style.display = "block";
         }
         return;
@@ -219,14 +241,15 @@ function bindActivationModal() {
         console.log("[MODAL] Code activation response:", res);
 
         if (res?.success) {
-          const backdrop = document.getElementById("activation-backdrop");
-          if (backdrop) backdrop.classList.remove("show");
-
           codeBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
-          setTimeout(() => location.reload(), 1500);
+          setTimeout(() => {
+            const backdrop = document.getElementById("activation-backdrop");
+            if (backdrop) backdrop.classList.remove("show");
+            location.reload();
+          }, 1500);
         } else {
           if (errorEl) {
-            errorEl.textContent = res?.error || "Code invalide";
+            errorEl.innerHTML = `<i class="fa-solid fa-exclamation"></i> ${res?.error || "Code invalide"}`;
             errorEl.style.display = "block";
           }
           codeBtn.disabled = false;
@@ -236,7 +259,8 @@ function bindActivationModal() {
         console.error("[MODAL] Code activation error:", e);
 
         if (errorEl) {
-          errorEl.textContent = "Erreur réseau";
+          errorEl.innerHTML =
+            '<i class="fa-solid fa-exclamation"></i> Erreur réseau';
           errorEl.style.display = "block";
         }
         codeBtn.disabled = false;
@@ -1028,6 +1052,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Uncomment to test auto-show:
     // window.showActivationModal({ status: "inactive" });
   }, 1000);
+
+  // Listen for activation modal trigger from main process
+  if (window.derewol?.onShowActivationModal) {
+    window.derewol.onShowActivationModal((data) => {
+      console.log("[DEREWOL] Received show:activation-modal event", data);
+      window.showActivationModal(data);
+    });
+  }
 });
 
 // If DOM is already loaded, initialize immediately

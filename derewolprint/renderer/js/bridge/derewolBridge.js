@@ -67,17 +67,22 @@ export function initBridge() {
       const grpKey = `grp-${clientId}`;
 
       if (!map[grpKey]) {
+        // Map status EXACTLY: pending, processing, completed, rejected
+        let mappedStatus = job.file_groups?.status || job.status || "waiting";
+        if (mappedStatus === "queued") mappedStatus = "pending";
+        if (mappedStatus === "expired") mappedStatus = "expired";
+
         map[grpKey] = {
           id: grpKey,
           clientId,
-          status: job.file_groups?.status || job.status || "waiting",
+          status: mappedStatus,
           time: new Date(job.created_at).toLocaleTimeString("fr-FR", {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
           }),
           items: [],
-          _timestamp: currentTime, // Timestamp pour forcer les mises à jour
+          _timestamp: currentTime,
         };
       }
 

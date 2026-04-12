@@ -53,6 +53,7 @@ async function expireStaleGroups(printerId) {
 
 async function fetchPendingJobs(printerId) {
   // Filtre par printer_id — chaque DerewolPrint ne voit que SES jobs
+  // IMPORTANT: Fetch BOTH queued AND rejected jobs
   let query = supabase
     .from("print_jobs")
     .select(
@@ -65,7 +66,7 @@ async function fetchPendingJobs(printerId) {
       )
     `,
     )
-    .eq("status", "queued")
+    .in("status", ["queued", "rejected"])
     .gt("expires_at", new Date().toISOString());
 
   // Filtre via file_groups.printer_id

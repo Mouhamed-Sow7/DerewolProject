@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("derewol", {
   activateTrial: () => ipcRenderer.invoke("trial:activate"),
   onSubscriptionStatus: (callback) =>
     ipcRenderer.on("subscription:status", (_, data) => callback(data)),
+  onShowActivationModal: (callback) =>
+    ipcRenderer.on("show:activation-modal", (_, data) => callback(data)),
 
   // ── Sécurité / Admin ───────────────────────────────────────
   securityDisableScreenshot: (code) =>

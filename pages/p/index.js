@@ -279,30 +279,35 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       bg: "#fff8d6",
       color: "#92600a",
       dot: "#f5c842",
+      icon: "fa-clock",
     },
     printing: {
       label: t("printing"),
       bg: "#dbeafe",
       color: "#1d4ed8",
       dot: "#3b82f6",
+      icon: "fa-spinner",
     },
     completed: {
       label: t("completed"),
       bg: "#dcfce7",
       color: "#166534",
       dot: "#22c55e",
+      icon: "fa-check-circle",
     },
     rejected: {
       label: t("rejected"),
       bg: "#fee2e2",
       color: "#dc2626",
       dot: "#ef4444",
+      icon: "fa-exclamation-circle",
     },
     expired: {
       label: t("expired"),
       bg: "#f3f4f6",
       color: "#6b7280",
       dot: "#9ca3af",
+      icon: "fa-clock",
     },
   };
   const sc = statusConfig[status] || statusConfig.waiting;
@@ -347,9 +352,12 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
               justifyContent: "center",
               fontSize: 18,
               flexShrink: 0,
+              color: C.green,
             }}
           >
-            {history ? "📋" : "🗂️"}
+            <i
+              className={`fa-solid ${history ? "fa-clipboard-list" : "fa-folder"}`}
+            />
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
@@ -373,18 +381,12 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                   fontSize: 11,
                   fontWeight: 700,
                   whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
                 }}
               >
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 6,
-                    height: 6,
-                    background: sc.dot,
-                    borderRadius: "50%",
-                    marginRight: 5,
-                  }}
-                />{" "}
+                <i className={`fa-solid ${sc.icon}`} style={{ fontSize: 11 }} />
                 {sc.label}
               </span>
               {status === "waiting" && job?.expires_at && (
@@ -454,7 +456,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
               >
                 {f.file_name}
               </span>
-              {f.storage_path && (
+              {f.storage_path && status !== "rejected" && (
                 <button
                   onClick={() => onPreview(f.storage_path, f.file_name)}
                   style={{
@@ -475,6 +477,26 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 >
                   <i className="fa-regular fa-eye" /> Voir
                 </button>
+              )}
+              {status === "rejected" && (
+                <span
+                  style={{
+                    background: "#fee2e2",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    color: "#dc2626",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexShrink: 0,
+                    fontFamily: "Inter, sans-serif",
+                  }}
+                >
+                  <i className="fa-solid fa-circle-exclamation" /> Rejeté
+                </span>
               )}
             </div>
           ))}

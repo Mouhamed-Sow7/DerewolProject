@@ -601,8 +601,19 @@ async function verifyPrinterExists() {
 }
 
 // ── Helpers boot ────────────────────────────────────────────────
-function launchApp() {
+function launchApp(isFreshRegistration = false) {
   createMainWindow();
+
+  // Auto-trigger activation modal after fresh registration
+  if (isFreshRegistration && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.on("did-finish-load", () => {
+      console.log("[BOOT] Fresh registration — triggering activation modal");
+      mainWindow.webContents.send("show:activation-modal", {
+        status: "inactive",
+      });
+    });
+  }
+
   startPolling((jobs) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       try {
@@ -645,7 +656,7 @@ function launchOnboarding() {
   ipcMain.once("setup:done", (_, cfg) => {
     printerCfg = cfg;
     setupWin.close();
-    launchApp();
+    launchApp(true);
   });
 }
 
