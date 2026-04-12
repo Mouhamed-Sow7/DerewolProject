@@ -1,6 +1,9 @@
 const supabase = require("./supabase");
 
 let pollingInterval = null;
+let currentCallback = null;
+let currentPrinterId = null;
+let currentIntervalMs = 1000;
 
 async function expireStaleGroups(printerId) {
   try {
@@ -87,18 +90,43 @@ async function fetchPendingJobs(printerId) {
   return filtered;
 }
 
-function startPolling(onJobsReceived, printerId, intervalMs = 3000) {
+function startPolling(onJobsReceived, printerId, intervalMs = 1000) {
+  // IMPORTANT: Intervalle par défaut réduit à 1s pour sync immédiate
+  // L'utilisateur peut l'augmenter dans les settings
   console.log(
     `[POLLING] Démarrage — printer: ${printerId} — intervalle ${intervalMs / 1000}s`,
   );
 
+  // Stocker les paramètres pour redémarrage ultérieur
+  currentCallback = onJobsReceived;
+  currentPrinterId = printerId;
+  currentIntervalMs = intervalMs;
+
+  let lastCallTime = 0;
+
   async function tick() {
-    await expireStaleGroups(printerId);
-    const jobs = await fetchPendingJobs(printerId);
-    onJobsReceived(jobs);
+    try {
+      await expireStaleGroups(printerId);
+      const jobs = await fetchPendingJobs(printerId);
+
+      // Force une mise à jour même si rien n'a changé (heartbeat)
+      if (jobs.length > 0) {
+        lastCallTime = Date.now();
+        console.log(
+          `[POLLING] ${jobs.length} job(s) actif(s) — timestamp: ${lastCallTime}`,
+        );
+      }
+
+      onJobsReceived(jobs);
+    } catch (e) {
+      console.error("[POLLING] Erreur tick:", e.message);
+    }
   }
 
+  // Premier appel immédiat
   tick();
+
+  // Puis intervalle régulier
   pollingInterval = setInterval(tick, intervalMs);
 }
 
@@ -107,6 +135,23 @@ function stopPolling() {
     clearInterval(pollingInterval);
     pollingInterval = null;
   }
+  console.log("[POLLING] Arrêté");
 }
 
-module.exports = { startPolling, stopPolling };
+function restartPolling(newIntervalMs) {
+  if (!currentCallback || !currentPrinterId) {
+    console.warn("[POLLING] Impossible de redémarrer: pas de contexte");
+    return;
+  }
+
+  console.log(
+    "[POLLING] Redémarrage avec nouvel intervalle:",
+    newIntervalMs + "ms",
+  );
+
+  stopPolling();
+  currentIntervalMs = newIntervalMs;
+  startPolling(currentCallback, currentPrinterId, newIntervalMs);
+}
+
+module.exports = { startPolling, stopPolling, restartPolling };

@@ -171,9 +171,9 @@ function handleSubscriptionStatus(subscription, printerSlug) {
 
   if (blocked) {
     showActivationModal(subscription);
+    bindActivationModal(printerSlug);
   } else {
     hideActivationModal();
-    bindActivationModal(printerSlug);
   }
 }
 

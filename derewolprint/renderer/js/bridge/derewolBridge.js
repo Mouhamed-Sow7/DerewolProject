@@ -40,8 +40,19 @@ const sig = (arr) =>
 export function initBridge() {
   if (!window.derewol?.onJobReceived) return;
 
+  let lastUpdateTime = 0;
+
   window.derewol.onJobReceived((jobs) => {
-    console.log("[JOBS RECEIVED]", jobs);
+    const currentTime = Date.now();
+    const timeSinceUpdate = currentTime - lastUpdateTime;
+
+    console.log(
+      "[JOBS RECEIVED] Nombre:",
+      jobs?.length || 0,
+      "Temps depuis maj:",
+      timeSinceUpdate + "ms",
+    );
+
     const currentJobs = jobStore.getJobs();
     const map = {};
 
@@ -59,6 +70,7 @@ export function initBridge() {
             second: "2-digit",
           }),
           items: [],
+          _timestamp: currentTime, // Timestamp pour forcer les mises à jour
         };
       }
 
@@ -82,14 +94,36 @@ export function initBridge() {
     });
 
     const formatted = Object.values(map);
+    const currentSig = sig(currentJobs);
+    const newSig = sig(formatted);
 
-    if (sig(currentJobs) !== sig(formatted)) {
+    console.log(
+      "[SIGNATURE] Avant:",
+      currentSig.substring(0, 40) + "...",
+      "Après:",
+      newSig.substring(0, 40) + "...",
+      "Identique:",
+      currentSig === newSig,
+    );
+
+    // IMPORTANT: Mise à jour sur changement DE SIGNATURE
+    // OU si jobs.length > 0 (force heartbeat toutes les X secondes)
+    if (
+      currentSig !== newSig ||
+      (formatted.length > 0 && timeSinceUpdate > 5000)
+    ) {
       const hasNew = formatted.some(
         (g) => !currentJobs.find((c) => c.id === g.id),
       );
 
-      if (hasNew) playNotification();
+      if (hasNew) {
+        console.log("[NEW JOBS] Nouveaux jobs détectés - son activé");
+        playNotification();
+      } else if (formatted.length > 0) {
+        console.log("[HEARTBEAT] Mise à jour forcée du DOM (5s écoulées)");
+      }
 
+      lastUpdateTime = currentTime;
       jobStore.setJobs(formatted);
     }
   });

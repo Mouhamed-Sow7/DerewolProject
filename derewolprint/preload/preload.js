@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("derewol", {
 
   // ── Utilitaires ───────────────────────────────────────────
   sendLog: (message) => ipcRenderer.invoke("log:write", message),
+  setPollingInterval: (intervalMs) =>
+    ipcRenderer.invoke("polling:set-interval", intervalMs),
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
   getHistory: () => ipcRenderer.invoke("history:get"),

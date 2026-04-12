@@ -547,6 +547,19 @@ ipcMain.handle("log:write", async (_, message) => {
   return { success: true };
 });
 
+// ── IPC : Polling ────────────────────────────────────────────────
+ipcMain.handle("polling:set-interval", async (_, intervalMs) => {
+  try {
+    const { restartPolling } = require("../services/polling");
+    restartPolling(Math.max(1000, intervalMs)); // Minimum 1s
+    console.log(`[IPC] Intervalle polling changé à ${intervalMs}ms`);
+    return { success: true };
+  } catch (e) {
+    console.error("[IPC] Erreur set-interval:", e.message);
+    return { success: false, error: e.message };
+  }
+});
+
 // ── Helpers boot ────────────────────────────────────────────────
 function launchApp() {
   createMainWindow();
