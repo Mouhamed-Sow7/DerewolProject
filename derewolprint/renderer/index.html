@@ -1,222 +1,252 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' https://cdnjs.cloudflare.com;">
-  <title>DerewolPrint</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="renderer.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-</head>
-<body>
-
-  <!-- ── Sidebar ──────────────────────────────────────────── -->
-  <div class="sidebar">
-    <div class="logo">
-      <div class="logo-mark"></div>
-      <span>Derewol<b>Print</b></span>
-    </div>
-
-    <nav>
-      <div class="nav-item active" data-view="jobs">
-        <span class="nav-icon">🖨️</span> Jobs
-      </div>
-      <div class="nav-item" data-view="history">
-        <span class="nav-icon">📋</span> Historique
-      </div>
-      <div class="nav-item" data-view="qr">
-        <span class="nav-icon">📱</span> Mon QR Code
-      </div>
-      <div class="nav-item" data-view="settings">
-        <span class="nav-icon">⚙️</span> Paramètres
-      </div>
-    </nav>
-
-    <div class="printer-status">
-      <div class="dot" id="printer-dot"></div>
-      <select id="printer-select">
-        <option>Chargement...</option>
-      </select>
-    </div>
-  </div>
-
-  <!-- ── Main ─────────────────────────────────────────────── -->
-  <div class="main">
-
-    <!-- ── VUE JOBS ──────────────────────────────────────── -->
-    <div class="view" id="view-jobs">
-      <div class="topbar">
-        <div class="topbar-title">Jobs en attente</div>
-        <div class="badge" id="job-count">0 job</div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' https://cdnjs.cloudflare.com;"
+    />
+    <title>DerewolPrint</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="renderer.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  </head>
+  <body>
+    <!-- ── Sidebar ──────────────────────────────────────────── -->
+    <div class="sidebar">
+      <div class="logo">
+        <div class="logo-mark"></div>
+        <span>Derewol<b>Print</b></span>
       </div>
 
-      <div class="selection-bar" id="selection-bar" style="display:none">
-        <div class="selection-info">
-          <span id="selection-count">0 sélectionné</span>
+      <nav>
+        <div class="nav-item active" data-view="jobs">
+          <span class="nav-icon"><i class="fa-solid fa-print"></i></span> Jobs
         </div>
-        <div class="selection-actions">
-          <button class="btn-select-all" id="btn-select-all">Tout sélectionner</button>
-          <button class="btn-reject-selected" id="btn-reject-selected">Rejeter la sélection</button>
+        <div class="nav-item" data-view="history">
+          <span class="nav-icon"><i class="fa-solid fa-clock-rotate-left"></i></span> Historique
         </div>
-      </div>
-
-      <div class="jobs-list" id="jobs-list">
-        <div class="empty-state">
-          <div class="empty-icon">📄</div>
-          <p>Aucun job en attente</p>
-          <span>Les fichiers envoyés apparaîtront ici</span>
+        <div class="nav-item" data-view="qr">
+          <span class="nav-icon"><i class="fa-solid fa-qrcode"></i></span> Mon QR Code
         </div>
-      </div>
-    </div>
+        <div class="nav-item" data-view="settings">
+          <span class="nav-icon"><i class="fa-solid fa-gear"></i></span> Paramètres
+        </div>
+      </nav>
 
-    <!-- ── VUE HISTORIQUE ────────────────────────────────── -->
-    <div class="view" id="view-history" style="display:none">
-      <div class="topbar">
-        <div class="topbar-title">Historique</div>
-        <div class="badge" id="history-count">—</div>
-      </div>
-
-      <div class="history-filters">
-        <input type="text" id="filter-client" placeholder="🔍 Filtrer par client (DW-...)" class="filter-input">
-        <input type="date" id="filter-date" class="filter-input">
-        <select id="filter-status" class="filter-input">
-          <option value="">Tous les statuts</option>
-          <option value="completed">Terminés</option>
-          <option value="rejected">Rejetés</option>
-          <option value="expired">Expirés</option>
+      <div class="printer-status">
+        <div class="dot" id="printer-dot"></div>
+        <select id="printer-select">
+          <option>Chargement...</option>
         </select>
-        <button class="btn-filter-clear" id="btn-filter-clear">✕ Effacer</button>
+      </div>
+    </div>
+
+    <!-- ── Main ─────────────────────────────────────────────── -->
+    <div class="main">
+      <!-- ── VUE JOBS ──────────────────────────────────────── -->
+      <div class="view" id="view-jobs">
+        <div class="topbar">
+          <div class="topbar-title">Jobs en attente</div>
+          <div class="badge" id="job-count">0 job</div>
+        </div>
+
+        <div class="selection-bar" id="selection-bar" style="display: none">
+          <div class="selection-info">
+            <span id="selection-count">0 sélectionné</span>
+          </div>
+          <div class="selection-actions">
+            <button class="btn-select-all" id="btn-select-all">
+              Tout sélectionner
+            </button>
+            <button class="btn-reject-selected" id="btn-reject-selected">
+              Rejeter la sélection
+            </button>
+          </div>
+        </div>
+
+        <div class="jobs-list" id="jobs-list">
+          <div class="empty-state">
+            <div class="empty-icon"><i class="fa-regular fa-file"></i></div>
+            <p>Aucun job en attente</p>
+            <span>Les fichiers envoyés apparaîtront ici</span>
+          </div>
+        </div>
       </div>
 
-      <div class="history-list" id="history-list">
-        <div class="empty-state">
-          <div class="empty-icon">📋</div>
-          <p>Aucun historique</p>
-          <span>Les impressions et rejets apparaîtront ici</span>
+      <!-- ── VUE HISTORIQUE ────────────────────────────────── -->
+      <div class="view" id="view-history" style="display: none">
+        <div class="topbar">
+          <div class="topbar-title">Historique</div>
+          <div class="badge" id="history-count">—</div>
+        </div>
+
+        <div class="history-filters">
+          <input
+            type="text"
+            id="filter-client"
+            placeholder="🔍 Filtrer par client (DW-...)"
+            class="filter-input"
+          />
+          <input type="date" id="filter-date" class="filter-input" />
+          <select id="filter-status" class="filter-input">
+            <option value="">Tous les statuts</option>
+            <option value="completed">Terminés</option>
+            <option value="rejected">Rejetés</option>
+            <option value="expired">Expirés</option>
+          </select>
+          <button class="btn-filter-clear" id="btn-filter-clear">
+            ✕ Effacer
+          </button>
+        </div>
+
+        <div class="history-list" id="history-list">
+          <div class="empty-state">
+            <div class="empty-icon"><i class="fa-solid fa-rectangle-list"></i></div>
+            <p>Aucun historique</p>
+            <span>Les impressions et rejets apparaîtront ici</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── VUE QR CODE ────────────────────────────────────── -->
+      <div class="view" id="view-qr" style="display: none">
+        <div class="topbar">
+          <div class="topbar-title">Mon QR Code</div>
+          <button
+            class="badge"
+            id="btn-print-qr"
+            style="cursor: pointer; border: none"
+          >
+            <i class="fa-solid fa-print"></i> Imprimer
+          </button>
+        </div>
+
+        <div class="qr-container">
+          <!-- Zone imprimable -->
+          <div class="qr-printable" id="qr-printable">
+            <!-- Logo Derewol en haut -->
+            <div class="qr-logo">
+              <div class="qr-logo-mark"></div>
+              <span class="qr-logo-text">Derewol<b>Print</b></span>
+            </div>
+
+            <!-- QR Code au milieu -->
+            <div class="qr-code-wrap">
+              <canvas id="qr-canvas"></canvas>
+            </div>
+
+            <!-- Nom boutique en bas -->
+            <div class="qr-shop-name" id="qr-shop-name">—</div>
+            <div class="qr-url" id="qr-url">—</div>
+          </div>
+
+          <!-- Actions -->
+          <div class="qr-actions">
+            <button class="btn-qr-action" id="btn-download-qr">
+              <i class="fa-solid fa-download"></i> Télécharger PNG
+            </button>
+            <button class="btn-qr-action" id="btn-copy-url">
+              <i class="fa-solid fa-link"></i> Copier le lien
+            </button>
+          </div>
+
+          <p class="qr-note">
+            Ce QR code est permanent — même si vous perdez l'image, revenez ici
+            pour le re-télécharger.
+          </p>
+        </div>
+      </div>
+
+      <!-- ── VUE PARAMÈTRES ─────────────────────────────────── -->
+      <div class="view" id="view-settings" style="display: none">
+        <div class="topbar">
+          <div class="topbar-title">Paramètres</div>
+        </div>
+
+        <div class="settings-list">
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Mode sombre</div>
+              <div class="settings-item-desc">
+                Thème foncé pour travailler la nuit
+              </div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="setting-darkmode" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Langue</div>
+              <div class="settings-item-desc">Langue de l'interface</div>
+            </div>
+            <select id="setting-lang" class="settings-select">
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+              <option value="wo">Wolof</option>
+            </select>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Imprimante par défaut</div>
+              <div class="settings-item-desc">
+                Pré-sélectionnée au démarrage
+              </div>
+            </div>
+            <select id="setting-printer" class="settings-select">
+              <option value="">Auto-détection</option>
+            </select>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Son de notification</div>
+              <div class="settings-item-desc">
+                Bip à l'arrivée d'un nouveau job
+              </div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="setting-sound" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-label">Fréquence de vérification</div>
+              <div class="settings-item-desc">
+                Intervalle entre chaque vérification des jobs
+              </div>
+            </div>
+            <select id="setting-polling" class="settings-select">
+              <option value="5000">5 secondes</option>
+              <option value="10000" selected>10 secondes</option>
+              <option value="30000">30 secondes</option>
+            </select>
+          </div>
+
+          <div class="settings-version">
+            DerewolPrint v1.0.0 — Derewol © 2026
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ── VUE QR CODE ────────────────────────────────────── -->
-    <div class="view" id="view-qr" style="display:none">
-      <div class="topbar">
-        <div class="topbar-title">Mon QR Code</div>
-        <button class="badge" id="btn-print-qr" style="cursor:pointer;border:none;">🖨️ Imprimer</button>
-      </div>
-
-      <div class="qr-container">
-
-        <!-- Zone imprimable -->
-        <div class="qr-printable" id="qr-printable">
-
-          <!-- Logo Derewol en haut -->
-          <div class="qr-logo">
-            <div class="qr-logo-mark"></div>
-            <span class="qr-logo-text">Derewol<b>Print</b></span>
-          </div>
-
-          <!-- QR Code au milieu -->
-          <div class="qr-code-wrap">
-            <canvas id="qr-canvas"></canvas>
-          </div>
-
-          <!-- Nom boutique en bas -->
-          <div class="qr-shop-name" id="qr-shop-name">—</div>
-          <div class="qr-url" id="qr-url">—</div>
-
-        </div>
-
-        <!-- Actions -->
-        <div class="qr-actions">
-          <button class="btn-qr-action" id="btn-download-qr">📥 Télécharger PNG</button>
-          <button class="btn-qr-action" id="btn-copy-url">🔗 Copier le lien</button>
-        </div>
-
-        <p class="qr-note">
-          Ce QR code est permanent — même si vous perdez l'image, revenez ici pour le re-télécharger.
-        </p>
-
-      </div>
-    </div>
-
-    <!-- ── VUE PARAMÈTRES ─────────────────────────────────── -->
-    <div class="view" id="view-settings" style="display:none">
-      <div class="topbar">
-        <div class="topbar-title">Paramètres</div>
-      </div>
-
-      <div class="settings-list">
-
-        <div class="settings-item">
-          <div class="settings-item-info">
-            <div class="settings-item-label">Mode sombre</div>
-            <div class="settings-item-desc">Thème foncé pour travailler la nuit</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" id="setting-darkmode">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="settings-item">
-          <div class="settings-item-info">
-            <div class="settings-item-label">Langue</div>
-            <div class="settings-item-desc">Langue de l'interface</div>
-          </div>
-          <select id="setting-lang" class="settings-select">
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-            <option value="wo">Wolof</option>
-          </select>
-        </div>
-
-        <div class="settings-item">
-          <div class="settings-item-info">
-            <div class="settings-item-label">Imprimante par défaut</div>
-            <div class="settings-item-desc">Pré-sélectionnée au démarrage</div>
-          </div>
-          <select id="setting-printer" class="settings-select">
-            <option value="">Auto-détection</option>
-          </select>
-        </div>
-
-        <div class="settings-item">
-          <div class="settings-item-info">
-            <div class="settings-item-label">Son de notification</div>
-            <div class="settings-item-desc">Bip à l'arrivée d'un nouveau job</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" id="setting-sound" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="settings-item">
-          <div class="settings-item-info">
-            <div class="settings-item-label">Fréquence de vérification</div>
-            <div class="settings-item-desc">Intervalle entre chaque vérification des jobs</div>
-          </div>
-          <select id="setting-polling" class="settings-select">
-            <option value="5000">5 secondes</option>
-            <option value="10000" selected>10 secondes</option>
-            <option value="30000">30 secondes</option>
-          </select>
-        </div>
-
-        <div class="settings-version">
-          DerewolPrint v1.0.0 — Derewol © 2026
-        </div>
-
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ── Modale rejet ───────────────────────────────────────── -->
-  <div class="modal-overlay" id="modal-overlay">
-    <div class="modal">
-      <div class="modal-icon">⚠️</div>
+    <!-- ── Modale rejet ───────────────────────────────────────── -->
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal">
+      <div class="modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
       <h3>Rejeter ce job ?</h3>
       <p>Le fichier sera supprimé et le client devra renvoyer sa demande.</p>
       <div class="modal-actions">
@@ -226,6 +256,130 @@
     </div>
   </div>
 
-  <script type="module" src="renderer.js"></script>
-</body>
+  <!-- ── Modale Acceptation Conditions ────────────────────────── -->
+  <div class="acceptance-backdrop" id="acceptance-backdrop">
+    <div class="acceptance-modal" id="acceptance-modal">
+      <div class="acc-header">
+        <div class="acc-icon"><i class="fa-solid fa-check-circle"></i></div>
+        <h2 class="acc-title">Accepter les conditions</h2>
+      </div>
+
+      <div class="acc-content">
+        <div id="acc-trial" class="acc-section">
+          <h3><i class="fa-solid fa-star"></i> Essai Gratuit - 7 Jours</h3>
+          <ul class="acc-list">
+            <li><i class="fa-solid fa-check"></i> Accès complet à toutes les fonctionnalités</li>
+            <li><i class="fa-solid fa-check"></i> Impression illimitée pendant 7 jours</li>
+            <li><i class="fa-solid fa-check"></i> Support technique disponible</li>
+            <li><i class="fa-solid fa-info"></i> Pas de carte bancaire requise</li>
+            <li><i class="fa-solid fa-times"></i> Résiliation automatique après 7 jours</li>
+          </ul>
+          <p class="acc-text">En cliquant "J'accepte", vous acceptez nos conditions d'utilisation et reconnaissez que votre abonnement expirera après 7 jours.</p>
+        </div>
+
+        <div id="acc-payment" class="acc-section" style="display:none;">
+          <h3><i class="fa-solid fa-credit-card"></i> Renouvellement Automatique</h3>
+          <ul class="acc-list">
+            <li><i class="fa-solid fa-check"></i> Renouvellement automatique chaque mois</li>
+            <li><i class="fa-solid fa-check"></i> Vous pouvez annuler à tout moment</li>
+            <li><i class="fa-solid fa-check"></i> Facture envoyée par email</li>
+            <li><i class="fa-solid fa-lock"></i> Paiement sécurisé via Supabase</li>
+            <li><i class="fa-solid fa-bell"></i> Rappel 7 jours avant le renouvellement</li>
+          </ul>
+          <p class="acc-text">En cliquant "J'accepte", vous autorisez le renouvellement automatique et confirmez votre accord avec nos modalités de facturation.</p>
+        </div>
+      </div>
+
+      <div class="acc-actions">
+        <button class="acc-btn-cancel" id="acc-btn-cancel">
+          <i class="fa-solid fa-xmark"></i> Refuser
+        </button>
+        <button class="acc-btn-accept" id="acc-btn-accept">
+          <i class="fa-solid fa-check"></i> J'accepte
+        </button>
+      </div>
+
+      <div class="acc-footer">
+        <p>Conditions d'utilisation • Politique de confidentialité • Support</p>
+
+    <!-- ── Modale activation ─────────────────────────────────────── -->
+    <div class="activation-backdrop" id="activation-backdrop">
+      <div class="activation-modal" id="activation-modal">
+        <div class="act-header">
+          <div class="act-logo">Derewol<b>Print</b></div>
+          <div class="act-title">Activation Derewol Print</div>
+          <div class="act-description">
+            Démarrez votre essai gratuit ou activez votre code.
+          </div>
+        </div>
+
+        <div class="act-tabs">
+          <div class="act-tab active" data-act-tab="trial">Essai gratuit</div>
+          <div class="act-tab" data-act-tab="subscription">Abonnement</div>
+        </div>
+
+        <div class="act-panels">
+          <!-- Panel Essai -->
+          <div class="act-panel active" id="act-panel-trial">
+            <div class="act-trial-card">
+              <div class="act-trial-icon">⭐</div>
+              <div class="act-trial-title">Essai gratuit</div>
+              <div class="act-trial-duration">7 jours</div>
+              <div class="act-trial-text">
+                Accès complet à toutes les fonctionnalités sans engagement.
+              </div>
+              <button class="act-btn-activate">Démarrer mon essai</button>
+            </div>
+          </div>
+
+          <!-- Panel Abonnement -->
+          <div class="act-panel" id="act-panel-subscription">
+            <div class="act-plans">
+              <div class="act-plan act-plan--popular">
+                <div class="act-plan-badge">POPULAIRE</div>
+                <div class="act-plan-months">3 mois</div>
+                <div class="act-plan-price">25 000 FCFA</div>
+                <div class="act-plan-discount">-17%</div>
+              </div>
+              <div class="act-plan">
+                <div class="act-plan-months">1 mois</div>
+                <div class="act-plan-price">10 000 FCFA</div>
+              </div>
+              <div class="act-plan">
+                <div class="act-plan-months">2 mois</div>
+                <div class="act-plan-price">18 000 FCFA</div>
+                <div class="act-plan-discount">-10%</div>
+              </div>
+            </div>
+
+            <div class="act-whatsapp-section">
+              <div class="act-whatsapp-text">Achetez un code via WhatsApp</div>
+              <button class="act-whatsapp-btn" id="act-whatsapp-link">
+                <i class="fa-brands fa-whatsapp"></i>
+                Contacter le support
+              </button>
+            </div>
+
+            <div class="act-code-section">
+              <label class="act-code-label">Vous avez un code ?</label>
+              <input
+                type="text"
+                class="act-code-input"
+                id="act-code-input"
+                placeholder="DW-XXXX-XXXX-XXXX"
+              />
+              <button class="act-code-btn" id="act-code-btn">Activer</button>
+              <div class="act-code-error" id="act-code-error"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="act-footer">
+          <p>ID imprimante: <span id="act-printer-slug">—</span></p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="renderer.js"></script>
+  </body>
 </html>

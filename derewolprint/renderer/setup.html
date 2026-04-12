@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8"/>
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline';">
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' 'unsafe-inline';">
   <title>Configuration — DerewolPrint</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root { --vert: #1e4d2b; --jaune: #f5c842; --noir: #111510; --muted: #7a8c78; --border: #d4dbd2; }
@@ -101,7 +102,7 @@
   <!-- Formulaire setup -->
   <div id="form-screen">
     <div class="step-indicator">Configuration initiale — 1 seule fois</div>
-    <h2>Bienvenue 👋</h2>
+    <h2>Bienvenue</h2>
     <p class="subtitle">Configurez votre espace d'impression. Ces informations seront liées à votre QR code client.</p>
 
     <div class="field">
@@ -119,12 +120,19 @@
       <div class="field-error" id="err-slug">Slug invalide ou déjà pris</div>
     </div>
 
+    <div class="field">
+      <label>Numéro WhatsApp (propriétaire)</label>
+      <input type="tel" id="input-phone" placeholder="Ex: +221781220391" maxlength="20" value="+221781220391">
+      <div class="field-hint">Utilisé pour les relances / envoi de codes d’abonnement depuis l’admin</div>
+      <div class="field-error" id="err-phone">Veuillez saisir un numéro valide</div>
+    </div>
+
     <button class="btn-submit" id="btn-register" disabled>Créer mon espace →</button>
   </div>
 
   <!-- Succès -->
   <div class="success-screen" id="success-screen">
-    <div class="success-icon">✅</div>
+    <div class="success-icon"><i class="fa-solid fa-circle-check"></i></div>
     <h2>Espace créé !</h2>
     <p id="success-msg"></p>
     <button class="btn-continue" id="btn-continue">Ouvrir DerewolPrint</button>
@@ -135,11 +143,13 @@
 <script>
   const inputName = document.getElementById('input-name');
   const inputSlug = document.getElementById('input-slug');
+  const inputPhone = document.getElementById('input-phone');
   const slugPreview = document.getElementById('slug-preview');
   const slugAvail = document.getElementById('slug-avail');
   const btnRegister = document.getElementById('btn-register');
   const errName = document.getElementById('err-name');
   const errSlug = document.getElementById('err-slug');
+  const errPhone = document.getElementById('err-phone');
 
   let slugValid = false;
   let checkTimeout = null;
@@ -178,19 +188,19 @@
 
     slugAvail.style.display = 'inline-flex';
     slugAvail.className = 'avail checking';
-    slugAvail.textContent = '⏳ Vérification...';
+    slugAvail.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Vérification...';
 
     clearTimeout(checkTimeout);
     checkTimeout = setTimeout(async () => {
       const result = await window.derewol.checkSlug(slug);
       if (result.available) {
         slugAvail.className = 'avail ok';
-        slugAvail.textContent = '✅ Disponible';
+        slugAvail.innerHTML = '<i class="fa-solid fa-circle-check"></i> Disponible';
         slugValid = true;
         validateForm();
       } else {
         slugAvail.className = 'avail nok';
-        slugAvail.textContent = '❌ Déjà utilisé';
+        slugAvail.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Déjà utilisé';
         slugValid = false;
         btnRegister.disabled = true;
       }
@@ -199,20 +209,38 @@
 
   function validateForm() {
     const nameOk = inputName.value.trim().length >= 2;
-    btnRegister.disabled = !(nameOk && slugValid);
+    const phoneRaw = inputPhone.value.trim();
+    const phoneDigits = phoneRaw.replace(/\D/g, '');
+    const phoneOk =
+      (phoneRaw.startsWith('+') && phoneDigits.length >= 9) ||
+      phoneDigits.length >= 9;
+    btnRegister.disabled = !(nameOk && slugValid && phoneOk);
   }
 
   inputName.addEventListener('input', validateForm);
+  inputPhone.addEventListener('input', () => {
+    errPhone.style.display = 'none';
+    validateForm();
+  });
 
   // Enregistrement
   btnRegister.addEventListener('click', async () => {
     const name = inputName.value.trim();
     const slug = inputSlug.value.trim();
+    const ownerPhone = inputPhone.value.trim();
 
     btnRegister.disabled = true;
     btnRegister.textContent = 'Création en cours...';
 
-    const result = await window.derewol.registerPrinter({ name, slug });
+    const phoneDigits = ownerPhone.replace(/\D/g, '');
+    if (phoneDigits.length < 9) {
+      errPhone.style.display = 'block';
+      btnRegister.disabled = false;
+      btnRegister.textContent = 'Créer mon espace →';
+      return;
+    }
+
+    const result = await window.derewol.registerPrinter({ name, slug, ownerPhone });
 
     if (result.success) {
       document.getElementById('form-screen').style.display = 'none';

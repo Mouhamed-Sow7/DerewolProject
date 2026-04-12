@@ -1,0 +1,318 @@
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Derewol Admin — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/admin.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+  </head>
+  <body class="dashboard-page">
+    <!-- ── Header Mobile ──────────────────────────────────────── -->
+    <header class="header-mobile">
+      <button
+        type="button"
+        class="btn-hamburger"
+        id="btn-hamburger"
+        aria-label="Menu"
+      >
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <div class="header-mobile-title">
+        <div class="logo-mark"></div>
+        <span>Derew<b>ol</b></span>
+        <span class="admin-label">Admin</span>
+      </div>
+      <div style="width: 44px"></div>
+    </header>
+
+    <!-- ── Overlay Mobile ──────────────────────────────────────── -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- ── Sidebar ─────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-mark"></div>
+        <span class="logo-text">Derew<b>ol</b></span>
+        <span class="admin-label">Admin</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item active" data-view="overview">
+          <i class="fa-solid fa-chart-line"></i>
+          <span>Vue d'ensemble</span>
+        </button>
+        <button type="button" class="nav-item" data-view="printers">
+          <i class="fa-solid fa-print"></i>
+          <span>Imprimeurs</span>
+        </button>
+        <button type="button" class="nav-item" data-view="subscriptions">
+          <i class="fa-solid fa-credit-card"></i>
+          <span>Abonnements</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <button type="button" class="btn-logout" id="logout-btn">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Déconnexion</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── Main Content ─────────────────────────────────────────── -->
+    <main class="main-content">
+      <!-- ── Vue: Overview ─────────────────────────────────────── -->
+      <section id="view-overview" class="view active">
+        <h1>Vue d'ensemble</h1>
+        <p class="view-intro">
+          Aligné sur le modèle d'abonnement Derewol (codes
+          <code>DW-XXXX-XXXX-XXXX</code>, statuts <code>pending</code> →
+          activation imprimeur → <code>active</code>).
+        </p>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-print"></i></div>
+            <div class="stat-value" id="stat-total-printers">—</div>
+            <div class="stat-label">Imprimeurs</div>
+          </div>
+          <div class="stat-card stat-card--highlight">
+            <div class="stat-icon">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <div class="stat-value" id="stat-active-subs">—</div>
+            <div class="stat-label">Abonnements actifs</div>
+          </div>
+          <div class="stat-card stat-card--warning">
+            <div class="stat-icon"><i class="fa-solid fa-clock"></i></div>
+            <div class="stat-value" id="stat-expiring-soon">—</div>
+            <div class="stat-label">Expirent dans 7 j.</div>
+          </div>
+          <div class="stat-card stat-card--revenue">
+            <div class="stat-icon">
+              <i class="fa-solid fa-money-bill-wave"></i>
+            </div>
+            <div class="stat-value" id="stat-revenue">—</div>
+            <div class="stat-label">Activations ce mois (FCFA)</div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <h2>
+            <i class="fa-solid fa-triangle-exclamation"></i> Expirent bientôt
+          </h2>
+          <div id="expiring-list"><div class="loading">Chargement...</div></div>
+        </div>
+      </section>
+
+      <!-- ── Vue: Imprimeurs ────────────────────────────────────── -->
+      <section id="view-printers" class="view">
+        <div class="view-header">
+          <h1>
+            Imprimeurs <span class="count-badge" id="printers-count">0</span>
+          </h1>
+          <input
+            type="search"
+            id="printers-search"
+            placeholder="Rechercher nom ou slug…"
+            class="search-input"
+          />
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Boutique</th>
+                <th>Slug</th>
+                <th>Téléphone</th>
+                <th>Inscrit le</th>
+                <th>Abonnement</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="printers-tbody">
+              <tr>
+                <td colspan="6" class="loading">Chargement...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Vue: Abonnements ───────────────────────────────────── -->
+      <section id="view-subscriptions" class="view">
+        <div class="view-header">
+          <h1>Abonnements</h1>
+          <button type="button" class="btn-primary" id="btn-gen-code">
+            <i class="fa-solid fa-plus"></i>
+            Générer un code
+          </button>
+        </div>
+
+        <div class="filters">
+          <button type="button" class="filter-btn active" data-filter="all">
+            Tous
+          </button>
+          <button type="button" class="filter-btn" data-filter="active">
+            Actifs
+          </button>
+          <button type="button" class="filter-btn" data-filter="pending">
+            En attente
+          </button>
+          <button type="button" class="filter-btn" data-filter="expired">
+            Expirés
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Imprimeur</th>
+                <th>Méthode</th>
+                <th>Montant</th>
+                <th>Statut</th>
+                <th>Activé le</th>
+                <th>Expire le</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="subscriptions-tbody">
+              <tr>
+                <td colspan="8" class="loading">Chargement...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- ── Modal: Générer un code ──────────────────────────────── -->
+    <div id="modal-gen-code" class="modal" style="display: none">
+      <div class="modal-backdrop"></div>
+      <div class="modal-box">
+        <h2><i class="fa-solid fa-key"></i> Générer un code d'activation</h2>
+        <p class="modal-hint">
+          Statut <strong>pending</strong> jusqu'à saisie dans DerewolPrint.
+          <code>printer_id</code> vide = code valable pour tout imprimeur.
+        </p>
+
+        <div class="form-group">
+          <label for="gen-printer-id">Imprimeur (optionnel)</label>
+          <select id="gen-printer-id">
+            <option value="">— Chargement… —</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="gen-payment-method">Méthode de paiement</label>
+          <select id="gen-payment-method">
+            <option value="wave">Wave</option>
+            <option value="orange_money">Orange Money</option>
+            <option value="manual">Manuel</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="gen-plan">Plan d'abonnement</label>
+          <select id="gen-plan">
+            <option value="1month">1 mois — 4 000 FCFA</option>
+            <option value="2months" selected>2 mois — 6 500 FCFA (-19%)</option>
+            <option value="3months">3 mois — 9 000 FCFA (-25%)</option>
+          </select>
+        </div>
+
+        <input type="hidden" id="gen-duration" value="61" />
+        <input type="hidden" id="gen-amount" value="6500" />
+
+        <div id="gen-result" style="display: none" class="gen-result">
+          <div class="gen-code-display">
+            <span id="gen-code-value"></span>
+            <button type="button" id="gen-copy-btn" title="Copier">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          </div>
+          <p class="gen-code-hint">
+            Envoyez ce code à l'imprimeur (SMS / WhatsApp).
+          </p>
+          <a
+            id="gen-whatsapp-btn"
+            href="#"
+            target="_blank"
+            rel="noopener"
+            class="btn-whatsapp"
+          >
+            <i class="fa-brands fa-whatsapp"></i> WhatsApp
+          </a>
+        </div>
+
+        <div id="gen-error" class="error-msg" style="display: none"></div>
+
+        <div class="modal-actions">
+          <button type="button" id="gen-submit-btn" class="btn-primary">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Générer
+          </button>
+          <button type="button" id="gen-close-btn" class="btn-secondary">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Scripts ─────────────────────────────────────────────── -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/printers.js"></script>
+    <script src="js/subscriptions.js"></script>
+    <script src="js/dashboard.js"></script>
+
+    <!-- ── Mobile Menu Script ──────────────────────────────────── -->
+    <script>
+      // Hamburger menu toggle
+      const btnHamburger = document.getElementById("btn-hamburger");
+      const sidebar = document.getElementById("sidebar");
+      const overlay = document.getElementById("sidebar-overlay");
+
+      function openSidebar() {
+        sidebar.classList.add("open");
+        overlay.classList.add("active");
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeSidebar() {
+        sidebar.classList.remove("open");
+        overlay.classList.remove("active");
+        document.body.style.overflow = "";
+      }
+
+      btnHamburger.addEventListener("click", openSidebar);
+      overlay.addEventListener("click", closeSidebar);
+
+      // Close sidebar when clicking nav items on mobile
+      document.querySelectorAll(".nav-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          if (window.innerWidth <= 768) {
+            closeSidebar();
+          }
+        });
+      });
+
+      // Handle resize
+      window.addEventListener("resize", () => {
+        if (window.innerWidth > 768) {
+          closeSidebar();
+        }
+      });
+    </script>
+  </body>
+</html>

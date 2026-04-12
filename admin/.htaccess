@@ -1,0 +1,1 @@
+RewriteEngine On RewriteCond %{HTTPS} off RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301] Options -Indexes ServerSignature Off # Bloquer accès aux fichiers sensibles <FilesMatch "(supabase-client\.js|\.env|config\.json)$"> Order Allow,Deny Deny from all </FilesMatch>

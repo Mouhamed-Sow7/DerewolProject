@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Derewol Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/admin.css" />
+  </head>
+  <body class="login-page">
+    <div class="login-box">
+      <div class="login-logo">
+        <div class="logo-mark"></div>
+        <span class="logo-text"
+          >Derew<b>ol</b> <span class="admin-label">Admin</span></span
+        >
+      </div>
+      <h2>Connexion</h2>
+      <div id="login-error" class="error-msg" style="display: none"></div>
+      <input
+        type="email"
+        id="login-email"
+        placeholder="Email admin"
+        autocomplete="email"
+        value="sowhamedou10@gmail.com"
+      />
+      <input
+        type="password"
+        id="login-password"
+        placeholder="Mot de passe"
+        autocomplete="current-password"
+      />
+      <button type="button" id="login-btn" class="btn-primary">
+        <span id="login-label">Se connecter</span>
+      </button>
+    </div>
+
+    <!-- UMD build: expose `window.supabase` reliably -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+      redirectIfAuth();
+      document.getElementById("login-btn").addEventListener("click", async () => {
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value;
+        const btn = document.getElementById("login-btn");
+        const errorEl = document.getElementById("login-error");
+
+        btn.disabled = true;
+        document.getElementById("login-label").textContent = "Connexion...";
+        errorEl.style.display = "none";
+
+        try {
+          if (!window.supabase || !window.sb) {
+            throw new Error(
+              "Supabase non chargé. Vérifiez le script CDN et js/supabase-client.js",
+            );
+          }
+          await adminLogin(email, password);
+          window.location.href = "dashboard.html";
+        } catch (err) {
+          const msg =
+            err?.message ||
+            err?.error_description ||
+            (typeof err === "string" ? err : "") ||
+            "Erreur inconnue";
+          const status = err?.status ? ` (HTTP ${err.status})` : "";
+          errorEl.textContent = `${msg}${status}`;
+          errorEl.style.display = "block";
+          btn.disabled = false;
+          document.getElementById("login-label").textContent = "Se connecter";
+        }
+      });
+
+      document
+        .getElementById("login-password")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") document.getElementById("login-btn").click();
+        });
+    </script>
+  </body>
+</html>

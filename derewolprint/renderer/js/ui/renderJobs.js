@@ -24,7 +24,7 @@ export default function renderJobs(groups, { onPrint, onReject, onRejectFile } =
   if (groups.length === 0) {
     list.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">📄</div>
+        <div class="empty-icon"><i class="fa-regular fa-file-lines"></i></div>
         <p>Aucun job en attente</p>
         <span>Les fichiers envoyés apparaîtront ici</span>
       </div>`;
@@ -36,6 +36,10 @@ export default function renderJobs(groups, { onPrint, onReject, onRejectFile } =
 
   list.innerHTML = groups.map(group => {
 
+    const btBadge = group.isBluetooth
+      ? '<span class="bt-badge"><i class="fa-brands fa-bluetooth-b"></i> BT</span>'
+      : '';
+
     const fileRows = group.items.map(item => {
       const copies = getFileCopies(item.jobId, item.fileId);
       return `
@@ -45,7 +49,7 @@ export default function renderJobs(groups, { onPrint, onReject, onRejectFile } =
           data-file-group-id="${item.fileGroupId}">
 
           <div class="file-row-name-wrap">
-            <span class="file-row-icon">📄</span>
+            <span class="file-row-icon"><i class="fa-regular fa-file-pdf"></i></span>
             <span class="file-row-name" title="${item.fileName}">${item.fileName}</span>
           </div>
 
@@ -54,11 +58,11 @@ export default function renderJobs(groups, { onPrint, onReject, onRejectFile } =
             <div class="file-row-copies">
               <button class="copies-btn minus"
                 data-job-id="${item.jobId}"
-                data-file-id="${item.fileId}">−</button>
+                data-file-id="${item.fileId}"><i class="fa-solid fa-minus"></i></button>
               <span class="copies-count" id="fc-${item.jobId}-${item.fileId}">${copies}</span>
               <button class="copies-btn plus"
                 data-job-id="${item.jobId}"
-                data-file-id="${item.fileId}">+</button>
+                data-file-id="${item.fileId}"><i class="fa-solid fa-plus"></i></button>
             </div>
 
             <!-- Rejet fichier individuel -->
@@ -67,7 +71,7 @@ export default function renderJobs(groups, { onPrint, onReject, onRejectFile } =
               data-file-id="${item.fileId}"
               data-file-name="${item.fileName}"
               data-group-id="${group.id}"
-              title="Retirer ce fichier">✕</button>
+              title="Retirer ce fichier"><i class="fa-solid fa-xmark"></i></button>
           </div>
 
         </div>`;
@@ -82,12 +86,12 @@ export default function renderJobs(groups, { onPrint, onReject, onRejectFile } =
           <input type="checkbox" class="job-checkbox" data-id="${group.id}"
             ${checkedIds.has(group.id) ? 'checked' : ''}>
           <div>
-            <div class="job-client-id">👤 ${group.clientId}</div>
+            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${group.items.length > 0 ? group.items[0].fileName : '#' + group.clientId.slice(-8)} ${btBadge}</div>
             <div class="job-time">${group.time} · ${group.items.length} fichier${group.items.length > 1 ? 's' : ''}</div>
           </div>
         </div>
         <div class="job-actions">
-          <button class="btn-print" data-id="${group.id}">🖨️ Imprimer tout</button>
+          <button class="btn-print" data-id="${group.id}"><i class="fa-solid fa-print"></i> Imprimer tout</button>
           <button class="btn-reject" data-id="${group.id}">Tout rejeter</button>
         </div>
       </div>

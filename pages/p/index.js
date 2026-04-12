@@ -1,51 +1,179 @@
-// pages/p/index.js
-// Page SPA unique — lit le slug depuis ?slug=xxx ou le path /p/librairie-derewol
-// Le .htaccess redirige tout /p/* vers /p/index.html
-// Puis on lit window.location.pathname côté client pour extraire le slug
+﻿// pages/p/index.js - Print SPA Refacto Complete
+import { useState, useEffect, useCallback, useRef } from "react";
+import supabase, {
+  getPrinterBySlug,
+  createFileGroup,
+  uploadFileToGroup,
+  fetchGroupsByOwner,
+  updateFilesCount,
+} from "../../lib/supabase";
+import { loadSession, clearSession, createAnonymousSession } from "../../lib/helpers";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/router';
-import { getPrinterBySlug, createFileGroup, uploadFileToGroup, fetchGroupsByOwner } from '../../lib/supabase';
-import { loadSession, saveSession, clearSession, createAnonymousSession } from '../../lib/helpers';
+const C = {
+  bg: "#faf8f2",
+  surface: "#ffffff",
+  surface2: "#f5f2ea",
+  green: "#1e4d2b",
+  greenMid: "#2d6a3f",
+  greenLight: "#e8f5ec",
+  yellow: "#f5c842",
+  text: "#111510",
+  text2: "#3d4a3f",
+  muted: "#6b7c6e",
+  border: "#e0ddd5",
+  danger: "#e53935",
+  info: "#1d4ed8",
+};
 
-// ── Extrait le slug depuis le pathname ────────────────────────
-// /p/librairie-derewol        → "librairie-derewol"
-// /p/librairie-derewol/upload → "librairie-derewol"
+const TRANSLATIONS = {
+  fr: {
+    dropHere: "Glissez vos PDF ici",
+    orClick: "ou appuyez pour sélectionner",
+    maxFiles: ({ n }) => `${n} fichier${n > 1 ? "s" : ""} restant${n > 1 ? "s" : ""}`,
+    totalCopies: "Total copies",
+    sendBtn: "Envoyer à l'\''imprimeur",
+    sending: "Envoi en cours...",
+    securityNote: "Fichiers supprimés après impression",
+    myFiles: "Mes fichiers",
+    history: "Historique",
+    waiting: "En attente",
+    printing: "Impression en cours",
+    completed: "Terminé",
+    rejected: "Rejeté",
+    expired: "Expiré",
+    waitingMsg: "En attente de l'\''imprimeur",
+    printingMsg: "Impression en cours...",
+    completedMsg: "Terminé — fichiers supprimés",
+    rejectedMsg: "Rejeté par l'\''imprimeur",
+    expiredMsg: "Délai dépassé — renvoyez vos fichiers",
+    connecting: "Connexion...",
+    notFound: "Espace introuvable",
+    notFoundDesc: "Ce QR code n'\''est plus valide.",
+  },
+  en: {
+    dropHere: "Drop your PDFs here",
+    orClick: "or tap to select",
+    maxFiles: ({ n }) => `${n} file${n > 1 ? "s" : ""} remaining`,
+    totalCopies: "Total copies",
+    sendBtn: "Send to printer",
+    sending: "Sending...",
+    securityNote: "Files deleted after printing",
+    myFiles: "My files",
+    history: "History",
+    waiting: "Waiting",
+    printing: "Printing",
+    completed: "Done",
+    rejected: "Rejected",
+    expired: "Expired",
+    waitingMsg: "Waiting for the printer",
+    printingMsg: "Printing in progress...",
+    completedMsg: "Done — files deleted",
+    rejectedMsg: "Rejected by printer",
+    expiredMsg: "Expired — please resend",
+    connecting: "Connecting...",
+    notFound: "Space not found",
+    notFoundDesc: "This QR code is no longer valid.",
+  },
+  wo: {
+    dropHere: "Tëj sa PDF fii",
+    orClick: "walla dëkk",
+    maxFiles: ({ n }) => `${n} dosye${n > 1 ? "i" : ""} des`,
+    totalCopies: "Jàmm kopi yi",
+    sendBtn: "Yónni ci jëfandikukat",
+    sending: "Da ngay yónnee...",
+    securityNote: "Dosye yi bokk léegi jëfandikoo",
+    myFiles: "Sa dosye yi",
+    history: "Xam-xam",
+    waiting: "Xaar",
+    printing: "Da ngay jëfandikoo",
+    completed: "Jeex na",
+    rejected: "Bàyyi na",
+    expired: "Xaar bi jeex na",
+    waitingMsg: "Xaar jëfandikukat bi",
+    printingMsg: "Da ngay jëfandikoo...",
+    completedMsg: "Jeex na — dosye yi bokk",
+    rejectedMsg: "Bàyyi na",
+    expiredMsg: "Xaar bi jeex na — yónni ci kanam",
+    connecting: "Da ngay bind...",
+    notFound: "Amul fenn",
+    notFoundDesc: "QR code bi dafa dëgër.",
+  },
+};
+
+function useTranslation(lang) {
+  const tr = TRANSLATIONS[lang] || TRANSLATIONS.fr;
+  return (key, params) => {
+    const val = tr[key] || TRANSLATIONS.fr[key] || key;
+    return typeof val === "function" ? val(params) : val;
+  };
+}
+
 function extractSlug() {
-  if (typeof window === 'undefined') return null;
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  // parts = ['p', 'librairie-derewol'] ou ['p', 'librairie-derewol', 'upload']
+  if (typeof window === "undefined") return null;
+  const parts = window.location.pathname.split("/").filter(Boolean);
   return parts[1] || null;
 }
 
-function extractSubPage() {
-  if (typeof window === 'undefined') return 'home';
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  return parts[2] || 'home'; // 'upload' | 'dashboard' | 'home'
-}
-
-// ── Hooks ─────────────────────────────────────────────────────
 function usePrintStatus(ownerId) {
-  const [groups, setGroups]   = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const fetchGroups = useCallback(async () => {
     if (!ownerId) return;
     const data = await fetchGroupsByOwner(ownerId);
     setGroups(data);
     setLoading(false);
   }, [ownerId]);
-
   useEffect(() => {
     fetchGroups();
-    const interval = setInterval(fetchGroups, 6000);
+    const interval = setInterval(fetchGroups, 3000);
     return () => clearInterval(interval);
   }, [fetchGroups]);
-
   return { groups, loading };
 }
 
-function useCountdown(expiresAt) {
+function FileList({ files, fileCopies, onSetCopies, onRemove, C, t }) {
+  const [expanded, setExpanded] = useState(false);
+  const THRESHOLD = 3;
+  const visible = expanded ? files : files.slice(0, THRESHOLD);
+  const hidden = files.length - THRESHOLD;
+  const copiesBtnStyle = {
+    width: 24, height: 24, borderRadius: "50%", border: `1px solid ${C.border}`,
+    background: "#fff", cursor: "pointer", fontSize: 14,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: C.text, fontFamily: "Inter, sans-serif", padding: 0,
+  };
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {visible.map((file, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
+          background: "#fff", borderRadius: 8, marginBottom: 6, border: `1px solid ${C.border}`, }}>
+          <span style={{ fontSize: 16, color: "#dc2626", flexShrink: 0 }}><i className="fa-solid fa-file-pdf" /></span>
+          <span style={{ flex: 1, fontSize: 13, color: C.text, overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap", }} title={file.name}>{file.name}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <button onClick={() => onSetCopies(i, (fileCopies[i] || 1) - 1)} style={copiesBtnStyle}>−</button>
+            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 18, textAlign: "center", color: C.text }}>
+              {fileCopies[i] || 1}</span>
+            <button onClick={() => onSetCopies(i, (fileCopies[i] || 1) + 1)} style={copiesBtnStyle}>+</button>
+          </div>
+          <button onClick={() => onRemove(i)} style={{ background: "none", border: "none", cursor: "pointer",
+            color: "#9ca3af", fontSize: 16, padding: "2px 4px", flexShrink: 0, }}>
+            <i className="fa-solid fa-xmark" /></button>
+        </div>
+      ))}
+      {files.length > THRESHOLD && (
+        <button onClick={() => setExpanded(!expanded)} style={{
+          width: "100%", padding: "8px", background: "transparent", border: `1px dashed ${C.border}`,
+          borderRadius: 8, cursor: "pointer", color: C.muted, fontSize: 13, fontFamily: "Inter, sans-serif",
+        }}>
+          {expanded ? "▲ Réduire" : `▼ Voir ${hidden} autre${hidden > 1 ? "s" : ""} fichier${hidden > 1 ? "s" : ""}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CountdownPill({ expiresAt }) {
   const [remaining, setRemaining] = useState(null);
   useEffect(() => {
     if (!expiresAt) return;
@@ -57,365 +185,410 @@ function useCountdown(expiresAt) {
     const t = setInterval(calc, 1000);
     return () => clearInterval(t);
   }, [expiresAt]);
-  if (remaining === null) return null;
-  if (remaining <= 0) return 'Expiré';
+  if (remaining === null || remaining <= 0) return null;
   const mins = Math.floor(remaining / 60000);
   const secs = Math.floor((remaining % 60000) / 1000);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  return <span style={{ background: "rgba(245, 200, 66, 0.15)", color: "#f5c842",
+    padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+    whiteSpace: "nowrap", }}>⏱ {mins}:{secs.toString().padStart(2, "0")}</span>;
 }
 
-// ── Composants UI ─────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const map = {
-    waiting:   { label: 'En attente',          bg: '#f5c842', color: '#111510' },
-    printing:  { label: 'Impression en cours',  bg: '#1d4ed8', color: '#fff'   },
-    completed: { label: 'Terminé',              bg: '#166534', color: '#fff'   },
-    rejected:  { label: 'Rejeté',              bg: '#e53935', color: '#fff'   },
-    expired:   { label: 'Expiré',              bg: '#9ca3af', color: '#fff'   },
+function GroupCard({ group, onPreview, C, t, history = false }) {
+  const [expanded, setExpanded] = useState(false);
+  const job = group.print_jobs?.[0];
+  const files = group.files || [];
+  const status = group.status;
+  const copies = job?.copies_requested || group.copies_count || 1;
+  const fileCount = files.length > 0 ? files.length : group.files_count || 0;
+  const totalCopies = copies * fileCount;
+  const THRESHOLD = 3;
+  const visibleFiles = expanded ? files : files.slice(0, THRESHOLD);
+  const hiddenCount = files.length - THRESHOLD;
+  const statusConfig = {
+    waiting: { label: t("waiting"), bg: "#fff8d6", color: "#92600a", dot: "#f5c842" },
+    printing: { label: t("printing"), bg: "#dbeafe", color: "#1d4ed8", dot: "#3b82f6" },
+    completed: { label: t("completed"), bg: "#dcfce7", color: "#166534", dot: "#22c55e" },
+    rejected: { label: t("rejected"), bg: "#fee2e2", color: "#dc2626", dot: "#ef4444" },
+    expired: { label: t("expired"), bg: "#f3f4f6", color: "#6b7280", dot: "#9ca3af" },
   };
-  const s = map[status] || map.waiting;
+  const sc = statusConfig[status] || statusConfig.waiting;
   return (
-    <span style={{
-      background: s.bg, color: s.color,
-      padding: '4px 12px', borderRadius: 20,
-      fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
-    }}>{s.label}</span>
-  );
-}
-
-function TimerPill({ expiresAt, status }) {
-  const countdown = useCountdown(status === 'waiting' ? expiresAt : null);
-  if (!countdown || status !== 'waiting') return null;
-  const isUrgent = countdown !== 'Expiré' && parseInt(countdown) < 5;
-  return (
-    <span style={{
-      fontSize: 11, fontFamily: 'monospace', padding: '3px 10px',
-      borderRadius: 20, fontWeight: 600, whiteSpace: 'nowrap',
-      background: isUrgent ? '#fef2f2' : '#f5f0e8',
-      color: isUrgent ? '#e53935' : '#92600a',
-    }}>⏱ {countdown}</span>
-  );
-}
-
-function GroupCard({ group }) {
-  const job             = group.print_jobs?.[0];
-  const files           = group.files || [];
-  const status          = group.status;
-  const copies          = job?.copies_requested || 0;
-  const copiesRemaining = job?.copies_remaining || 0;
-  const isHistory       = ['completed', 'rejected', 'expired'].includes(status);
-
-  return (
-    <div className={`db-card ${status === 'expired' ? 'db-card--expired' : ''}`}>
-      <div className="db-card-header">
-        <div className="db-card-header-left">
-          <div className="db-card-icon">{isHistory ? '📋' : '🗂️'}</div>
-          <div>
-            <div className="db-card-count">{files.length} fichier{files.length > 1 ? 's' : ''}</div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
-              <StatusBadge status={status} />
-              <TimerPill expiresAt={job?.expires_at} status={status} />
+    <div style={{ background: history ? C.surface2 : C.surface, border: `1px solid ${C.border}`,
+      borderRadius: 12, marginBottom: 10, opacity: history ? 0.85 : 1, overflow: "hidden", }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 16px", borderBottom: `1px solid ${C.border}`, gap: 8, }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+          <div style={{ width: 36, height: 36, background: C.greenLight, borderRadius: 8,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0,
+          }}>{history ? "📋" : "🗂️"}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+              {fileCount} fichier{fileCount > 1 ? "s" : ""}</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4, flexWrap: "wrap", }}>
+              <span style={{ background: sc.bg, color: sc.color, padding: "3px 10px", borderRadius: 20,
+                fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, background: sc.dot,
+                  borderRadius: "50%", marginRight: 5, }} /> {sc.label}</span>
+              {status === "waiting" && job?.expires_at && <CountdownPill expiresAt={job.expires_at} />}
             </div>
           </div>
         </div>
-        {copies > 0 && (
-          <div className="db-copies-badge">
-            <span className="db-copies-num">{copies}</span>
-            <span className="db-copies-label">copie{copies > 1 ? 's' : ''}</span>
-          </div>
-        )}
+        <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
+          padding: "6px 12px", textAlign: "center", flexShrink: 0, }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.green, lineHeight: 1 }}>{totalCopies}</div>
+          <div style={{ fontSize: 9, color: C.muted, fontWeight: 600, textTransform: "uppercase" }}>
+            copie{totalCopies > 1 ? "s" : ""}</div>
+        </div>
       </div>
-      <div className="db-files-list">
-        {files.map(f => (
-          <div key={f.id} className="db-file-row">
-            <span className="db-file-icon">📄</span>
-            <span className="db-file-name" title={f.file_name}>{f.file_name}</span>
-          </div>
-        ))}
-      </div>
-      <div className="db-status-msg">
-        {status === 'waiting'   && <p className="db-msg db-msg--waiting">⏳ En attente de l'imprimeur</p>}
-        {status === 'printing'  && (
-          <p className="db-msg db-msg--printing">
-            🖨️ Impression en cours
-            {copiesRemaining > 0 && ` · ${copiesRemaining} copie${copiesRemaining > 1 ? 's' : ''} restante${copiesRemaining > 1 ? 's' : ''}`}
-          </p>
-        )}
-        {status === 'completed' && <p className="db-msg db-msg--done">✅ Terminé — fichiers supprimés</p>}
-        {status === 'rejected'  && <p className="db-msg db-msg--rejected">❌ Rejeté par l'imprimeur</p>}
-        {status === 'expired'   && <p className="db-msg db-msg--expired">⏰ Délai dépassé — renvoyez vos fichiers</p>}
+      {files.length > 0 && (
+        <div>
+          {visibleFiles.map((f) => (
+            <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8,
+              padding: "10px 16px", borderBottom: `1px solid ${C.border}`, }}>
+              <span style={{ fontSize: 15, color: "#dc2626", flexShrink: 0 }}><i className="fa-solid fa-file-pdf" /></span>
+              <span style={{ flex: 1, fontSize: 13, color: C.text, overflow: "hidden",
+                textOverflow: "ellipsis", whiteSpace: "nowrap", }} title={f.file_name}>{f.file_name}</span>
+              {f.storage_path && (
+                <button onClick={() => onPreview(f.storage_path, f.file_name)} style={{
+                  background: C.greenLight, border: "none", borderRadius: 6, padding: "4px 10px",
+                  color: C.green, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 4, flexShrink: 0, fontFamily: "Inter, sans-serif",
+                }}><i className="fa-regular fa-eye" /> Voir</button>
+              )}
+            </div>
+          ))}
+          {files.length > THRESHOLD && (
+            <button onClick={() => setExpanded(!expanded)} style={{
+              width: "100%", padding: "8px", background: "transparent", border: "none",
+              cursor: "pointer", color: C.muted, fontSize: 12, fontFamily: "Inter, sans-serif",
+              borderBottom: `1px solid ${C.border}`,
+            }}>
+              {expanded ? "▲ Réduire" : `▼ ${hiddenCount} autre${hiddenCount > 1 ? "s" : ""} fichier${hiddenCount > 1 ? "s" : ""}`}
+            </button>
+          )}
+        </div>
+      )}
+      <div style={{ padding: "10px 16px" }}>
+        {status === "waiting" && <p style={{ color: "#92600a", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-hourglass-end" /> {t("waitingMsg")}</p>}
+        {status === "printing" && <p style={{ color: "#1d4ed8", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-print" /> {t("printingMsg")}</p>}
+        {status === "completed" && <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-check" /> {t("completedMsg")}</p>}
+        {status === "rejected" && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-xmark" /> {t("rejectedMsg")}</p>}
+        {status === "expired" && <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-clock" /> {t("expiredMsg")}</p>}
       </div>
     </div>
   );
 }
 
-// ── Page principale SPA ───────────────────────────────────────
-const MAX_FILES   = 5;
+function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
+  if (groupsLoading) return null;
+  const active = groups.filter((g) => !["completed", "rejected", "expired"].includes(g.status));
+  const history = groups.filter((g) => ["completed", "rejected", "expired"].includes(g.status));
+  if (groups.length === 0) return null;
+  return (
+    <div style={{ marginTop: 24 }}>
+      <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, marginBottom: 20 }} />
+      {active.length > 0 && (
+        <section>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+            {t("myFiles")} <span style={{ background: C.yellow, color: C.green, borderRadius: 20,
+              padding: "2px 8px", fontSize: 11, fontWeight: 700, marginLeft: 8, }}>{active.length}</span>
+          </h3>
+          {active.map((g) => <GroupCard key={g.id} group={g} onPreview={onPreview} C={C} t={t} />)}
+        </section>
+      )}
+      {history.length > 0 && (
+        <section style={{ marginTop: active.length > 0 ? 20 : 0 }}>
+          <h3 style={{ fontSize: 13, fontWeight: 600, color: C.muted, marginBottom: 10 }}>{t("history")}</h3>
+          {history.map((g) => <GroupCard key={g.id} group={g} onPreview={onPreview} C={C} t={t} history />)}
+        </section>
+      )}
+    </div>
+  );
+}
+
+const MAX_FILES = 20;
 const MAX_SIZE_MB = 10;
 
 export default function PrinterSPA({ showToast }) {
-  const [slug, setSlug]         = useState(null);
-  const [page, setPage]         = useState('loading'); // loading | notfound | upload | dashboard
-  const [printer, setPrinter]   = useState(null);
-  const [session, setSession]   = useState(null);
+  const [slug, setSlug] = useState(null);
+  const [page, setPage] = useState("loading");
+  const [printer, setPrinter] = useState(null);
+  const [session, setSession] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [fileCopies, setFileCopies] = useState({});
   const [uploading, setUploading] = useState(false);
-
+  const [dragging, setDragging] = useState(false);
+  const [lang, setLangState] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("dw_lang") || "fr" : "fr"
+  );
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewName, setPreviewName] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const fileInputRef = useRef(null);
+  const uploadingRef = useRef(false);
+  const t = useTranslation(lang);
   const ownerId = session?.owner_id || null;
   const { groups, loading: groupsLoading } = usePrintStatus(ownerId);
-
-  // ── Init : résout slug + printer + session ────────────────
+  
+  function setLang(l) {
+    setLangState(l);
+    if (typeof window !== "undefined") localStorage.setItem("dw_lang", l);
+  }
+  function getFileCopy(i) { return fileCopies[i] || 1; }
+  function setFileCopy(i, val) {
+    setFileCopies((prev) => ({ ...prev, [i]: Math.max(1, Math.min(20, val)) }));
+  }
+  
   useEffect(() => {
+    let mounted = true;
     const s = extractSlug();
-    const sub = extractSubPage();
-    setSlug(s);
-
-    if (!s) { setPage('notfound'); return; }
-
-    // Charge l'imprimeur depuis Supabase
-    getPrinterBySlug(s).then(printerData => {
-      if (!printerData) { setPage('notfound'); return; }
-      setPrinter(printerData);
-
-      // Charge ou crée session
+    if (!s) { if (mounted) setPage("notfound"); return (() => { mounted = false; }); }
+    getPrinterBySlug(s).then((printerData) => {
+      if (!mounted) return;
+      if (!printerData) { setPage("notfound"); return; }
+      setPrinter(printerData); setSlug(s);
       let sess = loadSession(s);
       if (!sess) {
         sess = createAnonymousSession({
-          printer_slug: s,
-          printer_id:   printerData.id,
-          printer_name: printerData.name,
+          printer_slug: s, printer_id: printerData.id, printer_name: printerData.name,
         });
       }
-      setSession(sess);
-
-      // Détermine quelle vue afficher
-      if (sub === 'dashboard') {
-        setPage('dashboard');
-      } else {
-        setPage('upload');
-      }
+      setSession(sess); setPage("home");
     });
+    return () => { mounted = false; };
   }, []);
-
-  // ── Navigation interne (sans rechargement) ────────────────
-  function goTo(subPage) {
-    const newPath = `/p/${slug}/${subPage === 'upload' ? 'upload' : 'dashboard'}`;
-    window.history.pushState({}, '', newPath);
-    setPage(subPage);
-  }
-
-  // ── Upload ────────────────────────────────────────────────
+  
   function addFiles(newFiles) {
-    const pdfs  = Array.from(newFiles).filter(f => f.type === 'application/pdf');
-    const valid = pdfs.filter(f => {
+    const pdfs = Array.from(newFiles).filter((f) => f.type === "application/pdf");
+    const valid = pdfs.filter((f) => {
       if (f.size > MAX_SIZE_MB * 1024 * 1024) {
-        showToast?.(`"${f.name}" dépasse ${MAX_SIZE_MB}MB`, 'error');
+        showToast?.(`"${f.name}" dépasse ${MAX_SIZE_MB}MB`, "error");
         return false;
       }
       return true;
     });
-    setSelected(prev => {
+    setSelected((prev) => {
       const combined = [...prev, ...valid];
       if (combined.length > MAX_FILES) {
-        showToast?.(`Maximum ${MAX_FILES} fichiers`, 'error');
+        showToast?.(`Maximum ${MAX_FILES} fichiers`, "error");
         return combined.slice(0, MAX_FILES);
       }
       return combined;
     });
   }
-
-  function removeFile(i) { setSelected(prev => prev.filter((_, idx) => idx !== i)); }
-
+  
+  function removeFile(i) {
+    setSelected((prev) => prev.filter((_, idx) => idx !== i));
+    setFileCopies((prev) => {
+      const next = {};
+      Object.keys(prev).forEach((k) => {
+        const ki = parseInt(k);
+        if (ki < i) next[ki] = prev[k];
+        else if (ki > i) next[ki - 1] = prev[k];
+      });
+      return next;
+    });
+  }
+  
+  async function handlePreview(storagePath, fileName) {
+    setPreviewName(fileName);
+    setPreviewLoading(true);
+    setPreviewUrl("loading");
+    try {
+      const { data } = await supabase.storage.from("derewol-files").createSignedUrl(storagePath, 120);
+      if (data?.signedUrl) {
+        setPreviewUrl(data.signedUrl);
+      } else {
+        setPreviewUrl(null);
+      }
+    } catch {
+      setPreviewUrl(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+  
   async function handleUpload() {
-    if (!selected.length || uploading || !printer || !session) return;
+    if (!selected.length || uploading || uploadingRef.current || !printer || !session) return;
+    uploadingRef.current = true;
     setUploading(true);
     try {
       const groupId = await createFileGroup({
-        ownerId:   session.owner_id,
-        printerId: printer.id,
+        ownerId: session.owner_id, printerId: printer.id,
       });
-      for (const file of selected) {
+      for (let i = 0; i < selected.length; i++) {
         await uploadFileToGroup({
-          file, groupId,
-          ownerId:   session.owner_id,
-          printerId: printer.id,
+          file: selected[i], groupId, ownerId: session.owner_id,
+          printerId: printer.id, copies: getFileCopy(i),
         });
       }
-      showToast?.('Fichiers envoyés !');
+      await updateFilesCount(groupId, selected.length);
+      showToast?.(t("sending"));
       setSelected([]);
-      goTo('dashboard');
+      setFileCopies({});
     } catch (err) {
-      showToast?.(err.message || "Erreur lors de l'envoi", 'error');
+      showToast?.(err.message || "Erreur lors de l'\''envoi", "error");
     } finally {
       setUploading(false);
+      uploadingRef.current = false;
     }
   }
-
-  function handleNewSession() {
-    clearSession(slug);
-    const sess = createAnonymousSession({
-      printer_slug: slug,
-      printer_id:   printer.id,
-      printer_name: printer.name,
-    });
-    setSession(sess);
-    setSelected([]);
-    goTo('upload');
-  }
-
-  // ── Renders ───────────────────────────────────────────────
-  if (page === 'loading') {
+  
+  const spinnerStyle = {
+    display: "inline-block", width: 14, height: 14,
+    border: "2px solid rgba(30, 77, 43, 0.3)", borderTop: `2px solid ${C.green}`,
+    borderRadius: "50%", animation: "spin 0.8s linear infinite",
+  };
+  
+  if (page === "loading") {
     return (
-      <div className="home-container">
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
-          <p style={{ color: '#7a8c78', fontSize: 14 }}>Connexion...</p>
+      <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center",
+        alignItems: "center", padding: 16, background: C.bg, }}>
+        <div style={{ background: C.surface, padding: "40px 32px", maxWidth: 400,
+          width: "100%", borderRadius: 12, textAlign: "center", border: `1px solid ${C.border}`, }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}><i className="fa-solid fa-spinner fa-spin" /></div>
+          <p style={{ color: C.muted, fontSize: 14 }}>{t("connecting")}</p>
         </div>
       </div>
     );
   }
-
-  if (page === 'notfound') {
+  
+  if (page === "notfound") {
     return (
-      <div className="home-container">
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-          <h2 style={{ marginBottom: 8 }}>Espace introuvable</h2>
-          <p style={{ color: '#7a8c78', fontSize: 14, lineHeight: 1.6 }}>
-            Ce QR code n'est plus valide.<br/>
-            Demandez un nouveau à l'imprimeur.
-          </p>
+      <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center",
+        alignItems: "center", padding: 16, background: C.bg, }}>
+        <div style={{ background: C.surface, padding: "40px 32px", maxWidth: 400,
+          width: "100%", textAlign: "center", borderRadius: 12, border: `1px solid ${C.border}`, }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}><i className="fa-solid fa-magnifying-glass" /></div>
+          <h2 style={{ marginBottom: 8, fontSize: 20, fontWeight: 700, color: C.text }}>{t("notFound")}</h2>
+          <p style={{ color: C.muted, fontSize: 14, lineHeight: 1.6 }}>{t("notFoundDesc")}</p>
         </div>
       </div>
     );
   }
-
-  if (page === 'upload') {
-    const remaining = MAX_FILES - selected.length;
-    return (
-      <div className="container">
-        <div className="upload-card">
-          <div className="header">
-            <div className="db-logo" style={{ marginBottom: 4 }}>
-              <div className="db-logo-mark"></div>
-              <span className="db-logo-text">Derew<b>ol</b></span>
-            </div>
-            <div className="session-info">
-              <span>🖨️ {printer?.name}</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1e4d2b' }}>
-                #{session?.display_code}
-              </span>
-            </div>
-          </div>
-
-          {selected.length < MAX_FILES && (
-            <div
-              className="drop-zone"
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-              onClick={() => document.getElementById('file-input').click()}
-            >
-              <input
-                id="file-input" type="file" accept="application/pdf"
-                multiple style={{ display: 'none' }}
-                onChange={e => addFiles(e.target.files)}
-              />
-              <p className="drop-title">Glissez vos PDF ici</p>
-              <span className="drop-sub">
-                ou cliquez · {remaining} fichier{remaining > 1 ? 's' : ''} restant{remaining > 1 ? 's' : ''}
-              </span>
-            </div>
-          )}
-
-          {selected.length > 0 && (
-            <div className="file-list">
-              {selected.map((file, i) => (
-                <div key={i} className="file-item">
-                  <span title={file.name}>📄 {file.name}</span>
-                  <button onClick={() => removeFile(i)}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selected.length > 0 && (
-            <p className="files-count">{selected.length}/{MAX_FILES} fichier{selected.length > 1 ? 's' : ''}</p>
-          )}
-
-          <button
-            onClick={handleUpload}
-            disabled={!selected.length || uploading}
-            className="upload-btn"
-          >
-            {uploading ? 'Envoi en cours...' : "Envoyer à l'imprimeur"}
-          </button>
-
-          <div className="security-note">
-            <small>🔒 Fichiers supprimés automatiquement après impression</small>
-          </div>
+  
+  return (
+    <>
+      <header style={{ position: "sticky", top: 0, zIndex: 100, background: C.green,
+        padding: "10px 16px", display: "flex", alignItems: "center",
+        justifyContent: "space-between", fontFamily: "Inter, sans-serif", }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 24, height: 24, background: C.yellow, borderRadius: 6 }} />
+          <span style={{ color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "Inter, sans-serif", }}>
+            Derew<b style={{ color: C.yellow }}>ol</b></span>
         </div>
-      </div>
-    );
-  }
-
-  if (page === 'dashboard') {
-    const activeGroups  = groups.filter(g => !['completed', 'rejected', 'expired'].includes(g.status));
-    const historyGroups = groups.filter(g =>  ['completed', 'rejected', 'expired'].includes(g.status));
-
-    return (
-      <div className="db-container">
-        <header className="db-header">
-          <div className="db-logo">
-            <div className="db-logo-mark"></div>
-            <span className="db-logo-text">Derew<b>ol</b></span>
+        {printer && (
+          <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 500,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            maxWidth: "40%", textAlign: "center", }}>
+            <i className="fa-solid fa-print" /> {printer.name}</span>
+        )}
+        <div style={{ position: "relative" }}>
+          <select value={lang} onChange={(e) => setLang(e.target.value)} style={{
+            background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
+            color: "#fff", borderRadius: 6, padding: "4px 8px", fontSize: 12,
+            fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif",
+            appearance: "none", paddingRight: 20, }}>
+            <option value="fr" style={{ background: C.green }}>🇫🇷 FR</option>
+            <option value="en" style={{ background: C.green }}>🇬🇧 EN</option>
+            <option value="wo" style={{ background: C.green }}>🇸🇳 WO</option>
+          </select>
+        </div>
+      </header>
+      
+      <main style={{ padding: "16px", maxWidth: 480, margin: "0 auto",
+        width: "100%", fontFamily: "Inter, sans-serif", }}>
+        <div onClick={() => fileInputRef.current?.click()} onDragOver={(e) => {
+          e.preventDefault(); setDragging(true);
+        }} onDragLeave={() => setDragging(false)} onDrop={(e) => {
+          e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files);
+        }} style={{ border: `2px dashed ${dragging ? C.green : C.border}`, borderRadius: 14,
+          padding: "32px 20px", textAlign: "center", cursor: "pointer",
+          background: dragging ? C.greenLight : C.surface, transition: "all 0.2s", marginBottom: 12, }}>
+          <input ref={fileInputRef} type="file" accept="application/pdf" multiple
+            style={{ display: "none" }} onChange={(e) => addFiles(e.target.files)} />
+          <div style={{ fontSize: 32, marginBottom: 10 }}><i className="fa-solid fa-link" /></div>
+          <p style={{ color: C.text, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{t("dropHere")}</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>{t("orClick")} · {t("maxFiles", { n: MAX_FILES - selected.length })}</p>
+        </div>
+        
+        {selected.length > 0 && (
+          <FileList files={selected} fileCopies={fileCopies} onSetCopies={setFileCopy}
+            onRemove={removeFile} C={C} t={t} />
+        )}
+        
+        {selected.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "10px 14px", background: C.surface2, borderRadius: 8, marginBottom: 12, }}>
+            <span style={{ color: C.muted, fontSize: 13 }}>{t("totalCopies")}</span>
+            <span style={{ color: C.green, fontWeight: 800, fontSize: 18 }}>
+              {Object.entries(fileCopies).reduce((sum, [k, v]) => {
+                const idx = parseInt(k);
+                return idx < selected.length ? sum + v : sum;
+              }, 0) || selected.length}
+            </span>
           </div>
-          <div className="db-header-right">
-            <span className="db-session-id">#{session?.display_code}</span>
-            <span style={{ fontSize: 12, color: '#7a8c78' }}>🖨️ {printer?.name}</span>
-            <button className="db-btn-logout" onClick={handleNewSession}>
-              Nouvelle session
+        )}
+        
+        <button onClick={handleUpload} disabled={!selected.length || uploading} style={{
+          width: "100%", padding: "15px",
+          background: selected.length && !uploading ? C.yellow : "#e5e5e5",
+          color: selected.length && !uploading ? C.green : C.muted,
+          border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700,
+          cursor: selected.length && !uploading ? "pointer" : "not-allowed",
+          fontFamily: "Inter, sans-serif", display: "flex", alignItems: "center",
+          justifyContent: "center", gap: 8, transition: "all 0.2s", }}>
+          {uploading ? (<> <span style={spinnerStyle} /> {t("sending")}</>) : 
+            (<> <i className="fa-solid fa-paper-plane" /> {t("sendBtn")}</>)}
+        </button>
+        
+        <p style={{ textAlign: "center", fontSize: 11, color: C.muted, marginTop: 10,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4, }}>
+          <i className="fa-solid fa-lock" /> {t("securityNote")}
+        </p>
+        
+        <StatusSection groups={groups} groupsLoading={groupsLoading}
+          onPreview={handlePreview} C={C} t={t} onSendMore={() => fileInputRef.current?.click()} />
+      </main>
+      
+      {previewUrl && (
+        <div onClick={(e) => { if (e.target === e.currentTarget) setPreviewUrl(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.85)",
+            display: "flex", flexDirection: "column", }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 16px", background: C.green, }}>
+            <span style={{ color: "#fff", fontSize: 14, fontWeight: 600, overflow: "hidden",
+              textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, }}>
+              <i className="fa-solid fa-file-pdf" /> {previewName}
+            </span>
+            <button onClick={() => setPreviewUrl(null)} style={{
+              background: "rgba(255,255,255,0.2)", border: "none", color: "#fff",
+              width: 32, height: 32, borderRadius: "50%", cursor: "pointer",
+              fontSize: 18, flexShrink: 0, display: "flex", alignItems: "center",
+              justifyContent: "center", }}>
+              <i className="fa-solid fa-xmark" />
             </button>
           </div>
-        </header>
-
-        <main className="db-main">
-          <section className="db-section">
-            <div className="db-section-header">
-              <h2 className="db-section-title">Mes fichiers</h2>
-              <button className="db-btn-upload" onClick={() => goTo('upload')}>
-                + Envoyer
-              </button>
-            </div>
-
-            {groupsLoading && <div className="db-loading">Chargement...</div>}
-
-            {!groupsLoading && activeGroups.length === 0 && (
-              <div className="db-empty">
-                <span className="db-empty-icon">📭</span>
-                <p>Aucun fichier en cours</p>
-                <button className="db-btn-upload" onClick={() => goTo('upload')}>
-                  Envoyer un fichier
-                </button>
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            {previewLoading || previewUrl === "loading" ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                height: "100%", color: "#fff", fontSize: 14, }}>
+                <i className="fa-solid fa-spinner fa-spin" /> Chargement...
               </div>
+            ) : (
+              <iframe src={previewUrl} style={{ width: "100%", height: "100%", border: "none" }}
+                title={previewName} />
             )}
-
-            <div className="db-grid">
-              {activeGroups.map(g => <GroupCard key={g.id} group={g} />)}
-            </div>
-          </section>
-
-          {historyGroups.length > 0 && (
-            <section className="db-section">
-              <h2 className="db-section-title db-section-title--muted">Historique</h2>
-              <div className="db-grid">
-                {historyGroups.map(g => <GroupCard key={g.id} group={g} />)}
-              </div>
-            </section>
-          )}
-        </main>
-      </div>
-    );
-  }
-
-  return null;
+          </div>
+        </div>
+      )}
+      
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </>
+  );
 }

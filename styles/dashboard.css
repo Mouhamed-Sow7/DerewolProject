@@ -184,6 +184,31 @@
   border-color: #d1d5db;
 }
 
+/* Historique: contraste jaune/noir comme le bouton Envoyer */
+.db-card--history {
+  background: var(--jaune);
+  border-color: #11151055;
+}
+
+.db-card--history .db-card-count,
+.db-card--history .db-file-name,
+.db-card--history .db-msg,
+.db-card--history .db-msg--done,
+.db-card--history .db-msg--rejected,
+.db-card--history .db-msg--expired,
+.db-card--history .db-msg--waiting,
+.db-card--history .db-msg--printing {
+  color: var(--noir);
+}
+
+.db-card--history .db-msg {
+  background: #ffffffc9;
+}
+
+.db-card--history .db-file-row:nth-child(even) {
+  background: #f7cc55;
+}
+
 /* Message expiré */
 .db-msg--expired {
   background: #f3f4f6;

@@ -1,0 +1,72 @@
+/* Trial Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  animation: fadeInUp 0.3s ease;
+}
+.modal-box {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 32px 28px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+.modal-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+.modal-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #111510;
+  margin-bottom: 12px;
+}
+.modal-text {
+  font-size: 15px;
+  color: #6b7c6e;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+.modal-text strong {
+  color: #1e4d2b;
+}
+.modal-btn {
+  width: 100%;
+  padding: 14px 20px;
+  background: #f5c842;
+  color: #1e4d2b;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: "Inter", sans-serif;
+  transition: all 0.2s;
+}
+.modal-btn:hover {
+  background: #d4a800;
+  transform: translateY(-2px);
+} /* Title Badge */
+.db-title-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5c842;
+  color: #1e4d2b;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 20px;
+  margin-left: 8px;
+}

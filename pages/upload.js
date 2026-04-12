@@ -3,7 +3,7 @@ import useUpload from "../hooks/useUpload";
 import useSession from "../hooks/useSession";
 import { useRouter } from "next/router";
 
-const MAX_FILES = 5;
+const MAX_FILES = 20;
 const MAX_SIZE_MB = 10;
 
 export default function Upload({ showToast }) {

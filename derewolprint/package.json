@@ -1,21 +1,74 @@
 {
   "name": "derewolprint",
   "version": "1.0.0",
-  "description": "",
+  "description": "DerewolPrint — Impression intelligente",
   "main": "main/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "cross-env NODE_ENV=development electron .",
+    "prebuild": "node scripts/clean-dist.js",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "electron": "^40.4.1"
+  "build": {
+    "appId": "com.derewol.print",
+    "productName": "DerewolPrint",
+    "copyright": "Copyright © 2025 Derewol",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main/**/*",
+      "preload/**/*",
+      "renderer/**/*",
+      "services/**/*",
+      "!services/bluetooth.js",
+      "!services/bluetoothSync.js",
+      "node_modules/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/test*",
+      "!**/scripts/**",
+      "!node_modules/.cache"
+    ],
+    "extraResources": [
+      {
+        "from": "config.json",
+        "to": "config.json"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DerewolPrint",
+      "language": "1036"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/pdf-to-printer/**/*"
+    ]
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.97.0",
-    "dotenv": "^17.3.1",
-    "pdf-to-printer": "^5.6.1"
+    "@supabase/supabase-js": "^2.39.0",
+    "cross-env": "^7.0.3",
+    "electron-log": "^5.0.0",
+    "pdf-to-printer": "^5.4.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
   }
 }
