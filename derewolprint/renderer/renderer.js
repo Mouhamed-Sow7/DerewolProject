@@ -185,7 +185,14 @@ function showAcceptanceModal(type = "trial") {
   const backdrop = document.getElementById("acceptance-backdrop");
   const modal = document.getElementById("acceptance-modal");
 
-  if (!backdrop || !modal) return;
+  console.log("showAcceptanceModal called with type:", type);
+  console.log("backdrop element:", backdrop);
+  console.log("modal element:", modal);
+
+  if (!backdrop || !modal) {
+    console.error("Modal elements not found!");
+    return;
+  }
 
   const trialSection = modal.querySelector("#acc-trial");
   const paymentSection = modal.querySelector("#acc-payment");
@@ -202,6 +209,7 @@ function showAcceptanceModal(type = "trial") {
   }
 
   backdrop.classList.add("show");
+  console.log("Modal backdrop 'show' class added");
 }
 
 function hideAcceptanceModal() {
@@ -210,13 +218,27 @@ function hideAcceptanceModal() {
 }
 
 function bindAcceptanceModal() {
+  console.log("bindAcceptanceModal called");
+
   const backdrop = document.getElementById("acceptance-backdrop");
   const modal = document.getElementById("acceptance-modal");
 
-  if (!backdrop || !modal) return;
+  console.log("Looking for modal elements...");
+  console.log("backdrop:", backdrop);
+  console.log("modal:", modal);
+
+  if (!backdrop || !modal) {
+    console.error("Modal elements not found in bindAcceptanceModal!");
+    return;
+  }
+
+  console.log("Modal elements found, binding events...");
 
   const cancelBtn = modal.querySelector("#acc-btn-cancel");
   const acceptBtn = modal.querySelector("#acc-btn-accept");
+
+  console.log("cancelBtn:", cancelBtn);
+  console.log("acceptBtn:", acceptBtn);
 
   // Cancel button
   if (cancelBtn) {
@@ -840,7 +862,12 @@ window.__derewolSoundEnabled = settings.sound;
 initBridge();
 
 // Initialize acceptance modal for trial & payment conditions
-bindAcceptanceModal();
+// Wait for DOM to be ready before binding
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bindAcceptanceModal);
+} else {
+  bindAcceptanceModal();
+}
 
 // Imprimantes sidebar
 window.derewol.getPrinters().then((printers) => {
