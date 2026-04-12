@@ -670,90 +670,38 @@ app.whenReady().then(async () => {
     `[BOOT] Config locale : ${printerCfg.name} (${printerCfg.slug}) — vérification Supabase...`,
   );
 
-  // ── STRICT CLOUD VERIFICATION: MUST verify with Supabase before launch ────
   try {
+    // NE PAS sélectionner deleted_at — colonne inexistante
     const { data, error } = await supabase
       .from("printers")
-      .select("id, name, slug, deleted_at")
+      .select("id, name, slug")
       .eq("id", printerCfg.id)
       .single();
 
-    // ── If error or no data: printer doesn't exist in Supabase ──
-    if (error) {
-      if (error.code === "PGRST116") {
-        // Not found
-        console.warn(
-          "[BOOT] ❌ Imprimeur NOT FOUND in Supabase → reset config locale",
-        );
-      } else {
-        console.error("[BOOT] ❌ Supabase error:", error.message);
-      }
-      clearConfig();
-      printerCfg = null;
-      if (printerVerificationTimer) {
-        clearInterval(printerVerificationTimer);
-        printerVerificationTimer = null;
-      }
-      launchOnboarding();
-      return;
-    }
-
-    if (!data) {
+    if (error || !data) {
       console.warn(
-        "[BOOT] ❌ Imprimeur introuvable dans Supabase → reset config locale",
+        "[BOOT] Imprimeur introuvable dans Supabase → reset config locale",
       );
       clearConfig();
       printerCfg = null;
-      if (printerVerificationTimer) {
-        clearInterval(printerVerificationTimer);
-        printerVerificationTimer = null;
-      }
       launchOnboarding();
       return;
     }
 
-    // ── Check if printer is soft-deleted ──
-    if (data.deleted_at) {
-      console.warn(
-        "[BOOT] ❌ Imprimeur supprimé dans Supabase → reset config locale",
-      );
-      clearConfig();
-      printerCfg = null;
-      if (printerVerificationTimer) {
-        clearInterval(printerVerificationTimer);
-        printerVerificationTimer = null;
-      }
-      launchOnboarding();
-      return;
-    }
-
-    // ── Syncing name if changed ──
     if (data.name !== printerCfg.name) {
       printerCfg.name = data.name;
       saveConfig(printerCfg);
-      console.log(`[BOOT] 🔄 Nom synchronisé : ${data.name}`);
+      console.log(`[BOOT] Nom synchronisé : ${data.name}`);
     }
 
-    // ── Verification successful - launch app ──
-    console.log(
-      `[BOOT] ✅ Imprimeur vérifié dans Supabase → ${printerCfg.name}`,
-    );
+    console.log(`[BOOT] Imprimeur vérifié ✅ → ${printerCfg.name}`);
     launchApp();
   } catch (err) {
-    // ── STRICT: Network error = cannot verify = do NOT launch ──
-    console.error(
-      "[BOOT] ❌ ERREUR CRITIQUE: Impossible de vérifier avec Supabase (mode hors ligne non autorisé)",
-      err.message,
+    // Hors ligne → démarrer quand même avec config locale
+    console.warn(
+      "[BOOT] Vérification Supabase impossible (hors ligne) → démarrage avec config locale",
     );
-    clearConfig();
-    printerCfg = null;
-    if (printerVerificationTimer) {
-      clearInterval(printerVerificationTimer);
-      printerVerificationTimer = null;
-    }
-
-    // Show error to user and return to onboarding
-    launchOnboarding();
+    launchApp();
   }
 });
 

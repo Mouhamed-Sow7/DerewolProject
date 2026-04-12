@@ -66,114 +66,164 @@ function formatActivationCode(input) {
   input.value = full;
 }
 
-function bindActivationModal(printerSlug) {
-  const backdrop = document.getElementById("activation-backdrop");
-  const modal = document.getElementById("activation-modal");
+let __actBound = false;
+function bindActivationModal() {
+  if (__actBound) return;
+  __actBound = true;
 
-  if (!backdrop || !modal) return;
-
-  // Tab switching
-  const tabs = modal.querySelectorAll(".act-tab");
-  tabs.forEach((tab) => {
+  // Tabs trial / subscription
+  document.querySelectorAll(".act-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      toggleActivationTab(tab.dataset.actTab);
+      document
+        .querySelectorAll(".act-tab")
+        .forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      const name = tab.dataset.tab;
+      const panelTrial = document.getElementById("panel-trial");
+      const panelSub = document.getElementById("panel-subscription");
+      if (panelTrial)
+        panelTrial.style.display = name === "trial" ? "block" : "none";
+      if (panelSub)
+        panelSub.style.display = name === "subscription" ? "block" : "none";
     });
   });
 
-  // Trial button
-  const trialBtn = modal.querySelector(".act-btn-activate");
+  // Bouton essai gratuit
+  const trialBtn = document.getElementById("btn-start-trial");
   if (trialBtn) {
-    trialBtn.addEventListener("click", () => {
-      // Show acceptance modal for trial conditions first
-      hideActivationModal();
-      showAcceptanceModal("trial");
+    trialBtn.addEventListener("click", async () => {
+      trialBtn.disabled = true;
+      trialBtn.textContent = "Activation...";
+      try {
+        const res = await window.derewol.activateTrial();
+        if (res?.success) {
+          const overlay =
+            document.getElementById("activation-modal") ||
+            document.getElementById("subscription-overlay");
+          if (overlay) overlay.style.display = "none";
+          const s = await window.derewol.subscriptionCheck();
+          handleSubscriptionStatus(s);
+        } else {
+          trialBtn.disabled = false;
+          trialBtn.textContent = "Démarrer l'essai gratuit";
+          alert(res?.error || "Erreur activation essai");
+        }
+      } catch (e) {
+        trialBtn.disabled = false;
+        trialBtn.textContent = "Démarrer l'essai gratuit";
+      }
     });
   }
 
-  // WhatsApp button
-  const whatsappBtn = modal.querySelector("#act-whatsapp-link");
-  if (whatsappBtn) {
-    whatsappBtn.addEventListener("click", () => {
-      const phone = "+221775000000";
-      const message = `Bonjour! Je voudrais en savoir plus sur les abonnements Derewol Print pour l'imprimante: ${printerSlug}`;
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-      window.open(url, "_blank");
-    });
-  }
-
-  // Code input formatting
-  const codeInput = modal.querySelector(".act-code-input");
+  // Formatage code activation
+  const codeInput =
+    document.getElementById("act-code-input") ||
+    document.getElementById("sub-activation-code");
   if (codeInput) {
-    codeInput.addEventListener("input", (e) => formatActivationCode(e.target));
+    codeInput.addEventListener("input", (e) => {
+      let val = String(e.target.value || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      if (val.startsWith("DW")) {
+        const rest = val.slice(2);
+        const parts = ["DW"];
+        for (let i = 0; i < rest.length && parts.length < 4; i += 4) {
+          parts.push(rest.slice(i, i + 4));
+        }
+        val = parts.join("-");
+      }
+      e.target.value = val;
+    });
   }
 
-  // Code submit button
-  const codeBtn = modal.querySelector(".act-code-btn");
-  const codeError = modal.querySelector(".act-code-error");
-
+  // Bouton activer code
+  const codeBtn =
+    document.getElementById("act-code-btn") ||
+    document.getElementById("sub-activate-btn");
+  const errorEl =
+    document.getElementById("act-code-error") ||
+    document.getElementById("sub-activation-error");
   if (codeBtn) {
     codeBtn.addEventListener("click", async () => {
-      const code = codeInput.value.replace(/-/g, "");
-      if (!code || code.length !== 16) {
-        if (codeError) {
-          codeError.textContent = "Code invalide (format: DW-XXXX-XXXX-XXXX)";
-          codeError.classList.add("show");
+      const code = codeInput?.value || "";
+      if (errorEl) errorEl.style.display = "none";
+      if (code.replace(/[\s\-]/g, "").length < 10) {
+        if (errorEl) {
+          errorEl.textContent = "Code invalide";
+          errorEl.style.display = "block";
         }
         return;
       }
-
       codeBtn.disabled = true;
-      codeBtn.textContent = "Vérification...";
-
+      const prev = codeBtn.innerHTML;
+      codeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
       try {
-        const result = await window.derewol.subscriptionActivate(code);
-        if (result.success) {
-          codeBtn.textContent = "✓ Activé!";
-          codeInput.value = "";
-          if (codeError) codeError.classList.remove("show");
-          setTimeout(() => {
-            hideActivationModal();
-            location.reload();
-          }, 1500);
+        const res = await window.derewol.subscriptionActivate(code);
+        if (res?.success) {
+          const overlay =
+            document.getElementById("activation-modal") ||
+            document.getElementById("subscription-overlay");
+          if (overlay) overlay.style.display = "none";
         } else {
-          if (codeError) {
-            codeError.textContent = result.error || "Code invalide";
-            codeError.classList.add("show");
+          if (errorEl) {
+            errorEl.textContent = res?.error || "Code invalide";
+            errorEl.style.display = "block";
           }
           codeBtn.disabled = false;
-          codeBtn.textContent = "Activer";
+          codeBtn.innerHTML = prev;
         }
       } catch (e) {
-        if (codeError) {
-          codeError.textContent = "Erreur: " + e.message;
-          codeError.classList.add("show");
+        if (errorEl) {
+          errorEl.textContent = "Erreur réseau";
+          errorEl.style.display = "block";
         }
         codeBtn.disabled = false;
-        codeBtn.textContent = "Activer";
+        codeBtn.innerHTML = prev;
       }
     });
   }
 
-  // Close on backdrop click
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) hideActivationModal();
-  });
+  // WhatsApp link
+  const waLink =
+    document.getElementById("act-whatsapp-link") ||
+    document.getElementById("sub-whatsapp-btn");
+  if (waLink) {
+    const slug = window.__printerCfg?.slug || "—";
+    const msg = encodeURIComponent(
+      `Bonjour, je veux activer DerewolPrint.\nBoutique: ${slug}\nMerci.`,
+    );
+    waLink.href = `https://wa.me/221781220391?text=${msg}`;
+  }
 }
 
-function handleSubscriptionStatus(subscription, printerSlug) {
-  const modal = document.getElementById("activation-modal");
-  if (!modal) return;
+function handleSubscriptionStatus(sub) {
+  const overlay =
+    document.getElementById("activation-modal") ||
+    document.getElementById("subscription-overlay");
+  if (!overlay) {
+    console.warn("[SUB] Aucun overlay modal trouvé dans le DOM");
+    return;
+  }
 
-  const blocked =
-    subscription &&
-    subscription.valid !== true &&
-    subscription.trial_active !== true;
+  // Mettre à jour le slug affiché
+  const slugEl =
+    document.getElementById("act-slug") ||
+    document.getElementById("sub-printer-slug");
+  if (slugEl)
+    slugEl.textContent = window.__printerCfg?.slug || printerCfg?.slug || "—";
+
+  const blocked = sub && sub.valid === false && sub.inGrace !== true;
 
   if (blocked) {
-    showActivationModal(subscription);
-    bindActivationModal(printerSlug);
+    overlay.style.display = "flex";
+    overlay.style.zIndex = "99999";
+    console.log("[SUB] Overlay affiché — abonnement expiré/requis");
+    bindActivationModal();
   } else {
-    hideActivationModal();
+    overlay.style.display = "none";
+    if (sub?.daysLeft !== undefined && sub.daysLeft <= 5 && sub.daysLeft > 0) {
+      console.warn(`[SUB] ⚠️ Expire dans ${sub.daysLeft} jour(s)`);
+    }
   }
 }
 
