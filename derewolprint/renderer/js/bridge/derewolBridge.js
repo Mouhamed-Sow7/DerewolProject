@@ -43,27 +43,15 @@ const sig = (arr) =>
 export function initBridge() {
   if (!window.derewol?.onJobReceived) return;
 
-  let lastUpdateTime = 0;
-
   window.derewol.onJobReceived((jobs) => {
-    const currentTime = Date.now();
-    const timeSinceUpdate = currentTime - lastUpdateTime;
-
-    console.log(
-      "[JOBS RECEIVED] Nombre:",
-      jobs?.length || 0,
-      "Temps depuis maj:",
-      timeSinceUpdate + "ms",
-    );
-
     const currentJobs = jobStore.getJobs();
     const map = {};
 
     (jobs || []).forEach((job) => {
-      const clientId = job.file_groups?.owner_id || "Inconnu";
-      const jobId = job.id;
-      const fileGroupId = job.file_groups?.id;
-      const groupKey = `grp-${fileGroupId || clientId}`;
+      const fileGroup = job.file_groups;
+      const clientId = fileGroup?.owner_id || "Inconnu";
+      const fileGroupId = fileGroup?.id;
+      const groupKey = fileGroupId ? `grp-${fileGroupId}` : `grp-${clientId}`;
 
       if (!map[groupKey]) {
         map[groupKey] = {
@@ -75,86 +63,48 @@ export function initBridge() {
             second: "2-digit",
           }),
           items: [],
+          // Statut du groupe depuis file_groups
+          groupStatus: fileGroup?.status || "waiting",
         };
       }
 
-      const files = job.file_groups?.files || [];
+      const files = fileGroup?.files || [];
       const linkedFile =
         files.find((f) => f.id === job.file_id) || files[0] || null;
 
       if (!linkedFile) return;
+      if (linkedFile.rejected) return; // Ne pas afficher les fichiers rejetés
 
-      const exists = map[groupKey].items.find((x) => x.jobId === jobId);
+      const exists = map[groupKey].items.find((x) => x.jobId === job.id);
       if (!exists) {
         map[groupKey].items.push({
-          jobId,
+          jobId: job.id,
           fileGroupId,
           fileId: linkedFile.id,
           fileName: linkedFile.file_name,
-          // Conserver le statut du job pour affichage dans l'UI
-          status: job.status, // 'queued' | 'printing' | 'rejected'
+          status: job.status,
         });
-        console.log(
-          `[BRIDGE] Added file: ${linkedFile.file_name} (${job.status}) to group ${groupKey}`,
-        );
       }
     });
 
-    // Calculer le statut du groupe selon ses items
-    Object.values(map).forEach((group) => {
-      const hasActive = group.items.some(
-        (i) => i.status === "queued" || i.status === "printing",
+    // Filtrer les groupes vides (tous fichiers rejetés)
+    const formatted = Object.values(map).filter((g) => g.items.length > 0);
+
+    const sig = (arr) =>
+      arr
+        .map(
+          (g) =>
+            `${g.id}:${g.groupStatus}:${g.items.map((i) => `${i.jobId}`).join(",")}`,
+        )
+        .sort()
+        .join("|");
+
+    if (sig(currentJobs) !== sig(formatted)) {
+      console.log("[BRIDGE] Changement → update UI");
+      const hasNew = formatted.some(
+        (g) => !currentJobs.find((c) => c.id === g.id),
       );
-      const hasPrinting = group.items.some((i) => i.status === "printing");
-      const hasQueued = group.items.some((i) => i.status === "queued");
-      const allRejected = group.items.every((i) => i.status === "rejected");
-
-      // Déterminer le statut du groupe
-      if (hasPrinting) {
-        group.status = "printing";
-      } else if (hasQueued) {
-        group.status = "queued"; // ou "waiting"
-      } else if (allRejected) {
-        group.status = "rejected";
-      } else {
-        group.status = "waiting";
-      }
-
-      console.log(
-        `[BRIDGE] Group ${group.id} status: ${group.status} (active: ${hasActive}, printing: ${hasPrinting}, queued: ${hasQueued})`,
-      );
-    });
-
-    // Filtrer les groupes dont TOUS les items sont rejetés → les retirer
-    // Mais garder les groupes avec au moins un item queued ou printing
-    const formatted = Object.values(map).filter((group) => {
-      const hasActive = group.items.some(
-        (i) => i.status === "queued" || i.status === "printing",
-      );
-      const hasRejected = group.items.some((i) => i.status === "rejected");
-      // Garder si au moins un actif, ou si récemment rejeté (pour feedback)
-      return hasActive || hasRejected;
-    });
-
-    const currentSig = sig(currentJobs);
-    const newSig = sig(formatted);
-
-    // Update ONLY if data changed - no unnecessary re-renders
-    if (currentSig !== newSig) {
-      const hasNew = formatted.some((group) => {
-        const prevGroup = currentJobs.find((c) => c.id === group.id);
-        if (!prevGroup) return true;
-        return group.items.some(
-          (item) => !prevGroup.items.find((x) => x.jobId === item.jobId),
-        );
-      });
-
-      if (hasNew) {
-        console.log("[NEW JOBS] Nouveaux jobs - notification audio activée");
-        playNotification();
-      }
-
-      lastUpdateTime = currentTime;
+      if (hasNew) playNotification();
       jobStore.setJobs(formatted);
     }
   });

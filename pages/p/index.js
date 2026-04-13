@@ -587,6 +587,15 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
             <i className="fa-solid fa-xmark" /> {t("rejectedMsg")}
           </p>
         )}
+        {status === "partial_rejected" && (
+          <p style={{ color: "#856404", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-alert-triangle" />{" "}
+            {files.filter((f) => f.rejected).length} fichier
+            {files.filter((f) => f.rejected).length > 1 ? "s" : ""} rejeté
+            {files.filter((f) => f.rejected).length > 1 ? "s" : ""} —{" "}
+            {files.filter((f) => !f.rejected).length} en attente d'impression
+          </p>
+        )}
         {status === "expired" && (
           <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
             <i className="fa-solid fa-clock" /> {t("expiredMsg")}

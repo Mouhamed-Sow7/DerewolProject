@@ -62,11 +62,11 @@ async function fetchPendingJobs(printerId) {
       copies_requested, copies_remaining,
       file_groups (
         id, owner_id, status, printer_id,
-        files ( id, file_name, storage_path, encrypted_key )
+        files ( id, file_name, storage_path, encrypted_key, rejected )
       )
     `,
     )
-    .in("status", ["queued", "printing", "rejected"])
+    .in("status", ["queued", "printing"])
     .gt("expires_at", new Date().toISOString())
     .gt("created_at", twoHoursAgo);
 

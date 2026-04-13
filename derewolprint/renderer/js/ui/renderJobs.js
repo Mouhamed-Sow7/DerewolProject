@@ -110,6 +110,7 @@ export default function renderJobs(
             </span>
             <span class="file-row-name" title="${item.fileName}">${item.fileName}</span>
             ${rejected ? '<span class="file-row-rejected-label">Rejeté</span>' : ""}
+            ${item.status === "printing" ? '<span class="file-status-dot file-status-dot--printing" title="Impression en cours"><i class="fa-solid fa-spinner fa-spin"></i></span>' : ""}
           </div>
 
           <div class="file-row-right">

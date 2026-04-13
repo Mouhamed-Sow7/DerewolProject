@@ -1036,6 +1036,19 @@ body.dark-mode .qr-printable {
   background: #fff3cd;
   color: #856404;
 }
+
+/* ── Indicateur impression par fichier ───────────────────── */
+.file-status-dot {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.file-status-dot--printing {
+  color: var(--info, #1d4ed8);
+}
+
 body.dark-mode .qr-code-wrap {
   background: #fff;
   border-color: #2e3d2b;

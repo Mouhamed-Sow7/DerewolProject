@@ -308,12 +308,27 @@ async function insertHistory({
 }
 
 // ── Nettoyage DB ────────────────────────────────────────────────
-async function cleanupJobDB(jobId, fileGroupId) {
+async function cleanupJobDB(jobId, fileGroupId, fileIdOnly = null) {
   try {
-    if (fileGroupId) {
-      await supabase.from("files").delete().eq("group_id", fileGroupId);
-    }
+    // Supprimer uniquement le print_job concerné
     await supabase.from("print_jobs").delete().eq("id", jobId);
+
+    // Si fileIdOnly fourni → rejet individuel, NE PAS supprimer les autres fichiers
+    if (fileIdOnly) {
+      // Marquer le fichier comme rejeté (ne pas le supprimer de la table)
+      await supabase
+        .from("files")
+        .update({
+          rejected: true,
+          rejected_at: new Date().toISOString(),
+        })
+        .eq("id", fileIdOnly);
+    } else {
+      // Rejet complet du groupe (TOUS les fichiers) → supprimer la table files
+      if (fileGroupId) {
+        await supabase.from("files").delete().eq("group_id", fileGroupId);
+      }
+    }
   } catch (e) {
     console.warn("[CLEANUP] Erreur DB :", e.message);
   }
@@ -501,7 +516,15 @@ ipcMain.handle("job:reject", async (event, jobId) => {
     const { data: job, error } = await supabase
       .from("print_jobs")
       .select(
-        `id, file_groups ( id, owner_id, files ( id, file_name, storage_path ) )`,
+        `
+        id,
+        file_id,
+        file_groups (
+          id,
+          owner_id,
+          files ( id, file_name, storage_path, rejected )
+        )
+      `,
       )
       .eq("id", jobId)
       .single();
@@ -509,31 +532,65 @@ ipcMain.handle("job:reject", async (event, jobId) => {
     if (error || !job) throw new Error("Job introuvable");
 
     const fileGroup = job.file_groups;
-    const file = fileGroup?.files?.[0];
+    const fileId = job.file_id;
     const ownerId = fileGroup?.owner_id;
     const fileGroupId = fileGroup?.id;
+    const allFiles = fileGroup?.files || [];
+    const thisFile = allFiles.find((f) => f.id === fileId);
 
-    if (file?.storage_path) {
-      await supabase.storage.from("derewol-files").remove([file.storage_path]);
+    // 1. Supprimer le fichier du storage
+    if (thisFile?.storage_path) {
+      await supabase.storage
+        .from("derewol-files")
+        .remove([thisFile.storage_path]);
     }
 
+    // 2. Marquer ce fichier comme rejeté + supprimer le job
+    await cleanupJobDB(jobId, fileGroupId, fileId);
+
+    // 3. Insérer dans l'historique
     await insertHistory({
       ownerId,
       displayId: ownerId,
-      fileName: file?.file_name || "Fichier inconnu",
+      fileName: thisFile?.file_name || "Fichier inconnu",
       copies: 0,
       printerName: null,
       status: "rejected",
       groupId: fileGroupId,
     });
 
+    // 4. Calculer le nouveau statut du groupe
+    // Recharger les fichiers pour avoir l'état à jour
+    const { data: updatedFiles } = await supabase
+      .from("files")
+      .select("id, rejected")
+      .eq("group_id", fileGroupId);
+
+    const total = updatedFiles?.length || 0;
+    const rejectedCount = updatedFiles?.filter((f) => f.rejected).length || 0;
+
+    let newGroupStatus;
+    if (total === 0 || rejectedCount === total) {
+      // Tous rejetés → groupe rejeté complet
+      newGroupStatus = "rejected";
+    } else if (rejectedCount > 0) {
+      // Certains rejetés → partiel
+      newGroupStatus = "partial_rejected";
+    } else {
+      newGroupStatus = "waiting";
+    }
+
     await supabase
       .from("file_groups")
-      .update({ status: "rejected" })
+      .update({ status: newGroupStatus })
       .eq("id", fileGroupId);
-    await cleanupJobDB(jobId, fileGroupId);
 
-    return { success: true, jobId };
+    // 5. Si groupe entièrement rejeté → supprimer les jobs restants
+    if (newGroupStatus === "rejected") {
+      await supabase.from("print_jobs").delete().eq("group_id", fileGroupId);
+    }
+
+    return { success: true, jobId, newGroupStatus };
   } catch (err) {
     return { success: false, error: err.message };
   }
