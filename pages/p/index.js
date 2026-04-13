@@ -926,11 +926,13 @@ export default function PrinterSPA({ showToast }) {
 
       if (data?.signedUrl) {
         const isPdf = /\.pdf$/i.test(fileName || "");
-        const openDirectly = /Android/i.test(navigator.userAgent) || !isPdf;
+        const isWord = /\.(doc|docx)$/i.test(fileName || "");
+        const isExcel = /\.(xls|xlsx)$/i.test(fileName || "");
+        const needsViewer = isWord || isExcel;
 
-        if (openDirectly) {
-          window.open(data.signedUrl, "_blank");
-          setPreviewUrl(null);
+        if (needsViewer) {
+          const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(data.signedUrl)}`;
+          setPreviewUrl(viewerUrl);
         } else {
           setPreviewUrl(data.signedUrl);
         }
