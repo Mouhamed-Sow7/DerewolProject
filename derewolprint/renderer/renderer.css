@@ -998,6 +998,44 @@ body.dark-mode .qr-printable {
   background: #fff;
   border-color: #2e3d2b;
 }
+
+/* ── Fichier rejeté dans un groupe ───────────────────── */
+.file-row--rejected {
+  background: var(--danger-light, #fdecea);
+  border-left: 3px solid var(--danger, #e53935);
+}
+
+.file-row-rejected-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--danger, #e53935);
+  background: var(--danger-light, #fdecea);
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  margin-left: 6px;
+}
+
+.group-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+}
+
+.group-badge--rejected {
+  background: var(--danger-light, #fdecea);
+  color: var(--danger, #e53935);
+}
+
+.group-badge--partial {
+  background: #fff3cd;
+  color: #856404;
+}
 body.dark-mode .qr-code-wrap {
   background: #fff;
   border-color: #2e3d2b;

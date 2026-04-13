@@ -78,22 +78,44 @@ export default function renderJobs(
       const statusBadge = `<span class="job-status-badge" style="background:${groupStatus.bg};color:${groupStatus.color}">${groupStatus.label}</span>`;
       const disableActions = !["waiting", "queued"].includes(group.status);
 
+      // Calculer statut global du groupe
+      const allRejected = group.items.every((i) => i.status === "rejected");
+      const someRejected = group.items.some((i) => i.status === "rejected");
+      const someActive = group.items.some(
+        (i) => i.status === "queued" || i.status === "printing",
+      );
+
+      const groupStatusBadge = allRejected
+        ? '<span class="group-badge group-badge--rejected"><i class="fa-solid fa-xmark"></i> Tout rejeté</span>'
+        : someRejected && someActive
+          ? '<span class="group-badge group-badge--partial"><i class="fa-solid fa-triangle-exclamation"></i> Partiel</span>'
+          : "";
+
       const fileRows = group.items
         .map((item) => {
           const copies = getFileCopies(item.jobId, item.fileId);
+          const rejected = item.status === "rejected";
+
           return `
-        <div class="file-row" id="file-row-${item.jobId}-${item.fileId}"
+        <div class="file-row ${rejected ? "file-row--rejected" : ""}"
+          id="file-row-${item.jobId}-${item.fileId}"
           data-job-id="${item.jobId}"
           data-file-id="${item.fileId}"
-          data-file-group-id="${item.fileGroupId}">
+          data-file-group-id="${item.fileGroupId}"
+          style="${rejected ? "opacity:0.5;" : ""}">
 
           <div class="file-row-name-wrap">
-            <span class="file-row-icon"><i class="fa-solid ${getFileIconClass(item.fileName)}"></i></span>
+            <span class="file-row-icon">
+              ${rejected ? '<i class="fa-solid fa-xmark" style="color:var(--danger)"></i>' : '<i class="fa-solid ' + getFileIconClass(item.fileName) + '"></i>'}
+            </span>
             <span class="file-row-name" title="${item.fileName}">${item.fileName}</span>
+            ${rejected ? '<span class="file-row-rejected-label">Rejeté</span>' : ""}
           </div>
 
           <div class="file-row-right">
-            <!-- Copies par fichier -->
+            ${
+              !rejected
+                ? `
             <div class="file-row-copies">
               <button class="copies-btn minus"
                 data-job-id="${item.jobId}"
@@ -104,7 +126,6 @@ export default function renderJobs(
                 data-file-id="${item.fileId}"><i class="fa-solid fa-plus"></i></button>
             </div>
 
-            <!-- Rejet fichier individuel -->
             <button class="btn-reject-file"
               data-job-id="${item.jobId}"
               data-file-id="${item.fileId}"
@@ -112,6 +133,9 @@ export default function renderJobs(
               data-group-id="${group.id}"
               title="Retirer ce fichier"
               ${disableActions ? "disabled" : ""}><i class="fa-solid fa-xmark"></i></button>
+            `
+                : ""
+            }
           </div>
 
         </div>`;
@@ -127,7 +151,7 @@ export default function renderJobs(
           <input type="checkbox" class="job-checkbox" data-id="${group.id}"
             ${checkedIds.has(group.id) ? "checked" : ""}>
           <div>
-            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${group.items.length > 0 ? group.items[0].fileName : "#" + group.clientId.slice(-8)} ${btBadge}</div>
+            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${group.items.length > 0 ? group.items[0].fileName : "#" + group.clientId.slice(-8)} ${btBadge} ${groupStatusBadge}</div>
             <div class="job-time">${group.time} · ${group.items.length} fichier${group.items.length > 1 ? "s" : ""} · ${statusBadge}</div>
           </div>
         </div>

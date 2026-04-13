@@ -54,62 +54,56 @@ export function initBridge() {
     );
 
     const currentJobs = jobStore.getJobs();
-    const currentJobMap = new Map(
-      currentJobs.map((g) => [
-        g.id,
-        new Set(g.items.map((item) => item.jobId)),
-      ]),
-    );
     const map = {};
 
     (jobs || []).forEach((job) => {
       const clientId = job.file_groups?.owner_id || "Inconnu";
-      const grpKey = `grp-${clientId}`;
+      const jobId = job.id;
+      const fileGroupId = job.file_groups?.id;
+      const groupKey = `grp-${fileGroupId || clientId}`;
 
-      if (!map[grpKey]) {
-        // Map status EXACTLY: pending, processing, completed, rejected
-        let mappedStatus = job.file_groups?.status || job.status || "waiting";
-        if (mappedStatus === "queued") mappedStatus = "pending";
-        if (mappedStatus === "expired") mappedStatus = "expired";
-
-        map[grpKey] = {
-          id: grpKey,
+      if (!map[groupKey]) {
+        map[groupKey] = {
+          id: groupKey,
           clientId,
-          status: mappedStatus,
           time: new Date(job.created_at).toLocaleTimeString("fr-FR", {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
           }),
           items: [],
-          _timestamp: currentTime,
         };
       }
 
       const files = job.file_groups?.files || [];
-
       const linkedFile =
         files.find((f) => f.id === job.file_id) || files[0] || null;
 
       if (!linkedFile) return;
 
-      const exists = map[grpKey].items.find((x) => x.jobId === job.id);
-
+      const exists = map[groupKey].items.find((x) => x.jobId === jobId);
       if (!exists) {
-        // CRITICAL: Map file-level status (rejected is at file level, not job)
-        const fileStatus = linkedFile.status || job.status || "pending";
-
-        map[grpKey].items.push({
-          jobId: job.id,
-          fileGroupId: job.file_groups?.id,
+        map[groupKey].items.push({
+          jobId,
+          fileGroupId,
           fileId: linkedFile.id,
           fileName: linkedFile.file_name,
-          fileStatus: fileStatus,
+          // Conserver le statut du job pour affichage dans l'UI
+          status: job.status, // 'queued' | 'printing' | 'rejected'
         });
       }
     });
 
-    const formatted = Object.values(map);
+    // Filtrer les groupes dont TOUS les items sont rejetés → les retirer
+    // Mais garder les groupes avec au moins un item queued ou printing
+    const formatted = Object.values(map).filter((group) => {
+      const hasActive = group.items.some(
+        (i) => i.status === "queued" || i.status === "printing",
+      );
+      const hasRejected = group.items.some((i) => i.status === "rejected");
+      // Garder si au moins un actif, ou si récemment rejeté (pour feedback)
+      return hasActive || hasRejected;
+    });
 
     const currentSig = sig(currentJobs);
     const newSig = sig(formatted);

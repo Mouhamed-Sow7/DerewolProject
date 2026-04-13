@@ -273,6 +273,10 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const THRESHOLD = 3;
   const visibleFiles = expanded ? files : files.slice(0, THRESHOLD);
   const hiddenCount = files.length - THRESHOLD;
+
+  // Détecter fichiers rejetés
+  const haRejectedFile = files.some((f) => f.rejected);
+  const allRejected = files.every((f) => f.rejected);
   const statusConfig = {
     waiting: {
       label: t("waiting"),
@@ -389,7 +393,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 <i className={`fa-solid ${sc.icon}`} style={{ fontSize: 11 }} />
                 {sc.label}
               </span>
-              {haRejectedFile && (
+              {haRejectedFile && !allRejected && (
                 <span
                   style={{
                     fontSize: 10,
@@ -448,10 +452,23 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 gap: 8,
                 padding: "10px 16px",
                 borderBottom: `1px solid ${C.border}`,
+                background: f.rejected ? "#fdecea" : "transparent",
+                borderLeft: f.rejected ? "3px solid #e53935" : "none",
+                opacity: f.rejected ? 0.75 : 1,
               }}
             >
-              <span style={{ fontSize: 15, color: "#dc2626", flexShrink: 0 }}>
-                <i className="fa-solid fa-file-pdf" />
+              <span
+                style={{
+                  fontSize: 16,
+                  color: f.rejected ? "#e53935" : "#dc2626",
+                  flexShrink: 0,
+                }}
+              >
+                <i
+                  className={
+                    f.rejected ? "fa-solid fa-xmark" : "fa-regular fa-file-pdf"
+                  }
+                />
               </span>
               <span
                 style={{
@@ -461,12 +478,29 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
+                  textDecoration: f.rejected ? "line-through" : "none",
                 }}
                 title={f.file_name}
               >
                 {f.file_name}
               </span>
-              {f.storage_path && f.status !== "rejected" && (
+              {f.rejected && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#e53935",
+                    background: "#fdecea",
+                    padding: "2px 8px",
+                    borderRadius: 20,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  Rejeté
+                </span>
+              )}
+              {!f.rejected && f.storage_path && (
                 <button
                   onClick={() => onPreview(f.storage_path, f.file_name)}
                   style={{
