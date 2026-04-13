@@ -100,6 +100,31 @@ export function initBridge() {
       }
     });
 
+    // Calculer le statut du groupe selon ses items
+    Object.values(map).forEach((group) => {
+      const hasActive = group.items.some(
+        (i) => i.status === "queued" || i.status === "printing",
+      );
+      const hasPrinting = group.items.some((i) => i.status === "printing");
+      const hasQueued = group.items.some((i) => i.status === "queued");
+      const allRejected = group.items.every((i) => i.status === "rejected");
+
+      // Déterminer le statut du groupe
+      if (hasPrinting) {
+        group.status = "printing";
+      } else if (hasQueued) {
+        group.status = "queued"; // ou "waiting"
+      } else if (allRejected) {
+        group.status = "rejected";
+      } else {
+        group.status = "waiting";
+      }
+
+      console.log(
+        `[BRIDGE] Group ${group.id} status: ${group.status} (active: ${hasActive}, printing: ${hasPrinting}, queued: ${hasQueued})`,
+      );
+    });
+
     // Filtrer les groupes dont TOUS les items sont rejetés → les retirer
     // Mais garder les groupes avec au moins un item queued ou printing
     const formatted = Object.values(map).filter((group) => {
