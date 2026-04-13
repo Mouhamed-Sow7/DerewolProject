@@ -1,6 +1,31 @@
-# 📊 DEREWOL — État complet du projet (12/04/2026)
+# 📊 DEREWOL — État complet du projet (13/04/2026)
 
-## � MISES À JOUR RÉCENTES (12/04/2026)
+⚠️ **MISE À JOUR CRITIQUE (13/04/2026)**: Voir [COMPLETE-ANALYSIS-2026.md](./md-files/COMPLETE-ANALYSIS-2026.md) pour l'analyse exhaustive des problèmes identifiés et solutions proposées.
+
+## 🔴 PROBLÈMES CRITIQUES NOUVELLEMENT IDENTIFIÉS (13/04/2026)
+
+### BUG #1: SUPPRESSION TOUS LES FICHIERS D'UN GROUPE AU LIEU D'UN SEUL
+
+- **Localisation**: `derewolprint/main/main.js` ligne ~535 (handler `job:reject`)
+- **Problème**: Quand 1 fichier est rejeté → le GROUPE ENTIER markedé "rejected"
+- **Impact critique**: Tous les fichiers du groupe supprimés, même ceux non-rejetés
+- **Solution**: Ajouter `files.rejected` (boolean) + créer handler `job:reject-file`
+- **Status**: ❌ NON RÉSOLU - À IMPLÉMENTER PRIORITAIREMENT
+
+### BUG #2: INCOHÉRENCE STATUTS PWA vs ELECTRON
+
+- **Symptôme**: PWA affiche "En attente" pendant que Electron affiche groupe "Rejeté"
+- **Cause**: files table n'a pas d'attribut `rejected` + logique groupe-entier vs fichier
+- **Impact**: Utilisateur voit des statuts différents→ confusion
+- **Status**: ❌ NON RÉSOLU - Dépend de BUG #1
+
+### BUG #3: MANQUE IPC HANDLER POUR REJET INDIVIDUEL
+
+- **Fichier concerné**: `derewolprint/renderer/js/ui/renderJobs.js` (ligne ~200)
+- **Problème**: Code appelle `onRejectFile()` mais pas d'IPC handler associé
+- **Status**: ❌ MANQUANT - À créer
+
+## ✅ MISES À JOUR RÉCENTES (12/04/2026)
 
 ### ✅ Corrections appliquées
 
@@ -573,5 +598,110 @@ window.derewol.setPollingInterval(1000); // Change to 1s
 
 ---
 
-**Dernière mise à jour**: 12/04/2026  
-**Statut**: 🟡 EN COURS (Modal pending, UTF-8 fixed, Polling optimized)
+## 📚 DOCUMENTATION COMPLÈTE & ANALYSE
+
+### 🔗 Références principales
+
+**Pour une analyse EXHAUSTIVE** → Consulter [md-files/COMPLETE-ANALYSIS-2026.md](./md-files/COMPLETE-ANALYSIS-2026.md)
+
+Cet document couvre:
+
+- ✅ Tous les problèmes identifiés en détail
+- ✅ Structure complète de bases de données (Schema SQL)
+- ✅ Toutes les routes et endpoints (PWA + Electron IPC)
+- ✅ Flux complets (Upload, Impression, Rejet)
+- ✅ Solutions proposées par phase
+- ✅ Checklist d'optimisation
+- ✅ Scénarios de test
+
+---
+
+## 🗺️ ROUTES & ENDPOINTS RÉSUMÉ
+
+### PWA (Next.js)
+
+```
+GET / → Landing
+GET /p/[slug] → Main SPA (print interface)
+GET /dashboard → Admin view
+GET /upload → Alt upload
+POST /api/file-groups → Create group
+POST /api/files/upload → Upload file
+GET /api/files/:groupId → Fetch group status
+```
+
+### Electron IPC
+
+```
+printer:config → Get printer config
+subscription:check → Check subscription
+trial:activate → Start 7-day trial
+job:confirm → Print group
+job:reject → Reject job (⚠️ BUGUÉ)
+job:reject-file → Reject single file (⚠️ MANQUANT)
+polling:set-interval → Change poll rate
+```
+
+**Voir COMPLETE-ANALYSIS-2026.md pour détails complets**
+
+---
+
+## 📊 STRUCTURE SUPABASE RÉSUMÉ
+
+```
+✅ printers → Printer configurations
+✅ file_groups → Groups of files (status: waiting|printing|rejected|completed|expired)
+✅ files → Individual files (⚠️ MANQUE: rejected column)
+✅ print_jobs → 1-to-1 file-to-job mapping (status: queued|printing|completed|rejected)
+✅ subscriptions → Printer subscriptions (trial + paid)
+✅ history → Log of print operations
+```
+
+**Voir COMPLETE-ANALYSIS-2026.md pour schema SQL complet**
+
+---
+
+## 🔴 RÉSUMÉ PROBLÈMES CRITIQUES À RÉSOUDRE
+
+| #   | Problème                                 | Gravité     | Fichier          | Solution                           |
+| --- | ---------------------------------------- | ----------- | ---------------- | ---------------------------------- |
+| 1   | Rejet groupe entier au lieu d'un fichier | 🔴 CRITIQUE | main.js:535      | Add `files.rejected` + IPC handler |
+| 2   | Incohérence PWA/Electron statuts         | 🔴 CRITIQUE | Everywhere       | Dépend de #1                       |
+| 3   | IPC job:reject-file manquant             | 🟠 MAJEUR   | main.js          | Créer handler                      |
+| 4   | files.rejected column inexistante        | 🟠 MAJEUR   | Supabase         | Migration SQL                      |
+| 5   | Modal d'acceptation invisible            | 🟠 MAJEUR   | renderer.js      | Déboguer CSS/JS                    |
+| 6   | Polling rate engendre latence PWA        | 🟡 MOYEN    | pages/p/index.js | Switch to Realtime                 |
+| 7   | Table users vide                         | 🟡 MOYEN    | Supabase         | Analyse + migration                |
+
+**Voir COMPLETE-ANALYSIS-2026.md pour solutions détaillées**
+
+---
+
+## ✅ PROCHAINES PHASES
+
+### Phase 1: Fix Critical Bugs (1 semaine)
+
+- [ ] Add files.rejected migration
+- [ ] Create IPC job:reject-file handler
+- [ ] Fix group status logic
+- [ ] Update PWA to show partial rejection
+
+### Phase 2: Optimisation (1 semaine)
+
+- [ ] Switch PWA to Realtime subscriptions
+- [ ] Better error handling
+- [ ] Performance improvements
+
+### Phase 3: Production Readiness (1 semaine)
+
+- [ ] Full integration testing
+- [ ] Debug modal d'acceptation
+- [ ] Final build & deployment
+
+**Voir COMPLETE-ANALYSIS-2026.md pour détails d'implémentation**
+
+---
+
+**Dernière mise à jour**: 13/04/2026  
+**Statut**: 🔴 CRITIQUE - 3 bugs à corriger prioritairement
+**Documentation complète**: [COMPLETE-ANALYSIS-2026.md](./md-files/COMPLETE-ANALYSIS-2026.md)
