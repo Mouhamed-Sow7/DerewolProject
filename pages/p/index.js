@@ -265,18 +265,47 @@ function CountdownPill({ expiresAt }) {
 function GroupCard({ group, onPreview, C, t, history = false }) {
   const [expanded, setExpanded] = useState(false);
   const job = group.print_jobs?.[0];
-  const files = group.files || [];
+  const allFiles = group.files || [];
   const status = group.status;
+
+  const remainingFiles = [];
+  const historyFiles = [];
+
+  allFiles.forEach((file) => {
+    if (
+      file.status === "completed" ||
+      file.status === "rejected" ||
+      file.rejected === true
+    ) {
+      historyFiles.push(file);
+    } else {
+      remainingFiles.push(file);
+    }
+  });
+
+  group.remainingFiles = remainingFiles;
+  group.remainingCount = remainingFiles.length;
+
+  const files = history ? historyFiles : remainingFiles;
   const copies = job?.copies_requested || group.copies_count || 1;
   const fileCount = files.length > 0 ? files.length : group.files_count || 0;
   const totalCopies = copies * fileCount;
   const THRESHOLD = 3;
   const visibleFiles = expanded ? files : files.slice(0, THRESHOLD);
-  const hiddenCount = files.length - THRESHOLD;
+  const hiddenCount = Math.max(0, files.length - THRESHOLD);
 
-  // Détecter fichiers rejetés
-  const haRejectedFile = files.some((f) => f.rejected);
-  const allRejected = files.every((f) => f.rejected);
+  const haRejectedFile = allFiles.some(
+    (f) => f.rejected || f.status === "rejected",
+  );
+  const allRejected = allFiles.every(
+    (f) => f.rejected || f.status === "rejected",
+  );
+  const uiStatus =
+    group.remainingCount === 0
+      ? "completed"
+      : haRejectedFile && !allRejected
+        ? "partial"
+        : status;
   const statusConfig = {
     waiting: {
       label: t("waiting"),
@@ -378,8 +407,8 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
             >
               <span
                 style={{
-                  background: sc.bg,
-                  color: sc.color,
+                  background: uiStatus === "partial" ? "#fef5d6" : sc.bg,
+                  color: uiStatus === "partial" ? "#856404" : sc.color,
                   padding: "3px 10px",
                   borderRadius: 20,
                   fontSize: 11,
@@ -390,8 +419,11 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                   gap: 5,
                 }}
               >
-                <i className={`fa-solid ${sc.icon}`} style={{ fontSize: 11 }} />
-                {sc.label}
+                <i
+                  className={`fa-solid ${uiStatus === "partial" ? "fa-alert-triangle" : sc.icon}`}
+                  style={{ fontSize: 11 }}
+                />
+                {uiStatus === "partial" ? "Partiellement rejeté" : sc.label}
               </span>
               {haRejectedFile && !allRejected && (
                 <span
@@ -484,7 +516,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
               >
                 {f.file_name}
               </span>
-              {f.rejected && (
+              {(f.rejected || f.status === "rejected") && (
                 <span
                   style={{
                     fontSize: 11,
@@ -497,7 +529,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                     flexShrink: 0,
                   }}
                 >
-                  Rejeté
+                  Rejeté — supprimé
                 </span>
               )}
               {!f.rejected && f.storage_path && (
@@ -587,13 +619,13 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
             <i className="fa-solid fa-xmark" /> {t("rejectedMsg")}
           </p>
         )}
-        {status === "partial_rejected" && (
+        {uiStatus === "partial" && (
           <p style={{ color: "#856404", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-alert-triangle" />{" "}
-            {files.filter((f) => f.rejected).length} fichier
-            {files.filter((f) => f.rejected).length > 1 ? "s" : ""} rejeté
-            {files.filter((f) => f.rejected).length > 1 ? "s" : ""} —{" "}
-            {files.filter((f) => !f.rejected).length} en attente d'impression
+            <i className="fa-solid fa-alert-triangle" /> {historyFiles.length}{" "}
+            fichier
+            {historyFiles.length > 1 ? "s" : ""} rejeté
+            {historyFiles.length > 1 ? "s" : ""} — {remainingFiles.length} en
+            attente
           </p>
         )}
         {status === "expired" && (
@@ -609,25 +641,51 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
 function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
   if (groupsLoading) return null;
 
-  // Filtrer: "active" = en attente d'impression
-  // "history" = complété, rejeté (tout), expiré, ou partiellement rejeté
-  const active = groups.filter((g) => {
-    const status = g.status;
-    // Exclure: completed, rejected (complet), expired, partial_rejected
-    return !["completed", "rejected", "expired", "partial_rejected"].includes(
-      status,
-    );
-  });
-
-  const history = groups.filter((g) => {
-    const status = g.status;
-    // Inclure: completed, rejected (complet), expired, partial_rejected (car fichiers rejectés)
-    return ["completed", "rejected", "expired", "partial_rejected"].includes(
-      status,
-    );
-  });
-
   if (groups.length === 0) return null;
+
+  const activeGroups = [];
+  const historyGroups = [];
+
+  groups.forEach((group) => {
+    const allFiles = group.files || [];
+    const remainingFiles = [];
+    const rejectedFiles = [];
+
+    allFiles.forEach((file) => {
+      if (
+        file.status === "completed" ||
+        file.status === "rejected" ||
+        file.rejected === true
+      ) {
+        rejectedFiles.push(file);
+      } else {
+        remainingFiles.push(file);
+      }
+    });
+
+    group.remainingFiles = remainingFiles;
+    group.remainingCount = remainingFiles.length;
+
+    if (
+      group.status === "completed" ||
+      group.status === "rejected" ||
+      group.status === "expired"
+    ) {
+      historyGroups.push(group);
+    } else if (remainingFiles.length > 0) {
+      activeGroups.push(group);
+    }
+
+    if (rejectedFiles.length > 0) {
+      const historyGroup = {
+        ...group,
+        files: rejectedFiles,
+        remainingCount: 0,
+      };
+      historyGroups.push(historyGroup);
+    }
+  });
+
   return (
     <div style={{ marginTop: 24 }}>
       <hr
@@ -637,7 +695,7 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
           marginBottom: 20,
         }}
       />
-      {active.length > 0 && (
+      {activeGroups.length > 0 && (
         <section>
           <h3
             style={{
@@ -659,16 +717,22 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
                 marginLeft: 8,
               }}
             >
-              {active.length}
+              {activeGroups.length}
             </span>
           </h3>
-          {active.map((g) => (
-            <GroupCard key={g.id} group={g} onPreview={onPreview} C={C} t={t} />
+          {activeGroups.map((g) => (
+            <GroupCard
+              key={`active-${g.id}`}
+              group={g}
+              onPreview={onPreview}
+              C={C}
+              t={t}
+            />
           ))}
         </section>
       )}
-      {history.length > 0 && (
-        <section style={{ marginTop: active.length > 0 ? 20 : 0 }}>
+      {historyGroups.length > 0 && (
+        <section style={{ marginTop: activeGroups.length > 0 ? 20 : 0 }}>
           <h3
             style={{
               fontSize: 13,
@@ -679,9 +743,9 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
           >
             {t("history")}
           </h3>
-          {history.map((g) => (
+          {historyGroups.map((g) => (
             <GroupCard
-              key={g.id}
+              key={`history-${g.id}`}
               group={g}
               onPreview={onPreview}
               C={C}
