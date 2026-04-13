@@ -732,7 +732,10 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
         </section>
       )}
       {historyGroups.length > 0 && (
-        <section style={{ marginTop: activeGroups.length > 0 ? 20 : 0 }}>
+        <section
+          className="history-section"
+          style={{ marginTop: activeGroups.length > 0 ? 20 : 0 }}
+        >
           <h3
             style={{
               fontSize: 13,
@@ -743,16 +746,18 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
           >
             {t("history")}
           </h3>
-          {historyGroups.map((g) => (
-            <GroupCard
-              key={`history-${g.id}`}
-              group={g}
-              onPreview={onPreview}
-              C={C}
-              t={t}
-              history
-            />
-          ))}
+          <div className="history-list">
+            {historyGroups.map((g) => (
+              <GroupCard
+                key={`history-${g.id}`}
+                group={g}
+                onPreview={onPreview}
+                C={C}
+                t={t}
+                history
+              />
+            ))}
+          </div>
         </section>
       )}
     </div>

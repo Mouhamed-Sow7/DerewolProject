@@ -291,6 +291,35 @@ body {
   border-radius: 8px;
 }
 
+/* ── History Section ── */
+.history-section {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 300px);
+}
+
+.history-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+  border-radius: 8px;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .file-item {
   display: flex;
   align-items: center;
