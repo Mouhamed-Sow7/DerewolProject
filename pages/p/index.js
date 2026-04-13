@@ -300,12 +300,16 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const allRejected = allFiles.every(
     (f) => f.rejected || f.status === "rejected",
   );
+  // ── FIX: Determine displayStatus from actual file state ────────────
+  // If ALL files are rejected → show "rejected", not "completed"
   const uiStatus =
-    group.remainingCount === 0
-      ? "completed"
-      : haRejectedFile && !allRejected
-        ? "partial"
-        : status;
+    allFiles.length > 0 && allRejected
+      ? "rejected"
+      : group.remainingCount === 0
+        ? "completed"
+        : haRejectedFile && !allRejected
+          ? "partial"
+          : status;
   const statusConfig = {
     waiting: {
       label: t("waiting"),
@@ -599,24 +603,28 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
         </div>
       )}
       <div style={{ padding: "10px 16px" }}>
-        {status === "waiting" && (
+        {/* ── FIX: Use uiStatus (calculated) instead of status (database) ──── */}
+        {uiStatus === "waiting" && remainingFiles.length > 0 && (
           <p style={{ color: "#92600a", fontSize: 13, fontWeight: 500 }}>
             <i className="fa-solid fa-hourglass-end" /> {t("waitingMsg")}
           </p>
         )}
-        {status === "printing" && (
+        {uiStatus === "printing" && (
           <p style={{ color: "#1d4ed8", fontSize: 13, fontWeight: 500 }}>
             <i className="fa-solid fa-print" /> {t("printingMsg")}
           </p>
         )}
-        {status === "completed" && (
-          <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-check" /> {t("completedMsg")}
-          </p>
-        )}
-        {status === "rejected" && (
+        {uiStatus === "completed" &&
+          remainingFiles.length === 0 &&
+          !allRejected && (
+            <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
+              <i className="fa-solid fa-check" /> {t("completedMsg")}
+            </p>
+          )}
+        {uiStatus === "rejected" && allRejected && (
           <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-xmark" /> {t("rejectedMsg")}
+            <i className="fa-solid fa-xmark" /> Tous les fichiers ont été
+            rejetés
           </p>
         )}
         {uiStatus === "partial" && (
@@ -628,7 +636,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
             attente
           </p>
         )}
-        {status === "expired" && (
+        {uiStatus === "expired" && (
           <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
             <i className="fa-solid fa-clock" /> {t("expiredMsg")}
           </p>
@@ -666,17 +674,31 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
     group.remainingFiles = remainingFiles;
     group.remainingCount = remainingFiles.length;
 
+    // ── FIX: Calculate if ALL files are rejected ──────────────────
+    const allRejected =
+      allFiles.length > 0 &&
+      allFiles.every((f) => f.rejected || f.status === "rejected");
+
+    // Move to history if:
+    // 1. Database says so, OR
+    // 2. ALL files are rejected (even if DB is still "waiting")
     if (
       group.status === "completed" ||
       group.status === "rejected" ||
-      group.status === "expired"
+      group.status === "expired" ||
+      allRejected
     ) {
       historyGroups.push(group);
     } else if (remainingFiles.length > 0) {
       activeGroups.push(group);
     }
 
-    if (rejectedFiles.length > 0) {
+    // Also add partial rejections to history
+    if (
+      rejectedFiles.length > 0 &&
+      remainingFiles.length === 0 &&
+      !allRejected
+    ) {
       const historyGroup = {
         ...group,
         files: rejectedFiles,
