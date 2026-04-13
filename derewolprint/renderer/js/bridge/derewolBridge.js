@@ -32,7 +32,10 @@ function playNotification() {
 // ── Signature util ────────────────────────────────────────────
 const sig = (arr) =>
   arr
-    .map((g) => `${g.id}:${g.items.map((i) => i.jobId).join(",")}`)
+    .map(
+      (g) =>
+        `${g.id}:${g.items.map((i) => `${i.jobId}:${i.status}`).join(",")}`,
+    )
     .sort()
     .join("|");
 
@@ -91,6 +94,9 @@ export function initBridge() {
           // Conserver le statut du job pour affichage dans l'UI
           status: job.status, // 'queued' | 'printing' | 'rejected'
         });
+        console.log(
+          `[BRIDGE] Added file: ${linkedFile.file_name} (${job.status}) to group ${groupKey}`,
+        );
       }
     });
 
@@ -111,9 +117,11 @@ export function initBridge() {
     // Update ONLY if data changed - no unnecessary re-renders
     if (currentSig !== newSig) {
       const hasNew = formatted.some((group) => {
-        const previousJobIds = currentJobMap.get(group.id);
-        if (!previousJobIds) return true;
-        return group.items.some((item) => !previousJobIds.has(item.jobId));
+        const prevGroup = currentJobs.find((c) => c.id === group.id);
+        if (!prevGroup) return true;
+        return group.items.some(
+          (item) => !prevGroup.items.find((x) => x.jobId === item.jobId),
+        );
       });
 
       if (hasNew) {

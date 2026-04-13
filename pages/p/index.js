@@ -314,7 +314,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       icon: "fa-clock",
     },
   };
-  const sc = statusConfig[displayStatus] || statusConfig.waiting;
+  const sc = statusConfig[status] || statusConfig.waiting;
   return (
     <div
       style={{
