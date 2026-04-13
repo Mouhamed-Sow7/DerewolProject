@@ -347,7 +347,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       icon: "fa-clock",
     },
   };
-  const sc = statusConfig[status] || statusConfig.waiting;
+  const sc = statusConfig[uiStatus] || statusConfig.waiting;
   return (
     <div
       style={{
@@ -409,26 +409,48 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 flexWrap: "wrap",
               }}
             >
-              <span
-                style={{
-                  background: uiStatus === "partial" ? "#fef5d6" : sc.bg,
-                  color: uiStatus === "partial" ? "#856404" : sc.color,
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
-              >
-                <i
-                  className={`fa-solid ${uiStatus === "partial" ? "fa-alert-triangle" : sc.icon}`}
-                  style={{ fontSize: 11 }}
-                />
-                {uiStatus === "partial" ? "Partiellement rejeté" : sc.label}
-              </span>
+              {/* ── FIX: Only show badge if NOT all rejected ── */}
+              {uiStatus !== "rejected" && (
+                <span
+                  style={{
+                    background: uiStatus === "partial" ? "#fef5d6" : sc.bg,
+                    color: uiStatus === "partial" ? "#856404" : sc.color,
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <i
+                    className={`fa-solid ${uiStatus === "partial" ? "fa-alert-triangle" : sc.icon}`}
+                    style={{ fontSize: 11 }}
+                  />
+                  {uiStatus === "partial" ? "Partiellement rejeté" : sc.label}
+                </span>
+              )}
+              {uiStatus === "rejected" && (
+                <span
+                  style={{
+                    background: "#fee2e2",
+                    color: "#dc2626",
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <i className="fa-solid fa-xmark" style={{ fontSize: 11 }} />
+                  Rejeté
+                </span>
+              )}
               {haRejectedFile && !allRejected && (
                 <span
                   style={{

@@ -152,7 +152,7 @@ export default function renderJobs(
           <input type="checkbox" class="job-checkbox" data-id="${group.id}"
             ${checkedIds.has(group.id) ? "checked" : ""}>
           <div>
-            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${group.items.length > 0 ? group.items[0].fileName : "#" + group.clientId.slice(-8)} ${btBadge} ${groupStatusBadge}</div>
+            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${group.ownerId ? group.ownerId.substring(0, 20) : "#" + group.clientId.slice(-8)} ${btBadge} ${groupStatusBadge}</div>
             <div class="job-time">${group.time} · ${group.items.length} fichier${group.items.length > 1 ? "s" : ""} · ${statusBadge}</div>
           </div>
         </div>
