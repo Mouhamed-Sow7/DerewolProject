@@ -291,18 +291,49 @@ body {
   border-radius: 8px;
 }
 
+/* ── Active Files Section ── */
+.active-section {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: hidden;
+}
+
+.active-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+  border-radius: 8px;
+}
+
+.active-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.active-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.active-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* ── History Section ── */
 .history-section {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 300px);
+  max-height: 50vh;
+  overflow: hidden;
 }
 
 .history-list {
   flex: 1;
   min-height: 0;
-  max-height: 400px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-right: 4px;
   border-radius: 8px;
 }

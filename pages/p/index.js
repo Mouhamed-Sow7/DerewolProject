@@ -696,7 +696,7 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
         }}
       />
       {activeGroups.length > 0 && (
-        <section>
+        <section className="active-section">
           <h3
             style={{
               fontSize: 14,
@@ -720,15 +720,17 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
               {activeGroups.length}
             </span>
           </h3>
-          {activeGroups.map((g) => (
-            <GroupCard
-              key={`active-${g.id}`}
-              group={g}
-              onPreview={onPreview}
-              C={C}
-              t={t}
-            />
-          ))}
+          <div className="active-list">
+            {activeGroups.map((g) => (
+              <GroupCard
+                key={`active-${g.id}`}
+                group={g}
+                onPreview={onPreview}
+                C={C}
+                t={t}
+              />
+            ))}
+          </div>
         </section>
       )}
       {historyGroups.length > 0 && (
@@ -933,12 +935,15 @@ export default function PrinterSPA({ showToast }) {
         const needsGoogleViewer = isWord || isExcel || isPowerPoint;
 
         if (needsGoogleViewer) {
-          const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(data.signedUrl)}`;
+          // Force Google Docs Viewer render with proper encoding
+          const encodedUrl = encodeURIComponent(data.signedUrl);
+          const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodedUrl}`;
           setPreviewUrl(viewerUrl);
         } else if (isPdf || isImage) {
           setPreviewUrl(data.signedUrl);
         } else {
-          const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(data.signedUrl)}`;
+          const encodedUrl = encodeURIComponent(data.signedUrl);
+          const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodedUrl}`;
           setPreviewUrl(viewerUrl);
         }
       } else {
@@ -1390,6 +1395,7 @@ export default function PrinterSPA({ showToast }) {
               WebkitOverflowScrolling: "touch",
               display: "flex",
               flexDirection: "column",
+              position: "relative",
             }}
           >
             {previewLoading || previewUrl === "loading" ? (
@@ -1406,17 +1412,23 @@ export default function PrinterSPA({ showToast }) {
                 <i className="fa-solid fa-spinner fa-spin" /> Chargement...
               </div>
             ) : (
-              <iframe
-                src={previewUrl}
-                style={{
-                  width: "100%",
-                  flex: 1,
-                  border: "none",
-                  background: "#fff",
-                }}
-                title={previewName}
-                sandbox="allow-same-origin allow-scripts"
-              />
+              <>
+                <iframe
+                  src={previewUrl}
+                  style={{
+                    width: "100%",
+                    flex: 1,
+                    border: "none",
+                    background: "#fff",
+                    minHeight: "400px",
+                  }}
+                  title={previewName}
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                  onError={() => {
+                    setPreviewUrl(null);
+                  }}
+                />
+              </>
             )}
           </div>
         </div>
