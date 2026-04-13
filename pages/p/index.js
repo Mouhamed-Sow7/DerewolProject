@@ -926,20 +926,26 @@ export default function PrinterSPA({ showToast }) {
 
       if (data?.signedUrl) {
         const isPdf = /\.pdf$/i.test(fileName || "");
+        const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName || "");
         const isWord = /\.(doc|docx)$/i.test(fileName || "");
         const isExcel = /\.(xls|xlsx)$/i.test(fileName || "");
-        const needsViewer = isWord || isExcel;
+        const isPowerPoint = /\.(ppt|pptx)$/i.test(fileName || "");
+        const needsGoogleViewer = isWord || isExcel || isPowerPoint;
 
-        if (needsViewer) {
+        if (needsGoogleViewer) {
           const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(data.signedUrl)}`;
           setPreviewUrl(viewerUrl);
-        } else {
+        } else if (isPdf || isImage) {
           setPreviewUrl(data.signedUrl);
+        } else {
+          const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(data.signedUrl)}`;
+          setPreviewUrl(viewerUrl);
         }
       } else {
         setPreviewUrl(null);
       }
-    } catch {
+    } catch (err) {
+      console.error("Preview error:", err);
       setPreviewUrl(null);
     } finally {
       setPreviewLoading(false);
@@ -1305,13 +1311,22 @@ export default function PrinterSPA({ showToast }) {
           onClick={(e) => {
             if (e.target === e.currentTarget) setPreviewUrl(null);
           }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setPreviewUrl(null);
+          }}
+          role="dialog"
           style={{
             position: "fixed",
-            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             zIndex: 9999,
-            background: "rgba(0,0,0,0.85)",
+            background: "rgba(0,0,0,0.9)",
             display: "flex",
             flexDirection: "column",
+            WebkitUserSelect: "none",
+            userSelect: "none",
           }}
         >
           <div
@@ -1321,6 +1336,8 @@ export default function PrinterSPA({ showToast }) {
               justifyContent: "space-between",
               padding: "12px 16px",
               background: C.green,
+              flexShrink: 0,
+              WebkitFlexShrink: 0,
             }}
           >
             <span
@@ -1339,6 +1356,8 @@ export default function PrinterSPA({ showToast }) {
             </span>
             <button
               onClick={() => setPreviewUrl(null)}
+              type="button"
+              aria-label="Close preview"
               style={{
                 background: "rgba(255,255,255,0.2)",
                 border: "none",
@@ -1352,12 +1371,27 @@ export default function PrinterSPA({ showToast }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.3)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.2)";
               }}
             >
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          <div
+            style={{
+              flex: 1,
+              overflow: "auto",
+              WebkitOverflowScrolling: "touch",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             {previewLoading || previewUrl === "loading" ? (
               <div
                 style={{
@@ -1374,8 +1408,14 @@ export default function PrinterSPA({ showToast }) {
             ) : (
               <iframe
                 src={previewUrl}
-                style={{ width: "100%", height: "100%", border: "none" }}
+                style={{
+                  width: "100%",
+                  flex: 1,
+                  border: "none",
+                  background: "#fff",
+                }}
                 title={previewName}
+                sandbox="allow-same-origin allow-scripts"
               />
             )}
           </div>
