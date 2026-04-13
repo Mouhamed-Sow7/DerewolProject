@@ -608,12 +608,25 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
 
 function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
   if (groupsLoading) return null;
-  const active = groups.filter(
-    (g) => !["completed", "rejected", "expired"].includes(g.status),
-  );
-  const history = groups.filter((g) =>
-    ["completed", "rejected", "expired"].includes(g.status),
-  );
+
+  // Filtrer: "active" = en attente d'impression
+  // "history" = complété, rejeté (tout), expiré, ou partiellement rejeté
+  const active = groups.filter((g) => {
+    const status = g.status;
+    // Exclure: completed, rejected (complet), expired, partial_rejected
+    return !["completed", "rejected", "expired", "partial_rejected"].includes(
+      status,
+    );
+  });
+
+  const history = groups.filter((g) => {
+    const status = g.status;
+    // Inclure: completed, rejected (complet), expired, partial_rejected (car fichiers rejectés)
+    return ["completed", "rejected", "expired", "partial_rejected"].includes(
+      status,
+    );
+  });
+
   if (groups.length === 0) return null;
   return (
     <div style={{ marginTop: 24 }}>

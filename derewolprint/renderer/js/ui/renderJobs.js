@@ -74,9 +74,9 @@ export default function renderJobs(
         ? '<span class="bt-badge"><i class="fa-brands fa-bluetooth-b"></i> BT</span>'
         : "";
 
-      const groupStatus = getStatusConfig(group.status);
+      const groupStatus = getStatusConfig(group.groupStatus);
       const statusBadge = `<span class="job-status-badge" style="background:${groupStatus.bg};color:${groupStatus.color}">${groupStatus.label}</span>`;
-      const disableActions = !["waiting", "queued"].includes(group.status);
+      const disableActions = !["waiting", "queued"].includes(group.groupStatus);
 
       // Calculer statut global du groupe
       const allRejected = group.items.every((i) => i.status === "rejected");

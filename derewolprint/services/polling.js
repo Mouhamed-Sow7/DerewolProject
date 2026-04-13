@@ -128,6 +128,7 @@ function startPolling(onJobsReceived, printerId, intervalMs = 1000) {
               id: f.id,
               file_name: f.file_name,
               storage_path: f.storage_path,
+              rejected: f.rejected || false,
             })),
           },
         }))
