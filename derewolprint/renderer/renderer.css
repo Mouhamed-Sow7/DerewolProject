@@ -1115,14 +1115,79 @@ body.dark-mode .qr-logo-text {
   width: 95%;
   max-width: 520px;
   min-height: 400px;
-  max-height: 85vh;
+  max-height: 88vh;
   overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Plans tarifaires en colonne sur le tab Abonnement */
+.act-plans {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.act-plan {
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--bg-secondary, #f5f2ea);
+  border-radius: 12px;
+  border: 2px solid transparent;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.act-plan:hover {
+  border-color: var(--green, #1e4d2b);
+}
+
+.act-plan--popular {
+  border-color: var(--accent, #f5c842);
+  background: #fffbeb;
+}
+
+.act-plan-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.act-plan-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.act-plan-price {
+  font-size: 18px;
+  font-weight: 800;
   color: var(--text);
-  z-index: 10000;
-  animation: slideUpModal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 0;
+}
+
+.act-plan-saving {
+  font-size: 12px;
+  color: var(--accent-dark, #d4a800);
+  font-weight: 700;
+}
+
+.act-plan-badge {
+  position: static;
+  transform: none;
+  background: var(--accent, #f5c842);
+  color: var(--text, #111510);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @keyframes slideUpModal {
@@ -1200,6 +1265,7 @@ body.dark-mode .qr-logo-text {
 .act-panels {
   flex: 1;
   padding: 28px;
+  overflow-y: auto;
 }
 
 .act-panel {
@@ -1289,73 +1355,6 @@ body.dark-mode .act-trial-card {
 }
 
 /* ──── Subscription Tab ──── */
-.act-plans {
-  margin-bottom: 20px;
-}
-
-.act-plan {
-  background: var(--card-bg);
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 20px !important;
-  margin-bottom: 12px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.act-plan:hover {
-  border-color: var(--vert);
-  background: var(--topbar-bg);
-}
-
-.act-plan--popular {
-  border-color: var(--vert);
-  background: linear-gradient(135deg, #e8f5ec 0%, transparent 100%);
-}
-
-body.dark-mode .act-plan--popular {
-  background: linear-gradient(
-    135deg,
-    rgba(30, 77, 43, 0.2) 0%,
-    transparent 100%
-  );
-}
-
-.act-plan-badge {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--vert);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.act-plan-months {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 8px;
-}
-
-.act-plan-price {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--vert);
-  margin-bottom: 4px;
-}
-
-.act-plan-discount {
-  font-size: 11px;
-  color: var(--jaune);
-  font-weight: 600;
-}
 
 .act-whatsapp-section {
   margin-bottom: 20px;

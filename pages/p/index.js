@@ -262,11 +262,98 @@ function CountdownPill({ expiresAt }) {
   );
 }
 
+function StatusBadge({ status }) {
+  const map = {
+    waiting: {
+      label: "En attente",
+      bg: "#fff8d6",
+      color: "#92600a",
+      border: "#f5c842",
+    },
+    printing: {
+      label: "Impression…",
+      bg: "#dbeafe",
+      color: "#1d4ed8",
+      border: "#93c5fd",
+    },
+    completed: {
+      label: "Terminé",
+      bg: "#dcfce7",
+      color: "#166534",
+      border: "#86efac",
+    },
+    rejected: {
+      label: "Rejeté",
+      bg: "#fee2e2",
+      color: "#dc2626",
+      border: "#fca5a5",
+    },
+    partial_rejected: {
+      label: "Partiel",
+      bg: "#fff3cd",
+      color: "#856404",
+      border: "#ffc107",
+    },
+    expired: {
+      label: "Expiré",
+      bg: "#f3f4f6",
+      color: "#6b7280",
+      border: "#d1d5db",
+    },
+  };
+  const s = map[status] || map.waiting;
+  return (
+    <span
+      style={{
+        background: s.bg,
+        color: s.color,
+        border: `1px solid ${s.border}`,
+        padding: "3px 10px",
+        borderRadius: 20,
+        fontSize: 11,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      {status === "printing" && (
+        <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: 9 }} />
+      )}
+      {s.label}
+    </span>
+  );
+}
+
 function GroupCard({ group, onPreview, C, t, history = false }) {
   const [expanded, setExpanded] = useState(false);
   const job = group.print_jobs?.[0];
   const allFiles = group.files || [];
-  const status = group.status;
+
+  // Calcul statut d'affichage basé sur les fichiers (source de vérité client)
+  const rejectedFiles = allFiles.filter(
+    (f) => f.isRejected || f.rejected === true,
+  );
+  const activeFiles = allFiles.filter(
+    (f) => !f.isRejected && f.rejected !== true,
+  );
+
+  let displayStatus = group.status;
+  if (allFiles.length > 0) {
+    if (rejectedFiles.length === allFiles.length) {
+      displayStatus = "rejected";
+    } else if (rejectedFiles.length > 0) {
+      displayStatus = "partial_rejected";
+    }
+  }
+
+  // Un groupe "rejected" ou "completed" va dans l'historique
+  const isHistoryGroup =
+    history ||
+    ["completed", "rejected", "expired", "partial_rejected"].includes(
+      displayStatus,
+    );
 
   const remainingFiles = [];
   const historyFiles = [];
@@ -293,69 +380,14 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const THRESHOLD = 3;
   const visibleFiles = expanded ? files : files.slice(0, THRESHOLD);
   const hiddenCount = Math.max(0, files.length - THRESHOLD);
-
-  const haRejectedFile = allFiles.some(
-    (f) => f.rejected || f.status === "rejected",
-  );
-  const allRejected = allFiles.every(
-    (f) => f.rejected || f.status === "rejected",
-  );
-  // ── FIX: Determine displayStatus from actual file state ────────────
-  // If ALL files are rejected → show "rejected", not "completed"
-  const uiStatus =
-    allFiles.length > 0 && allRejected
-      ? "rejected"
-      : group.remainingCount === 0
-        ? "completed"
-        : haRejectedFile && !allRejected
-          ? "partial"
-          : status;
-  const statusConfig = {
-    waiting: {
-      label: t("waiting"),
-      bg: "#fff8d6",
-      color: "#92600a",
-      dot: "#f5c842",
-      icon: "fa-clock",
-    },
-    printing: {
-      label: t("printing"),
-      bg: "#dbeafe",
-      color: "#1d4ed8",
-      dot: "#3b82f6",
-      icon: "fa-spinner",
-    },
-    completed: {
-      label: t("completed"),
-      bg: "#dcfce7",
-      color: "#166534",
-      dot: "#22c55e",
-      icon: "fa-check-circle",
-    },
-    rejected: {
-      label: t("rejected"),
-      bg: "#fee2e2",
-      color: "#dc2626",
-      dot: "#ef4444",
-      icon: "fa-exclamation-circle",
-    },
-    expired: {
-      label: t("expired"),
-      bg: "#f3f4f6",
-      color: "#6b7280",
-      dot: "#9ca3af",
-      icon: "fa-clock",
-    },
-  };
-  const sc = statusConfig[uiStatus] || statusConfig.waiting;
   return (
     <div
       style={{
-        background: history ? C.surface2 : C.surface,
+        background: isHistoryGroup ? C.surface2 : C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: 12,
         marginBottom: 10,
-        opacity: history ? 0.85 : 1,
+        opacity: isHistoryGroup ? 0.85 : 1,
         overflow: "hidden",
       }}
     >
@@ -393,7 +425,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
             }}
           >
             <i
-              className={`fa-solid ${history ? "fa-clipboard-list" : "fa-folder"}`}
+              className={`fa-solid ${isHistoryGroup ? "fa-clipboard-list" : "fa-folder"}`}
             />
           </div>
           <div style={{ minWidth: 0 }}>
@@ -409,61 +441,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 flexWrap: "wrap",
               }}
             >
-              {/* ── FIX: Only show badge if NOT all rejected ── */}
-              {uiStatus !== "rejected" && (
-                <span
-                  style={{
-                    background: uiStatus === "partial" ? "#fef5d6" : sc.bg,
-                    color: uiStatus === "partial" ? "#856404" : sc.color,
-                    padding: "3px 10px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}
-                >
-                  <i
-                    className={`fa-solid ${uiStatus === "partial" ? "fa-alert-triangle" : sc.icon}`}
-                    style={{ fontSize: 11 }}
-                  />
-                  {uiStatus === "partial" ? "Partiellement rejeté" : sc.label}
-                </span>
-              )}
-              {uiStatus === "rejected" && (
-                <span
-                  style={{
-                    background: "#fee2e2",
-                    color: "#dc2626",
-                    padding: "3px 10px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}
-                >
-                  <i className="fa-solid fa-xmark" style={{ fontSize: 11 }} />
-                  Rejeté
-                </span>
-              )}
-              {haRejectedFile && !allRejected && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "#e53935",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    marginLeft: 4,
-                  }}
-                >
-                  <i className="fa-solid fa-alert-triangle" /> Fichier supprimé
-                </span>
-              )}
+              <StatusBadge status={displayStatus} />
             </div>
           </div>
         </div>
@@ -624,43 +602,126 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
           )}
         </div>
       )}
-      <div style={{ padding: "10px 16px" }}>
-        {/* ── FIX: Use uiStatus (calculated) instead of status (database) ──── */}
-        {uiStatus === "waiting" && remainingFiles.length > 0 && (
-          <p style={{ color: "#92600a", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-hourglass-end" /> {t("waitingMsg")}
+      <div style={{ padding: "10px 16px 14px" }}>
+        {/* En attente : SEULEMENT si des fichiers actifs existent */}
+        {displayStatus === "waiting" && activeFiles.length > 0 && (
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#92600a",
+              background: "#fff8d6",
+              padding: "8px 12px",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-hourglass-half" />
+            En attente de l'imprimeur
           </p>
         )}
-        {uiStatus === "printing" && (
-          <p style={{ color: "#1d4ed8", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-print" /> {t("printingMsg")}
+
+        {/* Partiel : certains rejetés, d'autres en attente */}
+        {displayStatus === "partial_rejected" && (
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#856404",
+              background: "#fff3cd",
+              padding: "8px 12px",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-triangle-exclamation" />
+            {rejectedFiles.length} rejeté{rejectedFiles.length > 1 ? "s" : ""}{" "}
+            —&nbsp;
+            {activeFiles.length} en attente
           </p>
         )}
-        {uiStatus === "completed" &&
-          remainingFiles.length === 0 &&
-          !allRejected && (
-            <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
-              <i className="fa-solid fa-check" /> {t("completedMsg")}
-            </p>
-          )}
-        {uiStatus === "rejected" && allRejected && (
-          <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-xmark" /> Tous les fichiers ont été
-            rejetés
+
+        {/* Impression */}
+        {displayStatus === "printing" && (
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#1d4ed8",
+              background: "#dbeafe",
+              padding: "8px 12px",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-print" />
+            Impression en cours…
           </p>
         )}
-        {uiStatus === "partial" && (
-          <p style={{ color: "#856404", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-alert-triangle" /> {historyFiles.length}{" "}
-            fichier
-            {historyFiles.length > 1 ? "s" : ""} rejeté
-            {historyFiles.length > 1 ? "s" : ""} — {remainingFiles.length} en
-            attente
+
+        {/* Terminé */}
+        {displayStatus === "completed" && (
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#166534",
+              background: "#dcfce7",
+              padding: "8px 12px",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-check" />
+            Terminé — fichiers supprimés
           </p>
         )}
-        {uiStatus === "expired" && (
-          <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-clock" /> {t("expiredMsg")}
+
+        {/* Tout rejeté */}
+        {displayStatus === "rejected" && (
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#dc2626",
+              background: "#fee2e2",
+              padding: "8px 12px",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-xmark" />
+            Tous les fichiers ont été rejetés
+          </p>
+        )}
+
+        {/* Expiré */}
+        {displayStatus === "expired" && (
+          <p
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#6b7280",
+              background: "#f3f4f6",
+              padding: "8px 12px",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <i className="fa-solid fa-clock" />
+            Délai dépassé — renvoyez vos fichiers
           </p>
         )}
       </div>
@@ -1173,6 +1234,22 @@ export default function PrinterSPA({ showToast }) {
             }}
           >
             <i className="fa-solid fa-print" /> {printer.name}
+          </span>
+        )}
+        {/* Badge session — affiche le display_code court, pas le owner_id complet */}
+        {session?.display_code && (
+          <span
+            style={{
+              background: C.yellow,
+              color: C.green,
+              padding: "4px 12px",
+              borderRadius: 8,
+              fontFamily: "monospace",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {session.display_code}
           </span>
         )}
         <div style={{ position: "relative" }}>
