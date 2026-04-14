@@ -599,6 +599,27 @@ body.dark-mode .copies-count {
   background: var(--topbar-bg);
 }
 
+/* ── Filter input wrapper with icon ──────────────── */
+.filter-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 160px;
+}
+
+.filter-input-wrapper i {
+  position: absolute;
+  left: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.filter-input-wrapper .filter-input {
+  padding-left: 36px;
+}
+
 .filter-input {
   padding: 8px 12px;
   border-radius: 8px;

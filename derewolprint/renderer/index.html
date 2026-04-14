@@ -94,12 +94,15 @@
         </div>
 
         <div class="history-filters">
-          <input
-            type="text"
-            id="filter-client"
-            placeholder="🔍 Filtrer par client (DW-...)"
-            class="filter-input"
-          />
+          <div class="filter-input-wrapper">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input
+              type="text"
+              id="filter-client"
+              placeholder="Filtrer par client (DW-...)"
+              class="filter-input"
+            />
+          </div>
           <input type="date" id="filter-date" class="filter-input" />
           <select id="filter-status" class="filter-input">
             <option value="">Tous les statuts</option>
