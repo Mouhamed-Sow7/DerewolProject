@@ -724,29 +724,24 @@ async function checkAccess() {
   try {
     const sub = await checkSubscription(printerCfg.id);
 
-    if (sub.valid === true) {
+    // Active subscription (paid or trial with days left)
+    if (sub.valid === true && sub.isTrial === true) {
+      console.log(`[ACCESS] Trial active (${sub.daysLeft} days left)`);
+      return { status: "trial", daysLeft: sub.daysLeft };
+    }
+
+    if (sub.valid === true && !sub.isTrial) {
       console.log("[ACCESS] ✓ Subscription active");
       return { status: "active" };
     }
 
-    if (sub.trial_active === true) {
-      const now = new Date();
-      const expire = new Date(sub.trial_expires_at);
-
-      if (now < expire) {
-        const daysLeft = Math.ceil((expire - now) / (1000 * 60 * 60 * 24));
-        console.log(`[ACCESS] Trial active (${daysLeft} days left)`);
-        return {
-          status: "trial",
-          daysLeft,
-          trial_expires_at: sub.trial_expires_at,
-        };
-      } else {
-        console.log("[ACCESS] Trial expired");
-        return { status: "expired" };
-      }
+    // Trial expired (no days left)
+    if (sub.expired === true && sub.isTrial === true) {
+      console.log("[ACCESS] Trial expired");
+      return { status: "expired" };
     }
 
+    // No subscription at all
     console.log("[ACCESS] No valid subscription → inactive");
     return { status: "inactive" };
   } catch (err) {

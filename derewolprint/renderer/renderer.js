@@ -266,10 +266,10 @@ function bindActivationModal() {
         if (res?.success) {
           trialBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
           setTimeout(() => {
-            isReloading = true; // 🔥 BLOCK MODAL REOPEN
+            // Close modal and reset activation flag
             const backdrop = document.getElementById("activation-backdrop");
             if (backdrop) backdrop.classList.remove("show");
-            location.reload();
+            isActivating = false; // Allow polling to update UI
           }, 1500);
         } else {
           // If trial already exists, disable the button (backend state)
@@ -353,7 +353,6 @@ function bindActivationModal() {
           setTimeout(() => {
             const backdrop = document.getElementById("activation-backdrop");
             if (backdrop) backdrop.classList.remove("show");
-            location.reload();
           }, 1500);
         } else {
           if (errorEl) {
@@ -543,7 +542,6 @@ function bindAcceptanceModal() {
             acceptBtn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmé!';
             setTimeout(() => {
               hideAcceptanceModal();
-              location.reload();
             }, 1500);
           } else {
             alert(
@@ -563,7 +561,6 @@ function bindAcceptanceModal() {
             acceptBtn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmé!';
             setTimeout(() => {
               hideAcceptanceModal();
-              location.reload();
             }, 1500);
           } else {
             alert(
