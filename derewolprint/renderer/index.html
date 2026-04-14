@@ -48,7 +48,7 @@
 
       <div class="printer-status">
         <div class="dot" id="printer-dot"></div>
-        <select id="printer-select">
+        <select id="printer-select" title="Sélectionner une imprimante">
           <option>Chargement...</option>
         </select>
       </div>
@@ -131,11 +131,7 @@
       <div class="view" id="view-qr" style="display: none">
         <div class="topbar">
           <div class="topbar-title" data-i18n="qrTitle">Mon QR Code</div>
-          <button
-            class="badge"
-            id="btn-print-qr"
-            style="cursor: pointer; border: none"
-          >
+          <button class="badge btn-print-qr" id="btn-print-qr">
             <i class="fa-solid fa-print"></i> Imprimer
           </button>
         </div>
@@ -419,12 +415,7 @@
                   <div class="act-plan-price">12 500 FCFA</div>
                   <div class="act-plan-saving">Économie 3 000 FCFA</div>
                 </div>
-                <div
-                  class="act-plan-badge"
-                  style="background: #dcfce7; color: #166534"
-                >
-                  MEILLEUR
-                </div>
+                <div class="act-plan-badge plan-badge">MEILLEUR</div>
               </div>
 
               <div class="act-plan" data-plan="6months">
@@ -440,30 +431,15 @@
               <div class="act-whatsapp-text">
                 Contacter le support via WhatsApp
               </div>
-              <div
-                class="act-whatsapp-content"
-                style="
-                  display: flex;
-                  gap: 20px;
-                  align-items: center;
-                  justify-content: center;
-                "
-              >
+              <div class="act-whatsapp-content whatsapp-qr-content">
                 <!-- QR Code -->
                 <div style="text-align: center">
                   <img
                     src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wa.me/221781220391"
                     alt="WhatsApp QR Code"
-                    style="
-                      border: 2px solid #dcfce7;
-                      border-radius: 8px;
-                      width: 150px;
-                      height: 150px;
-                    "
+                    class="whatsapp-qr-image"
                   />
-                  <p style="margin-top: 8px; font-size: 12px; color: #666">
-                    Scannez avec votre téléphone
-                  </p>
+                  <p class="whatsapp-qr-label">Scannez avec votre téléphone</p>
                 </div>
                 <!-- Direct Link Button -->
                 <div>
@@ -471,14 +447,7 @@
                     <i class="fa-brands fa-whatsapp"></i>
                     Ouvrir WhatsApp
                   </button>
-                  <p
-                    style="
-                      margin-top: 12px;
-                      font-size: 12px;
-                      color: #666;
-                      text-align: center;
-                    "
-                  >
+                  <p class="whatsapp-support-text">
                     +221 78 122 03 91<br />
                     Disponible 24/7
                   </p>

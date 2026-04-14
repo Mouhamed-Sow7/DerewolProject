@@ -816,25 +816,47 @@ function launchApp(isFreshRegistration = false) {
     verifyPrinterExists();
   }, 30000); // Check every 30 seconds
 
-  // ── Abonnement : check + push renderer ─────────────────────
-  // 🔐 SECURITY: Check subscription frequently (5 min) to catch expired trials
+  // ── Abonnement : check + push renderer + LIVE expiration detection ───────────
+  // 🔐 SECURITY: Poll for expiration changes every 5 seconds (LIVE detection)
+  // If expired detected → send activation modal immediately
   if (subscriptionTimer) clearInterval(subscriptionTimer);
+
+  // Initial immediate check on boot
   (async () => {
     try {
+      const access = await checkAccess();
       const s = await checkSubscription(printerCfg.id);
-      if (mainWindow && !mainWindow.isDestroyed())
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("subscription:status", s);
+        // If expired or inactive, show modal
+        if (access.status === "expired" || access.status === "inactive") {
+          mainWindow.webContents.send("show:activation-modal", access);
+        }
+      }
     } catch (_) {}
   })();
+
+  // Fast polling every 5 seconds to detect expiration changes LIVE
   subscriptionTimer = setInterval(
     async () => {
       try {
+        const access = await checkAccess();
         const s = await checkSubscription(printerCfg.id);
-        if (mainWindow && !mainWindow.isDestroyed())
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("subscription:status", s);
+
+          // 🔥 CRITICAL: If expired status detected → show modal immediately
+          if (access.status === "expired") {
+            console.log(
+              "[EXPIRATION] Trial/Subscription expired — showing activation modal",
+            );
+            mainWindow.webContents.send("show:activation-modal", access);
+          }
+        }
       } catch (_) {}
     },
-    5 * 60 * 1000, // ← Changed from 60 minutes to 5 minutes for tighter security
+    5000, // ← Changed to 5 seconds for LIVE expiration detection
   );
 }
 

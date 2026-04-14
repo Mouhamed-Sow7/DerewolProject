@@ -39,11 +39,22 @@ function showActivationModal(subscription) {
     modal.querySelector(".act-btn-activate") ||
     document.getElementById("act-btn-activate");
 
+  // Clear previous styling
+  if (descEl) {
+    descEl.style.color = "";
+    descEl.style.fontWeight = "";
+  }
+
   // SECURITY: Enforce backend state
   if (subscription && subscription.valid === true) {
     titleEl.textContent = "Abonnement actif";
     descEl.textContent =
       "Votre abonnement est actif.\nMerci de votre confiance!";
+    // Disable trial button when subscription is active
+    if (trialBtn) {
+      trialBtn.disabled = true;
+      trialBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Abonnement actif';
+    }
   } else if (
     subscription &&
     subscription.isTrial === true &&
@@ -65,7 +76,7 @@ function showActivationModal(subscription) {
     subscription?.expired === true ||
     (subscription?.daysLeft === 0 && subscription?.plan === "trial")
   ) {
-    // EXPIRED: Force subscription tab, hide trial
+    // EXPIRED: Force subscription tab, hide trial + RED WARNING
     if (trialTab) {
       trialTab.style.pointerEvents = "none";
       trialTab.style.opacity = "0.3";
@@ -77,12 +88,43 @@ function showActivationModal(subscription) {
     }
     titleEl.textContent = "Activation Derewol Print";
     descEl.textContent =
-      "Votre période d'essai a expiré. Activez un code de paiement.";
+      "🔴 Votre période d'essai a expiré. Activez un code de paiement.";
+    // 🔥 ADD RED COLOR WARNING
+    descEl.style.color = "#dc2626";
+    descEl.style.fontWeight = "600";
+    // Auto-switch to subscription tab
+    setTimeout(() => toggleActivationTab("subscription"), 200);
+  } else if (subscription?.status === "expired") {
+    // Also handle status = "expired" from backend + RED WARNING
+    if (trialTab) {
+      trialTab.style.pointerEvents = "none";
+      trialTab.style.opacity = "0.3";
+      trialTab.title = "Période d'essai expirée";
+    }
+    if (trialBtn) {
+      trialBtn.disabled = true;
+      trialBtn.innerHTML = '<i class="fa-solid fa-timer"></i> Expiré';
+    }
+    titleEl.textContent = "Activation Derewol Print";
+    descEl.textContent =
+      "🔴 Votre période d'essai a expiré. Activez un code de paiement.";
+    // 🔥 ADD RED COLOR WARNING
+    descEl.style.color = "#dc2626";
+    descEl.style.fontWeight = "600";
     // Auto-switch to subscription tab
     setTimeout(() => toggleActivationTab("subscription"), 200);
   } else {
     titleEl.textContent = "Activation Derewol Print";
     descEl.textContent = "Démarrez votre essai gratuit ou activez votre code.";
+    // Enable trial button only when status is "inactive"
+    if (
+      subscription?.status !== "inactive" &&
+      subscription?.status &&
+      trialBtn
+    ) {
+      trialBtn.disabled = true;
+      trialBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Indisponible';
+    }
   }
 
   backdrop.classList.add("show");
@@ -146,6 +188,9 @@ const MODAL_Z_INDEXES = {
 
 let activationInitialized = false;
 let acceptanceInitialized = false;
+let isActivating = false;
+let isShowingModal = false;
+let isReloading = false; // 🔥 PREVENT MODAL REOPEN DURING RELOAD
 
 function bindActivationModal() {
   if (activationInitialized) {
@@ -198,11 +243,18 @@ function bindActivationModal() {
   if (trialBtn) {
     console.log("[MODAL] Trial button found");
     trialBtn.addEventListener("click", async () => {
+      // 🔥 PREVENT MULTIPLE CLICKS
+      if (isActivating) {
+        console.warn("[MODAL] Trial activation already in progress");
+        return;
+      }
+
       if (!window.derewol?.activateTrial) {
         console.warn("[MODAL] window.derewol.activateTrial not available");
         return;
       }
 
+      isActivating = true;
       trialBtn.disabled = true;
       trialBtn.innerHTML =
         '<i class="fa-solid fa-spinner fa-spin"></i> Activation...';
@@ -214,9 +266,10 @@ function bindActivationModal() {
         if (res?.success) {
           trialBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
           setTimeout(() => {
+            isReloading = true; // 🔥 BLOCK MODAL REOPEN
             const backdrop = document.getElementById("activation-backdrop");
             if (backdrop) backdrop.classList.remove("show");
-            location.reload(); // Force refresh to sync with backend state
+            location.reload();
           }, 1500);
         } else {
           // If trial already exists, disable the button (backend state)
@@ -237,6 +290,11 @@ function bindActivationModal() {
         trialBtn.disabled = false;
         trialBtn.innerHTML =
           '<i class="fa-solid fa-play"></i> Démarrer mon essai';
+      } finally {
+        // Allow new attempts after 1.5 sec (but only if failed)
+        setTimeout(() => {
+          isActivating = false;
+        }, 1500);
       }
     });
   } else {
@@ -338,6 +396,17 @@ function bindActivationModal() {
 }
 
 function handleSubscriptionStatus(sub) {
+  // 🔥 Don't interfere with modal displays during activation
+  if (isActivating || isReloading) {
+    console.log(
+      "[SUB] Blocking status update — isActivating=" +
+        isActivating +
+        ", isReloading=" +
+        isReloading,
+    );
+    return;
+  }
+
   const overlay =
     document.getElementById("activation-modal") ||
     document.getElementById("subscription-overlay");
@@ -1133,6 +1202,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // Listen for activation modal trigger from main process
   if (window.derewol?.onShowActivationModal) {
     window.derewol.onShowActivationModal((data) => {
+      // 🔥 PREVENT MODAL REOPEN LOOP: Skip if already activating or reloading
+      if (isActivating || isReloading) {
+        console.warn(
+          "[DEREWOL] Modal reopen blocked (isActivating=" +
+            isActivating +
+            ", isReloading=" +
+            isReloading +
+            ")",
+        );
+        return;
+      }
+
       // SECURITY: Skip modal if language reload triggered it
       const skipModal = localStorage.getItem("skipActivationModalOnce");
       if (skipModal === "true") {
@@ -1142,7 +1223,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       console.log("[DEREWOL] Received show:activation-modal event", data);
+      isShowingModal = true;
       window.showActivationModal(data);
+      isShowingModal = false;
     });
   }
 });
