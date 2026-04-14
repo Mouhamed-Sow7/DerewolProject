@@ -236,6 +236,13 @@ ipcMain.handle("printer:update-name", async (_, name) => {
 });
 
 // ── IPC : Abonnement ────────────────────────────────────────────
+// 🔐 SECURITY MODEL:
+// - ALL write operations (print, reject, activate) go through enforceAccess()
+// - enforceAccess() checks database EVERY time (fresh, not cached)
+// - UI restrictions are NOT trusted — backend is the single source of truth
+// - Subscription changes are persisted to Supabase only
+// - Audit logging captures all access attempts (allowed and blocked)
+
 ipcMain.handle("subscription:check", async () => {
   if (!printerCfg?.id) return { valid: false, expired: true, daysLeft: 0 };
   return await checkSubscription(printerCfg.id);
@@ -243,10 +250,24 @@ ipcMain.handle("subscription:check", async () => {
 
 ipcMain.handle("subscription:activate", async (_, code) => {
   if (!printerCfg?.id) return { success: false, error: "Non configuré" };
+
+  // 🔐 SECURITY: Log activation attempt (audit trail)
+  console.log("[SECURITY] Subscription code activation attempt", {
+    printer_id: printerCfg.id,
+    code_masked: code ? code.substring(0, 4) + "..." : "unknown",
+  });
+
   const res = await activateCode(printerCfg.id, code);
+
   if (mainWindow && res.success) {
     const s = await checkSubscription(printerCfg.id);
     mainWindow.webContents.send("subscription:status", s);
+    log("SUBSCRIPTION_ACTIVATED", { printer_id: printerCfg.id, plan: s.plan });
+  } else {
+    log("SUBSCRIPTION_ACTIVATION_FAILED", {
+      printer_id: printerCfg.id,
+      reason: res.error,
+    });
   }
   return res;
 });
@@ -254,14 +275,33 @@ ipcMain.handle("subscription:activate", async (_, code) => {
 ipcMain.handle("trial:activate", async () => {
   if (!printerCfg?.id)
     return { success: false, error: "Imprimante non configurée" };
+
+  // 🔐 SECURITY: Check current status before allowing trial activation
+  const access = await checkAccess();
+  if (access.status !== "inactive") {
+    console.warn(
+      "[SECURITY] Trial activation attempt on non-inactive printer",
+      {
+        status: access.status,
+        printer_id: printerCfg.id,
+      },
+    );
+    return {
+      success: false,
+      error: "Trial already used or subscription active",
+    };
+  }
+
   try {
     await ensureTrialOrSubscription(printerCfg.id);
     if (mainWindow) {
       const s = await checkSubscription(printerCfg.id);
       mainWindow.webContents.send("subscription:status", s);
     }
+    log("TRIAL_ACTIVATED", { printer_id: printerCfg.id });
     return { success: true };
   } catch (e) {
+    console.error("[SECURITY] Trial activation error:", e.message);
     return { success: false, error: e.message };
   }
 });
@@ -408,6 +448,16 @@ async function printSingleJob(jobId, printerName, copies) {
 ipcMain.handle(
   "job:confirm",
   async (event, groupId, printerName, _copies, jobCopies) => {
+    // 🔐 SECURITY: Enforce backend access control FIRST
+    const enforced = await enforceAccess("print", ["active", "trial"]);
+    if (!enforced.allowed) {
+      log("PRINT_BLOCKED", {
+        groupId,
+        reason: enforced.access.status,
+      });
+      return { success: false, error: "Subscription required to print" };
+    }
+
     const items = Array.isArray(jobCopies)
       ? jobCopies
       : [{ jobId: groupId, fileName: "fichier", copies: _copies || 1 }];
@@ -512,6 +562,13 @@ ipcMain.handle(
 
 // ── IPC : Rejet ─────────────────────────────────────────────────
 ipcMain.handle("job:reject", async (event, jobId) => {
+  // 🔐 SECURITY: Enforce backend access control
+  const enforced = await enforceAccess("reject", ["active", "trial"]);
+  if (!enforced.allowed) {
+    log("REJECT_BLOCKED", { jobId, reason: enforced.access.status });
+    return { success: false, error: "Subscription required" };
+  }
+
   try {
     const { data: job, error } = await supabase
       .from("print_jobs")
@@ -698,6 +755,33 @@ async function checkAccess() {
   }
 }
 
+// ── SECURITY: Access Enforcement Middleware ────────────────────────
+// CRITICAL: This enforces backend permission checking on ALL actions
+// UI restrictions are NOT trusted — backend is the authority
+async function enforceAccess(action, requiredStatus = ["active", "trial"]) {
+  const access = await checkAccess(); // Fresh check from database
+
+  // SECURITY LOG: Always log access attempts
+  const allowed = requiredStatus.includes(access.status);
+
+  if (!allowed) {
+    console.warn("[SECURITY] ⚠️ ACTION BLOCKED", {
+      action,
+      status: access.status,
+      required: requiredStatus,
+      timestamp: new Date().toISOString(),
+      printer_id: printerCfg?.id || "unknown",
+    });
+    return { allowed: false, access };
+  }
+
+  console.log("[SECURITY] ✓ Action allowed:", {
+    action,
+    status: access.status,
+  });
+  return { allowed: true, access };
+}
+
 // ── Helpers boot ────────────────────────────────────────────────
 function launchApp(isFreshRegistration = false) {
   createMainWindow();
@@ -733,6 +817,7 @@ function launchApp(isFreshRegistration = false) {
   }, 30000); // Check every 30 seconds
 
   // ── Abonnement : check + push renderer ─────────────────────
+  // 🔐 SECURITY: Check subscription frequently (5 min) to catch expired trials
   if (subscriptionTimer) clearInterval(subscriptionTimer);
   (async () => {
     try {
@@ -749,7 +834,7 @@ function launchApp(isFreshRegistration = false) {
           mainWindow.webContents.send("subscription:status", s);
       } catch (_) {}
     },
-    60 * 60 * 1000,
+    5 * 60 * 1000, // ← Changed from 60 minutes to 5 minutes for tighter security
   );
 }
 

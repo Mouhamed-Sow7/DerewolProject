@@ -1271,13 +1271,13 @@ export default function PrinterSPA({ showToast }) {
             }}
           >
             <option value="fr" style={{ background: C.green }}>
-              🇫🇷 FR
+              fr
             </option>
             <option value="en" style={{ background: C.green }}>
-              🇬🇧 EN
+              en
             </option>
             <option value="wo" style={{ background: C.green }}>
-              🇸🇳 WO
+              wo
             </option>
           </select>
         </div>

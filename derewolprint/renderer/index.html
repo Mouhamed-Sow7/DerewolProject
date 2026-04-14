@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' https://cdnjs.cloudflare.com;"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' https://cdnjs.cloudflare.com; img-src 'self' https://api.qrserver.com;"
     />
     <title>DerewolPrint</title>
     <link
@@ -27,20 +27,20 @@
       </div>
 
       <nav>
-        <div class="nav-item active" data-view="jobs">
+        <div class="nav-item active" data-view="jobs" data-i18n="navJobs">
           <span class="nav-icon"><i class="fa-solid fa-print"></i></span> Jobs
         </div>
-        <div class="nav-item" data-view="history">
+        <div class="nav-item" data-view="history" data-i18n="navHistory">
           <span class="nav-icon"
             ><i class="fa-solid fa-clock-rotate-left"></i
           ></span>
           Historique
         </div>
-        <div class="nav-item" data-view="qr">
+        <div class="nav-item" data-view="qr" data-i18n="navQr">
           <span class="nav-icon"><i class="fa-solid fa-qrcode"></i></span> Mon
           QR Code
         </div>
-        <div class="nav-item" data-view="settings">
+        <div class="nav-item" data-view="settings" data-i18n="navSettings">
           <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
           Paramètres
         </div>
@@ -59,7 +59,7 @@
       <!-- ── VUE JOBS ──────────────────────────────────────── -->
       <div class="view" id="view-jobs">
         <div class="topbar">
-          <div class="topbar-title">Jobs en attente</div>
+          <div class="topbar-title" data-i18n="jobsTitle">Jobs en attente</div>
           <div class="badge" id="job-count">0 job</div>
         </div>
 
@@ -89,7 +89,7 @@
       <!-- ── VUE HISTORIQUE ────────────────────────────────── -->
       <div class="view" id="view-history" style="display: none">
         <div class="topbar">
-          <div class="topbar-title">Historique</div>
+          <div class="topbar-title" data-i18n="historyTitle">Historique</div>
           <div class="badge" id="history-count">—</div>
         </div>
 
@@ -130,7 +130,7 @@
       <!-- ── VUE QR CODE ────────────────────────────────────── -->
       <div class="view" id="view-qr" style="display: none">
         <div class="topbar">
-          <div class="topbar-title">Mon QR Code</div>
+          <div class="topbar-title" data-i18n="qrTitle">Mon QR Code</div>
           <button
             class="badge"
             id="btn-print-qr"
@@ -179,14 +179,16 @@
       <!-- ── VUE PARAMÈTRES ─────────────────────────────────── -->
       <div class="view" id="view-settings" style="display: none">
         <div class="topbar">
-          <div class="topbar-title">Paramètres</div>
+          <div class="topbar-title" data-i18n="settingsTitle">Paramètres</div>
         </div>
 
         <div class="settings-list">
           <div class="settings-item">
             <div class="settings-item-info">
-              <div class="settings-item-label">Mode sombre</div>
-              <div class="settings-item-desc">
+              <div class="settings-item-label" data-i18n="settingDarkmode">
+                Mode sombre
+              </div>
+              <div class="settings-item-desc" data-i18n="settingDarkmodeDesc">
                 Thème foncé pour travailler la nuit
               </div>
             </div>
@@ -198,11 +200,15 @@
 
           <div class="settings-item">
             <div class="settings-item-info">
-              <div class="settings-item-label">Langue</div>
-              <div class="settings-item-desc">Langue de l'interface</div>
+              <div class="settings-item-label" data-i18n="settingLanguage">
+                Langue
+              </div>
+              <div class="settings-item-desc" data-i18n="settingLanguageDesc">
+                Langue de l'interface
+              </div>
             </div>
             <select id="setting-lang" class="settings-select">
-              <option value="fr">Français</option>
+              <option value="fr" selected>Français</option>
               <option value="en">English</option>
               <option value="wo">Wolof</option>
             </select>
@@ -210,8 +216,10 @@
 
           <div class="settings-item">
             <div class="settings-item-info">
-              <div class="settings-item-label">Imprimante par défaut</div>
-              <div class="settings-item-desc">
+              <div class="settings-item-label" data-i18n="settingPrinter">
+                Imprimante par défaut
+              </div>
+              <div class="settings-item-desc" data-i18n="settingPrinterDesc">
                 Pré-sélectionnée au démarrage
               </div>
             </div>
@@ -222,8 +230,10 @@
 
           <div class="settings-item">
             <div class="settings-item-info">
-              <div class="settings-item-label">Son de notification</div>
-              <div class="settings-item-desc">
+              <div class="settings-item-label" data-i18n="settingSound">
+                Son de notification
+              </div>
+              <div class="settings-item-desc" data-i18n="settingSoundDesc">
                 Bip à l'arrivée d'un nouveau job
               </div>
             </div>
@@ -235,8 +245,10 @@
 
           <div class="settings-item">
             <div class="settings-item-info">
-              <div class="settings-item-label">Fréquence de vérification</div>
-              <div class="settings-item-desc">
+              <div class="settings-item-label" data-i18n="settingPolling">
+                Fréquence de vérification
+              </div>
+              <div class="settings-item-desc" data-i18n="settingPollingDesc">
                 Intervalle entre chaque vérification des jobs
               </div>
             </div>
@@ -397,23 +409,14 @@
               <div class="act-plan" data-plan="1month">
                 <div class="act-plan-left">
                   <div class="act-plan-label">1 mois</div>
-                  <div class="act-plan-price">4 000 FCFA</div>
+                  <div class="act-plan-price">5 000 FCFA</div>
                 </div>
               </div>
 
-              <div class="act-plan act-plan--popular" data-plan="2months">
-                <div class="act-plan-left">
-                  <div class="act-plan-label">2 mois</div>
-                  <div class="act-plan-price">6 500 FCFA</div>
-                  <div class="act-plan-saving">Économie 1 500 FCFA</div>
-                </div>
-                <div class="act-plan-badge">POPULAIRE</div>
-              </div>
-
-              <div class="act-plan" data-plan="3months">
+              <div class="act-plan act-plan--popular" data-plan="3months">
                 <div class="act-plan-left">
                   <div class="act-plan-label">3 mois</div>
-                  <div class="act-plan-price">9 000 FCFA</div>
+                  <div class="act-plan-price">12 500 FCFA</div>
                   <div class="act-plan-saving">Économie 3 000 FCFA</div>
                 </div>
                 <div
@@ -423,14 +426,64 @@
                   MEILLEUR
                 </div>
               </div>
+
+              <div class="act-plan" data-plan="6months">
+                <div class="act-plan-left">
+                  <div class="act-plan-label">6 mois</div>
+                  <div class="act-plan-price">25 500 FCFA</div>
+                  <div class="act-plan-saving">Économie 4 500 FCFA</div>
+                </div>
+              </div>
             </div>
 
             <div class="act-whatsapp-section">
-              <div class="act-whatsapp-text">Achetez un code via WhatsApp</div>
-              <button class="act-whatsapp-btn" id="act-whatsapp-link">
-                <i class="fa-brands fa-whatsapp"></i>
-                Contacter le support
-              </button>
+              <div class="act-whatsapp-text">
+                Contacter le support via WhatsApp
+              </div>
+              <div
+                class="act-whatsapp-content"
+                style="
+                  display: flex;
+                  gap: 20px;
+                  align-items: center;
+                  justify-content: center;
+                "
+              >
+                <!-- QR Code -->
+                <div style="text-align: center">
+                  <img
+                    src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wa.me/221781220391"
+                    alt="WhatsApp QR Code"
+                    style="
+                      border: 2px solid #dcfce7;
+                      border-radius: 8px;
+                      width: 150px;
+                      height: 150px;
+                    "
+                  />
+                  <p style="margin-top: 8px; font-size: 12px; color: #666">
+                    Scannez avec votre téléphone
+                  </p>
+                </div>
+                <!-- Direct Link Button -->
+                <div>
+                  <button class="act-whatsapp-btn" id="act-whatsapp-link">
+                    <i class="fa-brands fa-whatsapp"></i>
+                    Ouvrir WhatsApp
+                  </button>
+                  <p
+                    style="
+                      margin-top: 12px;
+                      font-size: 12px;
+                      color: #666;
+                      text-align: center;
+                    "
+                  >
+                    +221 78 122 03 91<br />
+                    Disponible 24/7
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div class="act-code-section">

@@ -3,6 +3,7 @@
 import jobStore from "./js/state/jobStore.js";
 import renderJobs, { getFileCopies, setStoreRef } from "./js/ui/renderJobs.js";
 import { initBridge } from "./js/bridge/derewolBridge.js";
+import { initLang, setLang, t } from "./i18n.js";
 
 const printingGroups = new Set();
 setStoreRef((id) => jobStore.getJobs().find((g) => g.id === id));
@@ -33,18 +34,52 @@ function showActivationModal(subscription) {
 
   const titleEl = modal.querySelector(".act-title");
   const descEl = modal.querySelector(".act-description");
+  const trialTab = modal.querySelector('[data-act-tab="trial"]');
+  const trialBtn =
+    modal.querySelector(".act-btn-activate") ||
+    document.getElementById("act-btn-activate");
 
+  // SECURITY: Enforce backend state
   if (subscription && subscription.valid === true) {
     titleEl.textContent = "Abonnement actif";
     descEl.textContent =
       "Votre abonnement est actif.\nMerci de votre confiance!";
-  } else if (subscription && subscription.trial_active === true) {
-    const daysLeft = Math.ceil(
-      (new Date(subscription.trial_expires_at) - new Date()) /
-        (1000 * 60 * 60 * 24),
-    );
+  } else if (
+    subscription &&
+    subscription.isTrial === true &&
+    subscription.daysLeft > 0
+  ) {
+    // Trial active: disable trial tab, lock UI
+    if (trialTab) {
+      trialTab.style.pointerEvents = "none";
+      trialTab.style.opacity = "0.5";
+      trialTab.title = "Période d'essai déjà utilisée";
+    }
+    if (trialBtn) {
+      trialBtn.disabled = true;
+      trialBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Déjà utilisé';
+    }
     titleEl.textContent = "Période d'essai";
-    descEl.textContent = `Vous avez ${daysLeft} jour${daysLeft > 1 ? "s" : ""} d\'essai gratuit.`;
+    descEl.textContent = `Vous avez ${subscription.daysLeft} jour${subscription.daysLeft > 1 ? "s" : ""} d'essai gratuit.`;
+  } else if (
+    subscription?.expired === true ||
+    (subscription?.daysLeft === 0 && subscription?.plan === "trial")
+  ) {
+    // EXPIRED: Force subscription tab, hide trial
+    if (trialTab) {
+      trialTab.style.pointerEvents = "none";
+      trialTab.style.opacity = "0.3";
+      trialTab.title = "Période d'essai expirée";
+    }
+    if (trialBtn) {
+      trialBtn.disabled = true;
+      trialBtn.innerHTML = '<i class="fa-solid fa-timer"></i> Expiré';
+    }
+    titleEl.textContent = "Activation Derewol Print";
+    descEl.textContent =
+      "Votre période d'essai a expiré. Activez un code de paiement.";
+    // Auto-switch to subscription tab
+    setTimeout(() => toggleActivationTab("subscription"), 200);
   } else {
     titleEl.textContent = "Activation Derewol Print";
     descEl.textContent = "Démarrez votre essai gratuit ou activez votre code.";
@@ -181,13 +216,20 @@ function bindActivationModal() {
           setTimeout(() => {
             const backdrop = document.getElementById("activation-backdrop");
             if (backdrop) backdrop.classList.remove("show");
-            const s = window.derewol?.subscriptionCheck?.() || {};
-            handleSubscriptionStatus(s);
-          }, 1000);
+            location.reload(); // Force refresh to sync with backend state
+          }, 1500);
         } else {
-          trialBtn.disabled = false;
-          trialBtn.innerHTML =
-            '<i class="fa-solid fa-play"></i> Démarrer mon essai';
+          // If trial already exists, disable the button (backend state)
+          if (res?.error?.includes("already exists")) {
+            console.warn("[MODAL] Trial already activated", res.error);
+            trialBtn.disabled = true;
+            trialBtn.innerHTML =
+              '<i class="fa-solid fa-lock"></i> Déjà utilisé';
+          } else {
+            trialBtn.disabled = false;
+            trialBtn.innerHTML =
+              '<i class="fa-solid fa-play"></i> Démarrer mon essai';
+          }
           alert(res?.error || "Erreur activation essai");
         }
       } catch (e) {
@@ -664,6 +706,8 @@ document.getElementById("setting-darkmode").addEventListener("change", (e) => {
 document.getElementById("setting-lang").addEventListener("change", (e) => {
   settings.lang = e.target.value;
   saveSettings();
+  // Apply translations instantly (no reload)
+  setLang(e.target.value);
 });
 document.getElementById("setting-sound").addEventListener("change", (e) => {
   settings.sound = e.target.checked;
@@ -1068,7 +1112,10 @@ console.log("[DEREWOL] Modal functions exposed globally:", {
 // ═══════════════════════════════════════════════════════════════
 
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("[DEREWOL] DOM READY — Initializing modals");
+  console.log("[DEREWOL] DOM READY — Initializing i18n & modals");
+
+  // Initialize language system
+  initLang();
 
   // Initialize acceptance modal for trial & payment conditions
   bindAcceptanceModal();
@@ -1086,6 +1133,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Listen for activation modal trigger from main process
   if (window.derewol?.onShowActivationModal) {
     window.derewol.onShowActivationModal((data) => {
+      // SECURITY: Skip modal if language reload triggered it
+      const skipModal = localStorage.getItem("skipActivationModalOnce");
+      if (skipModal === "true") {
+        localStorage.removeItem("skipActivationModalOnce");
+        console.log("[DEREWOL] Skipped modal (language change reload)");
+        return;
+      }
+
       console.log("[DEREWOL] Received show:activation-modal event", data);
       window.showActivationModal(data);
     });
@@ -1094,7 +1149,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // If DOM is already loaded, initialize immediately
 if (document.readyState !== "loading") {
-  console.log("[DEREWOL] DOM already loaded — Initializing modals");
+  console.log("[DEREWOL] DOM already loaded — Initializing modals & i18n");
+  initLang();
   bindAcceptanceModal();
   bindActivationModal();
 }

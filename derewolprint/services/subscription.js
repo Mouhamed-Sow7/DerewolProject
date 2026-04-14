@@ -2,32 +2,42 @@ const supabase = require("./supabase");
 const { loadConfig, saveConfig } = require("./printerConfig");
 
 const PLANS = {
-  trial: { days: 15, amount: 0, label: "15 jours gratuits" },
-  "1month": { days: 30, amount: 4000, label: "1 mois — 4 000 FCFA" },
-  "2months": { days: 61, amount: 6500, label: "2 mois — 6 500 FCFA (-19%)" },
-  "3months": { days: 92, amount: 9000, label: "3 mois — 9 000 FCFA (-25%)" },
+  trial: { days: 7, amount: 0, label: "7 jours gratuits" },
+  "1month": { days: 30, amount: 5000, label: "1 mois — 5 000 FCFA" },
+  "3months": { days: 92, amount: 12500, label: "3 mois — 12 500 FCFA (-17%)" },
+  "6months": { days: 183, amount: 25500, label: "6 mois — 25 500 FCFA (-28%)" },
 };
 
 const GRACE_DAYS = 3;
 
 // ── Créer un trial SEULEMENT pour un NOUVEAU printer (appelé depuis setup:register) ──
+// SECURITY: Only create trial if subscription does NOT exist at all
 async function ensureTrialOrSubscription(printerId) {
   try {
     const { data } = await supabase
       .from("subscriptions")
-      .select("id")
+      .select("id, plan, expires_at")
       .eq("printer_id", printerId)
       .limit(1)
       .single();
 
-    if (!data) {
-      await supabase.rpc("create_trial_subscription", {
-        p_printer_id: printerId,
-      });
-      console.log("[SUB] Période d'essai créée — 15 jours gratuits");
+    // Already has a subscription (trial, active, expired) → don't create
+    if (data) {
+      console.log("[SUB] Subscription already exists, skipping trial creation");
+      return { success: false, error: "Subscription already exists" };
     }
+
+    // First time only: create trial
+    await supabase.rpc("create_trial_subscription", {
+      p_printer_id: printerId,
+    });
+    console.log(
+      "[SUB] Période d'essai créée — 7 jours gratuits (first time only)",
+    );
+    return { success: true };
   } catch (e) {
     console.warn("[SUB] ensureTrial:", e.message);
+    return { success: false, error: e.message };
   }
 }
 
