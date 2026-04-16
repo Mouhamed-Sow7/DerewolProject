@@ -224,13 +224,77 @@ function handleSubscriptionStatus(sub) {
   const slugEl = document.getElementById("act-printer-slug");
   if (slugEl) slugEl.textContent = window.__printerCfg?.slug || "—";
 
-  const blocked = sub && sub.valid === false && sub.inGrace !== true;
+  // ✅ TRIAL OR SUBSCRIPTION ACTIVE → Hide modal
+  if (sub && sub.valid === true) {
+    console.log("[MODAL] Trial/Subscription is ACTIVE — hiding modal");
+    if (backdrop.classList.contains("show")) {
+      hideActivationModal();
+    }
+    // Lock trial tab if it's a paid subscription
+    if (!sub.isTrial) {
+      const trialTab = document.querySelector('[data-act-tab="trial"]');
+      if (trialTab) {
+        trialTab.style.opacity = "0.5";
+        trialTab.style.pointerEvents = "none";
+        trialTab.style.cursor = "not-allowed";
+      }
+    }
+    return;
+  }
 
-  if (blocked) {
+  // ❌ EXPIRED OR INACTIVE → Show modal
+  const isExpired = sub && sub.expired === true;
+  const isInvalid = sub && sub.valid === false;
+  const hasTrialPlan = sub && sub.plan === "trial"; // ← Key check: was there a trial?
+  const hasHistory = sub && sub.status !== undefined; // ← Subscription row exists in DB
+
+  if (isExpired || isInvalid) {
+    console.log(
+      "[MODAL] Trial/Subscription EXPIRED or INACTIVE — showing modal",
+      { isExpired, isInvalid, hasTrialPlan, hasHistory },
+    );
     showActivationModal(sub);
     if (!activationInitialized) bindActivationModal();
-  } else if (backdrop.classList.contains("show")) {
-    hideActivationModal();
+
+    // Lock trial tab ONLY if a trial subscription actually existed and expired
+    // (not for fresh printers with no subscription row at all)
+    if (isExpired && hasTrialPlan && hasHistory) {
+      console.log("[MODAL] Locking trial tab — trial was used and expired");
+      const trialTab = document.querySelector('[data-act-tab="trial"]');
+      const trialPanel = document.getElementById("act-panel-trial");
+      if (trialTab) {
+        trialTab.style.opacity = "0.5";
+        trialTab.style.pointerEvents = "none";
+        trialTab.style.cursor = "not-allowed";
+      }
+      if (trialPanel) {
+        const trialBtn = trialPanel.querySelector(".act-btn-activate");
+        if (trialBtn) {
+          trialBtn.disabled = true;
+          trialBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Essai utilisé';
+          trialBtn.style.opacity = "0.6";
+        }
+      }
+    } else if (!hasHistory) {
+      // Fresh printer with no subscription → trial tab should be ENABLED
+      console.log("[MODAL] Fresh printer — enabling trial tab");
+      const trialTab = document.querySelector('[data-act-tab="trial"]');
+      const trialPanel = document.getElementById("act-panel-trial");
+      if (trialTab) {
+        trialTab.style.opacity = "1";
+        trialTab.style.pointerEvents = "auto";
+        trialTab.style.cursor = "pointer";
+      }
+      if (trialPanel) {
+        const trialBtn = trialPanel.querySelector(".act-btn-activate");
+        if (trialBtn) {
+          trialBtn.disabled = false;
+          trialBtn.innerHTML =
+            '<i class="fa-solid fa-play"></i> Démarrer mon essai';
+          trialBtn.style.opacity = "1";
+        }
+      }
+    }
   }
 }
 
@@ -1016,6 +1080,25 @@ document.addEventListener("DOMContentLoaded", () => {
       isShowingModal = true;
       window.showActivationModal(data);
       isShowingModal = false;
+    });
+  }
+
+  // Listen for subscription status updates
+  if (window.derewol?.onSubscriptionStatus) {
+    window.derewol.onSubscriptionStatus((data) => {
+      console.log("[DEREWOL] Received subscription:status event", data);
+      handleSubscriptionStatus(data);
+    });
+  }
+
+  // Listen for app ready signal
+  if (window.derewol?.onAppReady) {
+    window.derewol.onAppReady((data) => {
+      console.log("[DEREWOL] App ready signal received", data);
+      // App is ready — if trial or subscription active, main UI visible
+      if (data.status === "active" || data.status === "trial") {
+        console.log("[DEREWOL] Access granted — app visible");
+      }
     });
   }
 });

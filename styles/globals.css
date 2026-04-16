@@ -39,6 +39,53 @@
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
 }
 
+/* ═══════════════════════════════════════════════════════════════ */
+/* SECURITY & ANTI-COPY PROTECTIONS FOR SECURE PRINTING SaaS      */
+/* ═══════════════════════════════════════════════════════════════ */
+
+/* Disable text selection on entire app */
+* {
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Allow selection only on specific editable elements */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Disable right-click context menu */
+body {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+/* Prevent drag operations on files and images */
+img,
+video,
+audio {
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Disable iframe interactions for security */
+iframe {
+  pointer-events: auto;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 body {
   font-family:
     "Inter",

@@ -588,20 +588,50 @@ ipcMain.handle("trial:activate", async () => {
     };
   }
 
-  // 🔥 SET FLAG TO PREVENT MODAL REOPEN
+  // 🔥 SET FLAG TO PREVENT MODAL REOPEN (increased duration to 15 seconds)
   trialJustActivated = true;
-  setTimeout(() => (trialJustActivated = false), 5000);
+  setTimeout(() => (trialJustActivated = false), 15000);
 
   try {
-    await ensureTrialOrSubscription(printerCfg.id);
-    if (mainWindow) {
-      const s = await checkSubscription(printerCfg.id);
+    console.log("[TRIAL] Starting trial activation...");
+    const ensureResult = await ensureTrialOrSubscription(printerCfg.id);
+
+    if (!ensureResult.success) {
+      console.error(
+        "[TRIAL] ensureTrialOrSubscription failed:",
+        ensureResult.error,
+      );
+      trialJustActivated = false;
+      return { success: false, error: ensureResult.error };
+    }
+
+    // 🔥 Wait additional time to ensure DB transaction is fully committed
+    console.log("[TRIAL] Waiting for DB commit...");
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Verify subscription was created
+    const s = await checkSubscription(printerCfg.id);
+    console.log("[TRIAL] After activation, subscription status:", {
+      valid: s.valid,
+      plan: s.plan,
+      daysLeft: s.daysLeft,
+    });
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("subscription:status", s);
       // 🔥 HIDE MODAL: Don't show activation modal after successful trial
       mainWindow.webContents.send("hide:activation-modal");
     }
-    log("TRIAL_ACTIVATED", { printer_id: printerCfg.id });
-    return { success: true };
+
+    log("TRIAL_ACTIVATED", { printer_id: printerCfg.id, valid: s.valid });
+
+    return {
+      success: s.valid, // ← Return actual subscription status
+      subscription: s,
+      message: s.valid
+        ? "Trial activé avec succès"
+        : "Trial créé mais validation échouée",
+    };
   } catch (e) {
     console.error("[SECURITY] Trial activation error:", e.message);
     trialJustActivated = false; // Reset on error
@@ -677,8 +707,8 @@ async function cleanupJobDB(jobId, fileGroupId, fileIdOnly = null) {
   }
 }
 
-// ── Impression d'un seul fichier ────────────────────────────────
-async function printSingleJob(jobId, printerName, copies) {
+// ── Impression d'un seul fichier (avec nettoyage immédiat) ──────
+async function printSingleJobNoDelay(jobId, printerName, copies) {
   const tmpPath = path.join(os.tmpdir(), `dw-${jobId}.pdf`);
 
   const { data, error } = await supabase
@@ -739,21 +769,40 @@ async function printSingleJob(jobId, printerName, copies) {
     .update({ status: "completed", copies_remaining: 0 })
     .eq("id", jobId);
 
+  // ✅ Return cleanup info (cleanup scheduled separately, not here)
+  return {
+    jobId,
+    fileName: file.file_name,
+    copies,
+    fileGroupId,
+    ownerId,
+    tmpPath,
+    storagePath: file.storage_path,
+  };
+}
+
+// ── Impression d'un seul fichier (avec délai intégré) ──────
+// DEPRECATED: Kept for backward compatibility; use printSingleJobNoDelay + manual cleanup
+async function printSingleJob(jobId, printerName, copies) {
+  const result = await printSingleJobNoDelay(jobId, printerName, copies);
+
   // ⏳ WAIT before deleting: gives printer time to physically print
   console.log(
     `[PRINT] ⏳ Attente ${PRINT_DELAY_MS / 1000}s avant suppression (laisser le temps à l'imprimante)...`,
   );
   await new Promise((resolve) => setTimeout(resolve, PRINT_DELAY_MS));
 
-  await supabase.storage.from("derewol-files").remove([file.storage_path]);
-  console.log(`[PRINT] ${file.file_name} → Storage supprimé ✅`);
+  await supabase.storage.from("derewol-files").remove([result.storagePath]);
+  console.log(`[PRINT] ${result.fileName} → Storage supprimé ✅`);
 
-  if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
+  if (fs.existsSync(result.tmpPath)) secureDelete(result.tmpPath);
 
-  return { jobId, fileName: file.file_name, copies, fileGroupId, ownerId };
+  return result;
 }
 
 // ── IPC : Impression groupée ────────────────────────────────────
+// 🔥 FIXED: Uses printSingleJobNoDelay + independent cleanup scheduling
+// Multi-file jobs now print in sequence WITHOUT blocking delays between files
 ipcMain.handle(
   "job:confirm",
   async (event, groupId, printerName, _copies, jobCopies) => {
@@ -801,9 +850,11 @@ ipcMain.handle(
           .eq("id", fileGroupId);
       }
 
+      // 🔥 SEQUENTIAL PRINTING: Loop processes files in sequence
+      // BUT cleanup delays are scheduled independently (non-blocking)
       for (const item of items) {
         try {
-          const result = await printSingleJob(
+          const result = await printSingleJobNoDelay(
             item.jobId,
             printerName,
             item.copies,
@@ -822,7 +873,30 @@ ipcMain.handle(
             status: "completed",
             groupId: result.fileGroupId,
           });
-          await cleanupJobDB(item.jobId, result.fileGroupId);
+
+          // 🔥 SCHEDULE CLEANUP INDEPENDENTLY (30s delay per file)
+          // This allows next file to start printing immediately
+          const pathToClear = result.tmpPath;
+          const storageToClear = result.storagePath;
+          const jobIdToClear = item.jobId;
+
+          setTimeout(async () => {
+            try {
+              await supabase.storage
+                .from("derewol-files")
+                .remove([storageToClear]);
+              console.log(`[PRINT] ${result.fileName} → Storage nettoyé ✅`);
+              if (pathToClear && fs.existsSync(pathToClear))
+                secureDelete(pathToClear);
+              await supabase.from("print_jobs").delete().eq("id", jobIdToClear);
+              console.log(`[PRINT] ${result.fileName} → DB supprimé ✅`);
+            } catch (e) {
+              console.warn(
+                `[PRINT] Erreur nettoyage ${result.fileName}:`,
+                e.message,
+              );
+            }
+          }, PRINT_DELAY_MS); // 30s timer per file (independent from loop)
         } catch (err) {
           console.error(`[PRINT] ❌ ${item.fileName} :`, err.message);
           errors.push({
@@ -867,6 +941,7 @@ ipcMain.handle(
       }
       return { success: false, error: err.message };
     } finally {
+      // Remove from active processing immediately (cleanup still running independently)
       jobIds.forEach((id) => processingJobs.delete(id));
       setTimeout(() => cleanSpooler(), 2000);
     }
@@ -1111,12 +1186,16 @@ function launchApp(isFreshRegistration = false) {
     console.log("[BOOT] Window loaded — checking access status from DB");
     const access = await checkAccess();
 
-    if (access.status !== "active") {
+    // Allow app to load if trial OR paid subscription is active
+    if (access.status === "active" || access.status === "trial") {
+      console.log("[BOOT] Access granted — showing main app", access.status);
+      mainWindow.webContents.send("app:ready", {
+        status: access.status,
+        daysLeft: access.daysLeft,
+      });
+    } else {
       console.log("[BOOT] Access denied, forcing modal:", access.status);
       mainWindow.webContents.send("show:activation-modal", access);
-    } else {
-      console.log("[BOOT] Access granted — showing main app");
-      mainWindow.webContents.send("app:ready", { status: "active" });
     }
   });
 
@@ -1148,15 +1227,19 @@ function launchApp(isFreshRegistration = false) {
       const s = await checkSubscription(printerCfg.id);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("subscription:status", s);
-        // If expired or inactive, show modal
-        if (access.status === "expired" || access.status === "inactive") {
+        // Only show modal if NO valid access (not trial, not paid subscription)
+        if (access.status !== "active" && access.status !== "trial") {
+          console.log(
+            "[BOOT] Trial/Subscription check → modal needed",
+            access.status,
+          );
           mainWindow.webContents.send("show:activation-modal", access);
         }
       }
     } catch (_) {}
   })();
 
-  // Fast polling every 5 seconds to detect expiration changes LIVE
+  // Polling every 5 MINUTES to detect expiration changes (not 5 seconds - too aggressive)
   subscriptionTimer = setInterval(
     async () => {
       try {
@@ -1166,18 +1249,24 @@ function launchApp(isFreshRegistration = false) {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("subscription:status", s);
 
-          // 🔥 CRITICAL: If expired status detected → show modal immediately
-          // BUT: Skip if trial was just activated (prevent loop)
-          if (access.status === "expired" && !trialJustActivated) {
+          // 🔥 CRITICAL FIX: Only show modal if access BECOMES invalid
+          // AND trial was NOT just activated (prevents modal loop)
+          // The trialJustActivated flag prevents the modal from constantly reopening
+          if (
+            (access.status === "expired" || access.status === "inactive") &&
+            !trialJustActivated
+          ) {
             console.log(
-              "[EXPIRATION] Trial/Subscription expired — showing activation modal",
+              "[EXPIRATION] Trial/Subscription changed to",
+              access.status,
+              "— showing activation modal",
             );
             mainWindow.webContents.send("show:activation-modal", access);
           }
         }
       } catch (_) {}
     },
-    5000, // ← 5 seconds for LIVE expiration detection
+    5 * 60 * 1000, // ← 5 minutes (instead of 5s) — still catches expirations in reasonable time
   );
 }
 

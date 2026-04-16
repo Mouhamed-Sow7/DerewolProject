@@ -964,6 +964,179 @@ export default function PrinterSPA({ showToast }) {
     };
   }, []);
 
+  // ═══════════════════════════════════════════════════════════════
+  // SECURITY PROTECTIONS FOR SECURE PRINTING SaaS
+  // ═══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    // Disable right-click context menu
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    // Disable keyboard shortcuts
+    const handleKeyDown = (e) => {
+      // Ctrl+S (Save)
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+P (Print)
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+C (Copy) - allow only on input/textarea
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        if (!["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
+          e.preventDefault();
+          return false;
+        }
+      }
+      // F12 (DevTools)
+      if (e.key === "F12") {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+I (DevTools)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "I") {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+C (DevTools Inspector)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C") {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+J (DevTools Console)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "J") {
+        e.preventDefault();
+        return false;
+      }
+      // Right-click menu key
+      if (e.key === "ContextMenu") {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    // Prevent text selection outside inputs
+    const handleSelectStart = (e) => {
+      if (!["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    // Prevent drag operations for file downloads
+    const handleDragOver = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e) => {
+      // Allow drops only on designated drop zones
+      const fileInputArea = document.querySelector(
+        '[data-name="file-input-area"]',
+      );
+      if (!fileInputArea || !fileInputArea.contains(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    // Prevent iframe download attempts
+    const handleBeforeUnload = (e) => {
+      // This doesn't actually block, but logs suspicious activity
+      if (document.readyState === "complete") {
+        console.log("[SECURITY] Suspicious unload detected");
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("selectstart", handleSelectStart);
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("drop", handleDrop);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // Disable inspector in DevTools
+    if (typeof window !== "undefined") {
+      // Override console methods to prevent direct API calls
+      const originalLog = console.log;
+      const originalError = console.error;
+      const originalWarn = console.warn;
+
+      console.log = function (...args) {
+        if (
+          args[0] &&
+          typeof args[0] === "string" &&
+          (args[0].includes("supabase") ||
+            args[0].includes("API") ||
+            args[0].includes("key"))
+        ) {
+          return; // Block potentially sensitive logs
+        }
+        return originalLog.apply(console, args);
+      };
+
+      console.error = function (...args) {
+        if (
+          args[0] &&
+          typeof args[0] === "string" &&
+          (args[0].includes("supabase") ||
+            args[0].includes("API") ||
+            args[0].includes("key"))
+        ) {
+          return; // Block potentially sensitive logs
+        }
+        return originalError.apply(console, args);
+      };
+
+      console.warn = function (...args) {
+        if (
+          args[0] &&
+          typeof args[0] === "string" &&
+          (args[0].includes("supabase") ||
+            args[0].includes("API") ||
+            args[0].includes("key"))
+        ) {
+          return; // Block potentially sensitive logs
+        }
+        return originalWarn.apply(console, args);
+      };
+    }
+
+    // Cleanup
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("selectstart", handleSelectStart);
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("drop", handleDrop);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
+  // ─ Monitor expired groups and show notification ─────────────────
+  const notifiedExpiredRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!groups || groups.length === 0) return;
+
+    groups.forEach((g) => {
+      if (g.status === "expired" && !notifiedExpiredRef.current.has(g.id)) {
+        notifiedExpiredRef.current.add(g.id);
+        const fileCount = g.files_count || g.files?.length || "Vos";
+        showToast?.(
+          `⏰ ${fileCount} fichier(s) expiré(s) — renvoyez-les`,
+          "warning",
+        );
+      }
+    });
+  }, [groups, showToast]);
+
   function addFiles(newFiles) {
     // Supported file types: PDF, Word, Excel
     const SUPPORTED_TYPES = [
@@ -1293,6 +1466,7 @@ export default function PrinterSPA({ showToast }) {
         }}
       >
         <div
+          data-name="file-input-area"
           onClick={() => fileInputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
@@ -1534,17 +1708,84 @@ export default function PrinterSPA({ showToast }) {
               </div>
             ) : (
               <>
+                {/* 🔥 SECURITY: Multiple layers to prevent PDF downloads */}
+                {/* Layer 1: Large overlay covering toolbar area */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 120,  // Increased to 120px to cover even tall toolbars
+                    zIndex: 999,
+                    background: C.green,
+                    pointerEvents: "auto",
+                    userSelect: "none",
+                    WebkitUserSelect: "none",
+                  }}
+                />
+                {/* Layer 2: Additional security overlay */}
+                <div
+                  onContextMenu={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    return false;
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 998,
+                    pointerEvents: "none",
+                  }}
+                />
+                {/* Layer 3: iframe with download restrictions */}
                 <iframe
-                  src={previewUrl}
+                  src={
+                    previewUrl?.includes("#") || previewUrl?.includes("?")
+                      ? previewUrl + "&toolbar=0&navpanes=0"
+                      : previewUrl + "#toolbar=0&navpanes=0"
+                  }
                   style={{
                     width: "100%",
                     flex: 1,
                     border: "none",
                     background: "#fff",
                     minHeight: "400px",
+                    position: "relative",
+                    zIndex: 1,
                   }}
                   title={previewName}
-                  sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                  sandbox="allow-same-origin allow-scripts"
+                  referrerPolicy="no-referrer"
+                  onLoad={(e) => {
+                    try {
+                      // Try to hide download button via JavaScript (may fail due to cross-origin)
+                      const iframeDoc = e.target.contentDocument;
+                      if (iframeDoc) {
+                        // Hide download button in PDF.js viewer
+                        const downloadBtn = iframeDoc.querySelector(
+                          'button[id*="download"], [aria-label*="Download"], [title*="Download"]',
+                        );
+                        if (downloadBtn) downloadBtn.style.display = "none";
+                        
+                        // Hide entire toolbar
+                        const toolbar = iframeDoc.querySelector(
+                          "#toolbarContainer, [class*="toolbar"]",
+                        );
+                        if (toolbar)
+                          toolbar.style.display = "none";
+                      }
+                    } catch (err) {
+                      // Expected for cross-origin: log silently
+                      console.log(
+                        "[PREVIEW] Cross-origin PDF — toolbar hiding not available",
+                      );
+                    }
+                  }}
                   onError={() => {
                     setPreviewUrl(null);
                   }}

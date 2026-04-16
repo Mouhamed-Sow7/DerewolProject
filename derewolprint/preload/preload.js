@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.on("subscription:status", (_, data) => callback(data)),
   onShowActivationModal: (callback) =>
     ipcRenderer.on("show:activation-modal", (_, data) => callback(data)),
+  onHideActivationModal: (callback) =>
+    ipcRenderer.on("hide:activation-modal", () => {
+      console.log("[PRELOAD] hide:activation-modal event received");
+      callback();
+    }),
   onAppReady: (callback) =>
     ipcRenderer.on("app:ready", (_, data) => callback(data)),
 

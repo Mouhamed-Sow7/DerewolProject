@@ -52,7 +52,63 @@ async function expireStaleGroups(printerId) {
 }
 
 async function fetchPendingJobs(printerId) {
+  // ── HANDLE EXPIRED JOBS FIRST (consolidate expiration logic) ──
+  // This ensures expired files are cleaned up before fetching pending ones
+  try {
+    const now = new Date().toISOString();
+
+    // Find jobs that have expired
+    const { data: expiredJobs } = await supabase
+      .from("print_jobs")
+      .select("id, file_groups(id)")
+      .lt("expires_at", now)
+      .in("status", ["queued", "printing"]);
+
+    if (expiredJobs?.length > 0) {
+      const groupIds = [
+        ...new Set(expiredJobs.map((j) => j.file_groups?.id).filter(Boolean)),
+      ];
+
+      // Mark jobs as expired
+      await supabase
+        .from("print_jobs")
+        .update({ status: "expired" })
+        .in(
+          "id",
+          expiredJobs.map((j) => j.id),
+        );
+
+      // Mark groups as expired (only if currently waiting/printing)
+      await supabase
+        .from("file_groups")
+        .update({ status: "expired" })
+        .in("id", groupIds)
+        .in("status", ["waiting", "printing"]);
+
+      // Remove files from storage
+      for (const groupId of groupIds) {
+        const { data: files } = await supabase
+          .from("files")
+          .select("storage_path")
+          .eq("group_id", groupId);
+
+        const paths = files?.map((f) => f.storage_path).filter(Boolean) || [];
+        if (paths.length > 0) {
+          await supabase.storage.from("derewol-files").remove(paths);
+        }
+      }
+
+      console.log(
+        `[POLLING] ⏰ ${groupIds.length} group(s) expiré(s) — fichiers nettoyés`,
+      );
+    }
+  } catch (e) {
+    console.warn("[POLLING] Expiration check error:", e.message);
+  }
+
+  // ── NOW FETCH PENDING (non-expired) JOBS ──
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
 
   let query = supabase
     .from("print_jobs")
@@ -67,7 +123,7 @@ async function fetchPendingJobs(printerId) {
     `,
     )
     .in("status", ["queued", "printing"])
-    .gt("expires_at", new Date().toISOString())
+    .gt("expires_at", now) // ← Exclude expired jobs
     .gt("created_at", twoHoursAgo);
 
   // Filtre via file_groups.printer_id

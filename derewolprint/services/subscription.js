@@ -14,29 +14,76 @@ const GRACE_DAYS = 3;
 // SECURITY: Only create trial if subscription does NOT exist at all
 async function ensureTrialOrSubscription(printerId) {
   try {
-    const { data } = await supabase
+    // 🔥 Check if subscription already exists (handle no-rows case)
+    let { data, error: checkError } = await supabase
       .from("subscriptions")
-      .select("id, plan, expires_at")
+      .select("id, plan, expires_at, status")
       .eq("printer_id", printerId)
-      .limit(1)
-      .single();
+      .limit(1);
 
-    // Already has a subscription (trial, active, expired) → don't create
-    if (data) {
-      console.log("[SUB] Subscription already exists, skipping trial creation");
+    // If data exists, subscription already there
+    if (data && data.length > 0) {
+      console.log("[SUB] ✅ Subscription already exists:", {
+        status: data[0].status,
+        plan: data[0].plan,
+        expires_at: data[0].expires_at,
+      });
       return { success: false, error: "Subscription already exists" };
     }
 
-    // First time only: create trial
-    await supabase.rpc("create_trial_subscription", {
-      p_printer_id: printerId,
-    });
+    // First time only: create trial via direct INSERT (avoids RPC constraint issue)
     console.log(
-      "[SUB] Période d'essai créée — 7 jours gratuits (first time only)",
+      "[SUB] 🟡 No subscription found — creating trial for",
+      printerId,
     );
-    return { success: true };
+
+    const trialCode = "TRIAL-" + printerId.substring(0, 8).toUpperCase();
+    const expiresAt = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { error: insertError } = await supabase.from("subscriptions").insert({
+      printer_id: printerId,
+      activation_code: trialCode,
+      plan: "trial",
+      duration_days: 7,
+      amount: 0,
+      payment_method: "manual",
+      status: "active",
+      activated_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    });
+
+    if (insertError) {
+      console.error("[SUB] ❌ INSERT error:", insertError);
+      return { success: false, error: insertError.message };
+    }
+
+    // 🔥 CRITICAL: Wait for DB to commit the transaction
+    await new Promise((r) => setTimeout(r, 500));
+
+    console.log("[SUB] ✅ Période d'essai créée — 7 jours gratuits");
+
+    // 🔥 Verify subscription was actually created
+    const { data: verify } = await supabase
+      .from("subscriptions")
+      .select("id, plan, status, expires_at")
+      .eq("printer_id", printerId)
+      .limit(1);
+
+    if (verify && verify.length > 0) {
+      console.log("[SUB] ✅ Verification — Trial saved:", {
+        plan: verify[0].plan,
+        status: verify[0].status,
+        expires_at: verify[0].expires_at,
+      });
+      return { success: true };
+    } else {
+      console.error("[SUB] ❌ Verification failed — trial not found");
+      return { success: false, error: "Trial created but verification failed" };
+    }
   } catch (e) {
-    console.warn("[SUB] ensureTrial:", e.message);
+    console.error("[SUB] ❌ ensureTrial exception:", e.message);
     return { success: false, error: e.message };
   }
 }
@@ -51,40 +98,67 @@ async function checkSubscription(printerId) {
       .from("subscriptions")
       .select("*")
       .eq("printer_id", printerId)
+      .order("created_at", { ascending: false }) // Get most recent
+      .limit(1)
       .single();
 
-    if (error || !data) {
-      // ❌ IMPORTANT : aucune création ici
-      // Effacer le cache local
+    if (error) {
+      console.log("[SUB] ❌ No subscription found for", printerId);
       const currentCfg = loadConfig() || {};
       if (currentCfg.subscription) {
-        console.log(
-          "[SUB] Subscription supprimée dans Supabase — effacement cache local",
-        );
+        console.log("[SUB] Clearing local cache");
         delete currentCfg.subscription;
         saveConfig(currentCfg);
       }
       return { valid: false, expired: true, daysLeft: 0 };
     }
 
-    const now = new Date();
-    const end = new Date(data.ends_at || data.expires_at);
-    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-
-    if (diff <= 0) {
+    if (!data) {
+      console.log("[SUB] ❌ Subscription data is null");
       return { valid: false, expired: true, daysLeft: 0 };
     }
+
+    console.log("[SUB] Found subscription:", {
+      plan: data.plan,
+      status: data.status,
+      expires_at: data.expires_at,
+      createdAt: data.created_at,
+    });
+
+    // Check if subscription is expired
+    const now = new Date();
+    const expiresAt = data.expires_at;
+    const end = new Date(expiresAt);
+    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+
+    console.log("[SUB] Date check:", {
+      now: now.toISOString(),
+      expiresAt: expiresAt,
+      daysLeft: diff,
+      isExpired: diff <= 0,
+    });
+
+    if (diff <= 0) {
+      console.log("[SUB] ❌ Subscription expired");
+      return { valid: false, expired: true, daysLeft: 0 };
+    }
+
+    console.log("[SUB] ✅ Subscription VALID", {
+      plan: data.plan,
+      daysLeft: diff,
+    });
 
     return {
       valid: true,
       expired: false,
       daysLeft: diff,
-      expiresAt: data.ends_at || data.expires_at,
+      expiresAt: expiresAt,
       plan: data.plan,
+      status: data.status,
       isTrial: data.plan === "trial",
     };
   } catch (e) {
-    console.error("[SUB] Subscription check failed", e);
+    console.error("[SUB] checkSubscription error:", e.message);
     return { valid: false, expired: true, daysLeft: 0 };
   }
 }
