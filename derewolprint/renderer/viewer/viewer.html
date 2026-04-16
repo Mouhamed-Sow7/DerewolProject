@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' 'unsafe-inline' file: data: blob:; script-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; frame-src file:;">
+  <title>Viewer — DerewolPrint</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+
+  <!-- ── Excel warning (3s + checkbox) ─────────────────────────── -->
+  <div id="excel-warning" class="excel-warning hidden" role="alertdialog">
+    <div class="excel-warning-box">
+      <div class="excel-warning-icon">⚠️</div>
+      <h2>Fichier Excel</h2>
+      <p>Les <strong>formules ne seront pas recalculées</strong>.<br>
+         Seules les valeurs simples peuvent être modifiées.</p>
+      <div id="excel-timer" class="excel-timer">3</div>
+      <label id="excel-checkbox-label" class="excel-checkbox-label hidden">
+        <input type="checkbox" id="excel-confirm-cb">
+        Je comprends les limitations
+      </label>
+      <button id="btn-excel-proceed" class="btn-proceed" disabled>Continuer</button>
+    </div>
+  </div>
+
+  <!-- ── Header ─────────────────────────────────────────────────── -->
+  <header id="viewer-header">
+    <button id="btn-close" class="hdr-btn hdr-btn--close">✕ Fermer</button>
+    <span id="viewer-filename" class="hdr-filename">Chargement…</span>
+    <button id="btn-print" class="hdr-btn hdr-btn--print hidden">⎙ Imprimer</button>
+  </header>
+
+  <!-- ── Toolbar (dynamic per type) ─────────────────────────────── -->
+  <div id="viewer-toolbar" class="viewer-toolbar">
+
+    <!-- PDF -->
+    <div id="tb-pdf" class="tb-group hidden">
+      <button id="pdf-prev" class="tb-btn">◀</button>
+      <span id="pdf-page-info" class="tb-info">— / —</span>
+      <button id="pdf-next" class="tb-btn">▶</button>
+      <span class="tb-sep"></span>
+      <button id="pdf-zoom-out" class="tb-btn">−</button>
+      <span id="pdf-zoom-val" class="tb-info">100%</span>
+      <button id="pdf-zoom-in"  class="tb-btn">+</button>
+    </div>
+
+    <!-- Image -->
+    <div id="tb-image" class="tb-group hidden">
+      <button id="img-rot-left"    class="tb-btn" title="Rotation −90°">↺ −90°</button>
+      <button id="img-rot-right"   class="tb-btn" title="Rotation +90°">↻ +90°</button>
+      <button id="img-crop-toggle" class="tb-btn" title="Activer la sélection crop">✂ Crop</button>
+      <button id="img-crop-apply"  class="tb-btn hidden" title="Appliquer crop">✓ Appliquer</button>
+      <span class="tb-sep"></span>
+      <label class="tb-filter" title="Luminosité">
+        ☀ <input type="range" id="filter-brightness" min="50" max="200" value="100" class="tb-range">
+      </label>
+      <label class="tb-filter" title="Contraste">
+        ◑ <input type="range" id="filter-contrast" min="50" max="200" value="100" class="tb-range">
+      </label>
+      <label class="tb-filter" title="Saturation">
+        ◎ <input type="range" id="filter-saturate" min="0" max="200" value="100" class="tb-range">
+      </label>
+      <span class="tb-sep"></span>
+      <button id="img-reset" class="tb-btn">↺ Reset</button>
+      <button id="img-save"  class="tb-btn tb-btn--primary">💾 Sauvegarder</button>
+    </div>
+
+    <!-- Excel -->
+    <div id="tb-excel" class="tb-group hidden">
+      <span class="tb-label">Feuille :</span>
+      <select id="excel-sheet-select" class="tb-select"></select>
+      <span class="tb-sep"></span>
+      <button id="excel-save" class="tb-btn tb-btn--primary">💾 Sauvegarder</button>
+    </div>
+
+    <!-- Word: no toolbar controls -->
+
+  </div>
+
+  <!-- ── Content area ───────────────────────────────────────────── -->
+  <main id="viewer-content">
+
+    <div id="loading-state" class="loading-state">
+      <div class="spinner"></div>
+      <span>Chargement…</span>
+    </div>
+
+    <!-- PDF: native Chromium renderer via iframe -->
+    <div id="pdf-container" class="viewer-pane hidden"></div>
+
+    <!-- Image: canvas -->
+    <div id="image-container" class="viewer-pane image-container hidden">
+      <div id="image-wrap" class="image-wrap">
+        <canvas id="image-canvas"></canvas>
+        <div id="crop-selection" class="crop-selection hidden"></div>
+      </div>
+    </div>
+
+    <!-- Excel: SheetJS editable table -->
+    <div id="excel-container" class="viewer-pane excel-container hidden">
+      <div id="excel-table-wrap"></div>
+    </div>
+
+    <!-- Word: mammoth HTML readonly -->
+    <div id="word-container" class="viewer-pane word-container hidden">
+      <div id="word-content" class="word-content" contenteditable="false"></div>
+    </div>
+
+    <!-- Generic fallback -->
+    <div id="generic-container" class="viewer-pane generic-container hidden">
+      <div class="generic-placeholder">
+        <div class="placeholder-icon">📄</div>
+        <p id="generic-name"></p>
+        <span>Aperçu non disponible pour ce type de fichier</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Footer: TTL + status ───────────────────────────────────── -->
+  <footer id="viewer-footer">
+    <span class="ttl-label">Session expire dans : <strong id="ttl-countdown">30:00</strong></span>
+    <span id="status-msg" class="status-msg"></span>
+  </footer>
+
+  <!-- Local libs from node_modules (relative to renderer/viewer/) -->
+  <script src="../../node_modules/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="../../node_modules/mammoth/mammoth.browser.min.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>

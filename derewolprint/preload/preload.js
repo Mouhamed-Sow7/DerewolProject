@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld("derewol", {
   onAppReady: (callback) =>
     ipcRenderer.on("app:ready", (_, data) => callback(data)),
 
+  // ── QR code (Main process, works offline) ──────────────────────
+  generateQR: async (data) => ipcRenderer.invoke("qr:generate", data),
+
+  // ── Viewer sécurisé ────────────────────────────────────────
+  viewerOpen: (jobId, fileId) =>
+    ipcRenderer.invoke("viewer:open", jobId, fileId),
+
   // ── Sécurité / Admin ───────────────────────────────────────
   securityDisableScreenshot: (code) =>
     ipcRenderer.invoke("security:disable-screenshot", code),

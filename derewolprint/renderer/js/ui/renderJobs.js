@@ -127,6 +127,13 @@ export default function renderJobs(
                 data-file-id="${item.fileId}"><i class="fa-solid fa-plus"></i></button>
             </div>
 
+            <button class="btn-view-file"
+              data-job-id="${item.jobId}"
+              data-file-id="${item.fileId}"
+              data-file-name="${item.fileName}"
+              title="Prévisualiser"
+              ><i class="fa-solid fa-eye"></i></button>
+
             <button class="btn-reject-file"
               data-job-id="${item.jobId}"
               data-file-id="${item.fileId}"
@@ -187,6 +194,13 @@ export default function renderJobs(
       const val = Math.min(20, getFileCopies(jobId, fileId) + 1);
       setFileCopies(jobId, fileId, val);
       document.getElementById(`fc-${jobId}-${fileId}`).textContent = val;
+    });
+  });
+
+  // ── Vue fichier ──────────────────────────────────────────
+  document.querySelectorAll(".btn-view-file").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.derewol.viewerOpen(btn.dataset.jobId, btn.dataset.fileId);
     });
   });
 

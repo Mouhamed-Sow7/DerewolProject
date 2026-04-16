@@ -3,11 +3,17 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const { execSync } = require("child_process");
-const { decryptFile, secureDelete } = require("../services/crypto");
+const {
+  decryptFile,
+  encryptFile,
+  hashFile,
+  secureDelete,
+} = require("../services/crypto");
 const supabase = require("../services/supabase");
 const { startPolling, stopPolling } = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
+const QRCode = require("qrcode");
 const {
   getAvailablePrinters,
   getDefaultPrinter,
@@ -30,10 +36,20 @@ let isDev = process.env.NODE_ENV === "development";
 let screenshotProtectionEnabled = false; // sera mis à jour dans whenReady
 const ADMIN_SECRET_CODE = "DEREWOL2026ADMIN"; // Secret code to disable protection
 
+// ── Print delay before deleting files from storage ──────────────
+// This gives the printer time to physically print before we delete the file.
+// Increase if your printer is slow or frequently gets jammed.
+// Format: milliseconds (1000ms = 1s, 30000ms = 30s)
+const PRINT_DELAY_MS = 30000; // 30 seconds wait before deletion
+
 let mainWindow = null;
 let printerCfg = null;
 const processingJobs = new Set();
+// ── Viewer sessions ─────────────────────────────────────────────
+// key = "${jobId}_${fileId}", value = { win, tmpPath, timer }
+const viewerSessions = new Map();
 let subscriptionTimer = null;
+let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
 
 // ── Spooler cleanup ─────────────────────────────────────────────
 function cleanSpooler() {
@@ -51,15 +67,21 @@ function cleanSpooler() {
 }
 
 function cleanTmpFiles() {
+  // On boot: delete stale dw-* files older than 2 hours.
+  // Keeps recent files safe; no active sessions exist at boot.
   try {
+    const now = Date.now();
+    const TWO_H = 2 * 60 * 60 * 1000;
     fs.readdirSync(os.tmpdir())
       .filter((f) => f.startsWith("dw-"))
       .forEach((f) => {
         try {
-          fs.unlinkSync(path.join(os.tmpdir(), f));
-        } catch (e) {}
+          const full = path.join(os.tmpdir(), f);
+          const { mtimeMs } = fs.statSync(full);
+          if (now - mtimeMs > TWO_H) fs.unlinkSync(full);
+        } catch (_) {}
       });
-  } catch (e) {}
+  } catch (_) {}
 }
 
 async function testConnection() {
@@ -164,6 +186,272 @@ ipcMain.handle("security:screenshot-status", () => ({
   enabled: screenshotProtectionEnabled,
 }));
 
+// ── Viewer : helpers ────────────────────────────────────────────
+function getFileType(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+  if (ext === ".pdf") return "pdf";
+  if ([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"].includes(ext))
+    return "image";
+  if ([".xls", ".xlsx", ".ods", ".csv"].includes(ext)) return "excel";
+  if ([".doc", ".docx", ".odt", ".rtf"].includes(ext)) return "word";
+  return "generic";
+}
+
+function viewerSessionKey(jobId, fileId) {
+  return `${jobId}_${fileId}`;
+}
+
+// ── Viewer : IPC handlers ────────────────────────────────────────
+// viewer:open — download + decrypt → tmp file → BrowserWindow
+ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
+  const sessionKey = viewerSessionKey(jobId, fileId);
+
+  // Focus existing window for same file if already open
+  if (viewerSessions.has(sessionKey)) {
+    const existing = viewerSessions.get(sessionKey);
+    if (existing.win && !existing.win.isDestroyed()) {
+      existing.win.focus();
+      return { success: true };
+    }
+    viewerSessions.delete(sessionKey);
+  }
+
+  try {
+    // 1. Fetch job + file metadata
+    const { data, error } = await supabase
+      .from("print_jobs")
+      .select(
+        `id, file_id, file_groups ( id, owner_id, files ( id, storage_path, encrypted_key, file_name ) )`,
+      )
+      .eq("id", jobId)
+      .single();
+
+    if (error || !data) return { success: false, error: "Job introuvable" };
+
+    const files = data.file_groups?.files || [];
+    const file = files.find((f) => f.id === fileId) || files[0];
+    if (!file) return { success: false, error: "Fichier introuvable" };
+
+    // 2. Download + decrypt
+    const { data: fileData, error: dlError } = await supabase.storage
+      .from("derewol-files")
+      .download(file.storage_path);
+
+    if (dlError) return { success: false, error: dlError.message };
+
+    const decrypted = decryptFile(
+      Buffer.from(await fileData.arrayBuffer()),
+      file.encrypted_key,
+    );
+
+    if (!decrypted || decrypted.length < 4)
+      return { success: false, error: "Fichier invalide" };
+
+    // 3. Write tmp file (path only sent to viewer, never the buffer itself)
+    const ext = path.extname(file.file_name) || ".bin";
+    const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
+    const tmpPath = path.join(os.tmpdir(), tmpName);
+    fs.writeFileSync(tmpPath, decrypted);
+
+    // 4. Open viewer BrowserWindow
+    const win = new BrowserWindow({
+      width: 1020,
+      height: 760,
+      minWidth: 720,
+      minHeight: 500,
+      title: file.file_name,
+      autoHideMenuBar: true,
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/viewerPreload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        devTools: false, // Disable DevTools in viewer (anti-exfiltration)
+        webSecurity: false, // Required: fetch('file:///…') for xlsx/mammoth
+        sandbox: false,
+      },
+    });
+
+    // Content protection (blocks screenshot API) in production
+    if (!isDev) {
+      win.setContentProtection(true);
+      // Block DevTools in viewer
+      win.webContents.on("before-input-event", (ev, input) => {
+        const blocked = [
+          input.key === "F12",
+          input.key === "I" && input.control && input.shift,
+          input.key === "J" && input.control && input.shift,
+        ];
+        if (blocked.some(Boolean)) ev.preventDefault();
+      });
+      win.webContents.on("devtools-opened", () =>
+        win.webContents.closeDevTools(),
+      );
+      win.webContents.on("context-menu", (ev) => ev.preventDefault());
+      Menu.setApplicationMenu(null);
+    }
+
+    win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
+
+    // 5. Once loaded, send metadata (path only — no buffer in IPC)
+    win.webContents.once("did-finish-load", () => {
+      win.webContents.send("viewer:data", {
+        path: tmpPath,
+        name: file.file_name,
+        jobId,
+        fileId,
+        type: getFileType(file.file_name),
+      });
+    });
+
+    // 6. TTL: auto-close after 30 minutes
+    const ttlTimer = setTimeout(
+      () => {
+        if (!win.isDestroyed()) {
+          win.webContents.send("viewer:ttl-expired");
+          setTimeout(() => {
+            if (!win.isDestroyed()) win.close();
+          }, 3500);
+        }
+      },
+      30 * 60 * 1000,
+    );
+
+    // 7. Track session (storagePath cached to avoid extra DB fetch on save)
+    viewerSessions.set(sessionKey, {
+      win,
+      tmpPath,
+      storagePath: file.storage_path,
+      timer: ttlTimer,
+    });
+
+    // 8. Cleanup on window close
+    win.on("closed", () => {
+      clearTimeout(ttlTimer);
+      const s = viewerSessions.get(sessionKey);
+      if (s?.tmpPath && fs.existsSync(s.tmpPath)) secureDelete(s.tmpPath);
+      viewerSessions.delete(sessionKey);
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.error("[VIEWER] Erreur ouverture:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// viewer:save — receive modified data, re-encrypt, overwrite supabase
+ipcMain.handle("viewer:save", async (_event, jobId, fileId, dataArray) => {
+  const sessionKey = viewerSessionKey(jobId, fileId);
+  const session = viewerSessions.get(sessionKey);
+  if (!session) return { success: false, error: "Session expirée" };
+
+  try {
+    // Reconstruct buffer from renderer array
+    const buf = Buffer.from(dataArray);
+
+    // Write modified data back to tmp file
+    fs.writeFileSync(session.tmpPath, buf);
+
+    // Hash + re-encrypt
+    const hash = hashFile(buf);
+    const { encrypted, key: newKey } = encryptFile(buf);
+
+    // Use cached storagePath from session (no extra DB round-trip)
+    const storagePath = session.storagePath;
+    if (!storagePath)
+      return { success: false, error: "storagePath manquant dans la session" };
+
+    // Upload overwrite
+    const { error: upErr } = await supabase.storage
+      .from("derewol-files")
+      .update(storagePath, encrypted, {
+        upsert: true,
+        contentType: "application/octet-stream",
+      });
+
+    if (upErr) return { success: false, error: upErr.message };
+
+    // Update DB: new key + hash tracking
+    await supabase
+      .from("files")
+      .update({
+        encrypted_key: newKey,
+        hash_printed: hash,
+        modified_at: new Date().toISOString(),
+      })
+      .eq("id", fileId);
+
+    log("VIEWER_SAVE", { jobId, fileId, bytes: buf.length });
+    return { success: true };
+  } catch (err) {
+    console.error("[VIEWER] Erreur sauvegarde:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// viewer:print — print original file from tmp path
+ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
+  const sessionKey = viewerSessionKey(jobId, fileId);
+  const session = viewerSessions.get(sessionKey);
+  if (!session) return { success: false, error: "Session expirée" };
+
+  const ext = path.extname(session.tmpPath).toLowerCase();
+
+  try {
+    if (ext === ".pdf") {
+      const printer = printerCfg?.name;
+      await pdfToPrinter.print(session.tmpPath, printer ? { printer } : {});
+      log("VIEWER_PRINT_PDF", { jobId, fileId });
+      return { success: true };
+    }
+
+    if ([".doc", ".docx"].includes(ext)) {
+      // Silent Word print via PowerShell COM (requires MS Word installed)
+      const docPath = session.tmpPath.replace(/\\/g, "\\\\");
+      const ps = [
+        `$w = New-Object -ComObject Word.Application`,
+        `$w.Visible = $false`,
+        `$d = $w.Documents.Open('${docPath}')`,
+        `$d.PrintOut()`,
+        `Start-Sleep 4`,
+        `$d.Close([ref]$false)`,
+        `$w.Quit()`,
+      ].join("; ");
+      execSync(
+        `powershell -NonInteractive -WindowStyle Hidden -Command "${ps}"`,
+        {
+          timeout: 30000,
+          stdio: "ignore",
+        },
+      );
+      log("VIEWER_PRINT_WORD", { jobId, fileId });
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      error: "Impression directe non supportée pour ce format",
+    };
+  } catch (err) {
+    console.error("[VIEWER] Erreur impression:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// viewer:close — secure delete tmp, close window
+ipcMain.on("viewer:close", (_event, jobId, fileId) => {
+  const sessionKey = viewerSessionKey(jobId, fileId);
+  const session = viewerSessions.get(sessionKey);
+  if (!session) return;
+
+  clearTimeout(session.timer);
+  if (session.tmpPath && fs.existsSync(session.tmpPath)) {
+    secureDelete(session.tmpPath);
+  }
+  if (session.win && !session.win.isDestroyed()) session.win.close();
+  viewerSessions.delete(sessionKey);
+});
+
 // ── Fenêtre onboarding ──────────────────────────────────────────
 function createSetupWindow() {
   const win = new BrowserWindow({
@@ -201,7 +489,15 @@ ipcMain.handle("setup:register", async (_, { name, slug, ownerPhone }) => {
       .select()
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Handle duplicate slug error specifically
+      if (error.code === "23505" || error.message.includes("duplicate key")) {
+        throw new Error(
+          `Le slug "${slug}" est déjà utilisé. Veuillez en choisir un autre.`,
+        );
+      }
+      throw new Error(error.message);
+    }
 
     const BASE_URL =
       process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
@@ -292,16 +588,23 @@ ipcMain.handle("trial:activate", async () => {
     };
   }
 
+  // 🔥 SET FLAG TO PREVENT MODAL REOPEN
+  trialJustActivated = true;
+  setTimeout(() => (trialJustActivated = false), 5000);
+
   try {
     await ensureTrialOrSubscription(printerCfg.id);
     if (mainWindow) {
       const s = await checkSubscription(printerCfg.id);
       mainWindow.webContents.send("subscription:status", s);
+      // 🔥 HIDE MODAL: Don't show activation modal after successful trial
+      mainWindow.webContents.send("hide:activation-modal");
     }
     log("TRIAL_ACTIVATED", { printer_id: printerCfg.id });
     return { success: true };
   } catch (e) {
     console.error("[SECURITY] Trial activation error:", e.message);
+    trialJustActivated = false; // Reset on error
     return { success: false, error: e.message };
   }
 });
@@ -436,6 +739,12 @@ async function printSingleJob(jobId, printerName, copies) {
     .update({ status: "completed", copies_remaining: 0 })
     .eq("id", jobId);
 
+  // ⏳ WAIT before deleting: gives printer time to physically print
+  console.log(
+    `[PRINT] ⏳ Attente ${PRINT_DELAY_MS / 1000}s avant suppression (laisser le temps à l'imprimante)...`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, PRINT_DELAY_MS));
+
   await supabase.storage.from("derewol-files").remove([file.storage_path]);
   console.log(`[PRINT] ${file.file_name} → Storage supprimé ✅`);
 
@@ -521,16 +830,20 @@ ipcMain.handle(
             fileName: item.fileName,
             error: err.message,
           });
+          // Mark job as failed in DB — do NOT delete it, do NOT delete storage
+          await supabase
+            .from("print_jobs")
+            .update({ status: "failed" })
+            .eq("id", item.jobId);
           await insertHistory({
             ownerId,
             displayId: ownerId,
             fileName: item.fileName,
             copies: item.copies,
             printerName,
-            status: "completed",
+            status: "failed",
             groupId: fileGroupId,
           });
-          await cleanupJobDB(item.jobId, fileGroupId);
         }
       }
 
@@ -549,7 +862,7 @@ ipcMain.handle(
       if (fileGroupId) {
         await supabase
           .from("file_groups")
-          .update({ status: "completed" })
+          .update({ status: "failed" })
           .eq("id", fileGroupId);
       }
       return { success: false, error: err.message };
@@ -670,6 +983,18 @@ ipcMain.handle("polling:set-interval", async (_, intervalMs) => {
     return { success: true };
   } catch (e) {
     console.error("[IPC] Erreur set-interval:", e.message);
+    return { success: false, error: e.message };
+  }
+});
+
+// ── IPC : QR Code ───────────────────────────────────────────────
+ipcMain.handle("qr:generate", async (_, data) => {
+  try {
+    const dataURL = await QRCode.toDataURL(data, { width: 300, margin: 2 });
+    console.log("[IPC] QR code généré avec succès");
+    return { success: true, dataURL };
+  } catch (e) {
+    console.error("[IPC] Erreur génération QR code:", e.message);
     return { success: false, error: e.message };
   }
 });
@@ -842,7 +1167,8 @@ function launchApp(isFreshRegistration = false) {
           mainWindow.webContents.send("subscription:status", s);
 
           // 🔥 CRITICAL: If expired status detected → show modal immediately
-          if (access.status === "expired") {
+          // BUT: Skip if trial was just activated (prevent loop)
+          if (access.status === "expired" && !trialJustActivated) {
             console.log(
               "[EXPIRATION] Trial/Subscription expired — showing activation modal",
             );
@@ -851,7 +1177,7 @@ function launchApp(isFreshRegistration = false) {
         }
       } catch (_) {}
     },
-    5000, // ← Changed to 5 seconds for LIVE expiration detection
+    5000, // ← 5 seconds for LIVE expiration detection
   );
 }
 

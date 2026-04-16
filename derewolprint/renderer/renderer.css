@@ -561,6 +561,26 @@ body.dark-mode .copies-count {
   color: var(--jaune);
 }
 
+.btn-view-file {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #93c5fd;
+  background: transparent;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.btn-view-file:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+
 .btn-reject-file {
   width: 26px;
   height: 26px;
