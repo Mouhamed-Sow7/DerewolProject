@@ -253,7 +253,7 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const tmpPath = path.join(os.tmpdir(), tmpName);
     fs.writeFileSync(tmpPath, decrypted);
 
-    // 4. Open viewer BrowserWindow
+    // 4. Open viewer BrowserWindow (CHILD of mainWindow - closes when parent closes)
     const win = new BrowserWindow({
       width: 1020,
       height: 760,
@@ -261,6 +261,8 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       minHeight: 500,
       title: file.file_name,
       autoHideMenuBar: true,
+      parent: mainWindow,
+      modal: false,
       webPreferences: {
         preload: path.join(__dirname, "../preload/viewerPreload.js"),
         nodeIntegration: false,
@@ -1215,6 +1217,26 @@ function launchApp(isFreshRegistration = false) {
     verifyPrinterExists();
   }, 30000); // Check every 30 seconds
 
+  // 🔥 Close all viewer windows when main window closes
+  mainWindow.on("close", () => {
+    viewerSessions.forEach(({ win }) => {
+      if (win && !win.isDestroyed()) {
+        win.close();
+      }
+    });
+    viewerSessions.clear();
+  });
+
+  // Also close viewer windows on app quit
+  app.on("will-quit", () => {
+    viewerSessions.forEach(({ win }) => {
+      if (win && !win.isDestroyed()) {
+        win.close();
+      }
+    });
+    viewerSessions.clear();
+  });
+
   // ── Abonnement : check + push renderer + LIVE expiration detection ───────────
   // 🔐 SECURITY: Poll for expiration changes every 5 seconds (LIVE detection)
   // If expired detected → send activation modal immediately
@@ -1239,7 +1261,8 @@ function launchApp(isFreshRegistration = false) {
     } catch (_) {}
   })();
 
-  // Polling every 5 MINUTES to detect expiration changes (not 5 seconds - too aggressive)
+  // 🔥 FAST polling to detect trial expiration LIVE (10 seconds = 10x faster than before)
+  // When user runs test-trial-ended.js, modal will show within 10s instead of 5 minutes
   subscriptionTimer = setInterval(
     async () => {
       try {
@@ -1266,7 +1289,7 @@ function launchApp(isFreshRegistration = false) {
         }
       } catch (_) {}
     },
-    5 * 60 * 1000, // ← 5 minutes (instead of 5s) — still catches expirations in reasonable time
+    10 * 1000, // ← 10 seconds (was 5 min) — LIVE detection when trial expires
   );
 }
 

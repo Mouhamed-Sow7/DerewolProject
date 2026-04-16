@@ -1708,41 +1708,84 @@ export default function PrinterSPA({ showToast }) {
               </div>
             ) : (
               <>
-                {/* 🔥 SECURITY: Multiple layers to prevent PDF downloads */}
-                {/* Layer 1: Large overlay covering toolbar area */}
+                {/* 🔥 SECURITY: Comprehensive download blocking - MULTIPLE LAYERS */}
+                {/* Layer 1: Full-screen interactive overlay - blocks ALL mouse/touch events to iframe */}
                 <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 120,  // Increased to 120px to cover even tall toolbars
-                    zIndex: 999,
-                    background: C.green,
-                    pointerEvents: "auto",
-                    userSelect: "none",
-                    WebkitUserSelect: "none",
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
                   }}
-                />
-                {/* Layer 2: Additional security overlay */}
-                <div
-                  onContextMenu={(e) => e.preventDefault()}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    return false;
+                  }}
                   onDrop={(e) => {
                     e.preventDefault();
                     return false;
                   }}
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    return false;
+                  }}
                   style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
                     right: 0,
+                    height: "150px",
+                    zIndex: 9999,
+                    background: C.green,
+                    pointerEvents: "auto",
+                    cursor: "not-allowed",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: 12,
+                    fontWeight: "bold",
+                  }}
+                >
+                  🔒 Download désactivé
+                </div>
+                {/* Layer 2: Full-screen overlay below toolbar - blocks any interaction */}
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onContextMenu={(e) => e.preventDefault()}
+                  onDrop={(e) => e.preventDefault()}
+                  onDragOver={(e) => e.preventDefault()}
+                  style={{
+                    position: "absolute",
+                    top: 150,
+                    left: 0,
+                    right: 0,
                     bottom: 0,
                     zIndex: 998,
-                    pointerEvents: "none",
+                    pointerEvents: "auto",
                   }}
                 />
-                {/* Layer 3: iframe with download restrictions */}
+                {/* Layer 3: iframe with maximum sandbox restrictions */}
                 <iframe
                   src={
                     previewUrl?.includes("#") || previewUrl?.includes("?")
@@ -1757,35 +1800,11 @@ export default function PrinterSPA({ showToast }) {
                     minHeight: "400px",
                     position: "relative",
                     zIndex: 1,
+                    pointerEvents: "none",
                   }}
                   title={previewName}
-                  sandbox="allow-same-origin allow-scripts"
+                  sandbox="allow-same-origin"
                   referrerPolicy="no-referrer"
-                  onLoad={(e) => {
-                    try {
-                      // Try to hide download button via JavaScript (may fail due to cross-origin)
-                      const iframeDoc = e.target.contentDocument;
-                      if (iframeDoc) {
-                        // Hide download button in PDF.js viewer
-                        const downloadBtn = iframeDoc.querySelector(
-                          'button[id*="download"], [aria-label*="Download"], [title*="Download"]',
-                        );
-                        if (downloadBtn) downloadBtn.style.display = "none";
-                        
-                        // Hide entire toolbar
-                        const toolbar = iframeDoc.querySelector(
-                          "#toolbarContainer, [class*="toolbar"]",
-                        );
-                        if (toolbar)
-                          toolbar.style.display = "none";
-                      }
-                    } catch (err) {
-                      // Expected for cross-origin: log silently
-                      console.log(
-                        "[PREVIEW] Cross-origin PDF — toolbar hiding not available",
-                      );
-                    }
-                  }}
                   onError={() => {
                     setPreviewUrl(null);
                   }}
