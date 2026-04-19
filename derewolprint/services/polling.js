@@ -138,10 +138,52 @@ async function fetchPendingJobs(printerId) {
     return [];
   }
 
-  // Filtre côté JS pour être sûr (Supabase nested filter pas toujours fiable)
-  const filtered = (data || []).filter(
-    (job) => !printerId || job.file_groups?.printer_id === printerId,
+  // ── Détecter et marquer les jobs expirés AVANT de retourner ──
+  const expiredJobs = (data || []).filter(
+    (j) =>
+      j.status === "queued" &&
+      j.expires_at &&
+      new Date(j.expires_at) < new Date(),
   );
+
+  if (expiredJobs.length > 0) {
+    for (const expJob of expiredJobs) {
+      const fgId = expJob.file_groups?.id;
+
+      // Marquer le job expiré
+      await supabase
+        .from("print_jobs")
+        .update({ status: "expired" })
+        .eq("id", expJob.id);
+
+      // Marquer le groupe expiré si encore en waiting
+      if (fgId) {
+        await supabase
+          .from("file_groups")
+          .update({ status: "expired" })
+          .eq("id", fgId)
+          .in("status", ["waiting"]);
+
+        // Supprimer le fichier du storage
+        const storagePath = expJob.file_groups?.files?.[0]?.storage_path;
+        if (storagePath) {
+          await supabase.storage
+            .from("derewol-files")
+            .remove([storagePath])
+            .catch(() => {});
+        }
+      }
+
+      console.log(
+        `[POLLING] ⏰ Job expiré: ${expJob.file_groups?.files?.[0]?.file_name || expJob.id}`,
+      );
+    }
+  }
+
+  // Filtre côté JS pour être sûr (Supabase nested filter pas toujours fiable)
+  const filtered = (data || [])
+    .filter((job) => !printerId || job.file_groups?.printer_id === printerId)
+    .filter((job) => !job.expires_at || new Date(job.expires_at) >= new Date());
 
   if (filtered.length > 0)
     console.log("[POLLING] Jobs actifs :", filtered.length);

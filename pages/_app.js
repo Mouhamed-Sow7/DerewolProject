@@ -1,6 +1,6 @@
 import "../styles/globals.css";
 import "../styles/dashboard.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
 import "../styles/modal.css";
 // ── Toast global ──────────────────────────────────────────────
@@ -34,10 +34,10 @@ export default function App({ Component, pageProps }) {
     }
   }, []);
 
-  function showToast(message, type = "success") {
+  const showToast = useCallback((message, type = "success") => {
     setToast({ message, type, visible: true });
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), 3000);
-  }
+  }, []);
 
   return (
     <>

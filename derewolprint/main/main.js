@@ -8,6 +8,7 @@ const {
   encryptFile,
   hashFile,
   secureDelete,
+  validateDecryptedBuffer,
 } = require("../services/crypto");
 const supabase = require("../services/supabase");
 const { startPolling, stopPolling } = require("../services/polling");
@@ -28,6 +29,40 @@ const {
   activateCode,
   ensureTrialOrSubscription,
 } = require("../services/subscription");
+
+// ── Dossier téléchargements DerewolPrint ───────────────────
+const DEREWOL_FILES_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function getDerewolFilesDir() {
+  const { app } = require("electron");
+  const dir = path.join(app.getPath("downloads"), "DerewolFiles");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log("[DEREWOL FILES] Dossier créé :", dir);
+  }
+  return dir;
+}
+
+function cleanDerewolFilesDir() {
+  try {
+    const dir = getDerewolFilesDir();
+    const files = fs.readdirSync(dir);
+    let count = 0;
+    for (const f of files) {
+      const fp = path.join(dir, f);
+      try {
+        fs.unlinkSync(fp);
+        count++;
+      } catch (e) {
+        console.warn("[DEREWOL FILES] Impossible de supprimer:", fp);
+      }
+    }
+    if (count > 0)
+      console.log(`[DEREWOL FILES] ${count} fichier(s) supprimé(s)`);
+  } catch (e) {
+    console.warn("[DEREWOL FILES] Erreur nettoyage:", e.message);
+  }
+}
 
 // ── Détection mode production/développement ─────────────────────
 let isDev = process.env.NODE_ENV === "development";
@@ -711,8 +746,6 @@ async function cleanupJobDB(jobId, fileGroupId, fileIdOnly = null) {
 
 // ── Impression d'un seul fichier (avec nettoyage immédiat) ──────
 async function printSingleJobNoDelay(jobId, printerName, copies) {
-  const tmpPath = path.join(os.tmpdir(), `dw-${jobId}.pdf`);
-
   const { data, error } = await supabase
     .from("print_jobs")
     .select(
@@ -729,6 +762,10 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
   const fileGroupId = data.file_groups.id;
   const ownerId = data.file_groups.owner_id;
+
+  // 🔥 Garder l'extension originale du fichier (pas forcer .pdf)
+  const ext = path.extname(file.file_name) || ".bin";
+  const tmpPath = path.join(os.tmpdir(), `dw-${jobId}${ext}`);
 
   await supabase
     .from("print_jobs")
@@ -757,8 +794,44 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
   fs.writeFileSync(tmpPath, decryptedBuffer);
 
+  // 🔥 Helper pour imprimer fichiers multi-formats
+  async function printFile(filePath, printerName) {
+    const ext = path.extname(filePath).toLowerCase();
+
+    if (ext === ".pdf") {
+      // PDF: utiliser pdf-to-printer
+      await pdfToPrinter.print(filePath, { printer: printerName });
+    } else if (
+      [".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".rtf"].includes(ext)
+    ) {
+      // Office: utiliser Windows Shell PrintTo
+      return new Promise((resolve, reject) => {
+        const cmd = `powershell.exe -Command "& {Add-Type -AssemblyName System.Printing; $printer = New-Object System.Printing.PrintQueue((New-Object System.Printing.LocalPrintServer), '${printerName}'); (New-Object -ComObject Word.Application,Excel.Application,LibreOffice.Calc* -ErrorAction SilentlyContinue).Print(1,1,1,1,$false,$null,0,$false); Start-Process -FilePath '${filePath.replace(/\\/g, "\\\\")}' -Verb PrintTo -ArgumentList '${printerName}' -Wait}"`;
+
+        // Approche plus simple et native: utiliser Windows rundll32
+        const simpleCmd = `rundll32.exe printui.dll PrintUIEntry /p /n "${printerName}"`;
+
+        // Meilleure approche: utiliser powershell directement
+        const psCmd = `(New-Object -ComObject Shell.Application).CreateShortCut('${filePath}').TargetPath | % {Start-Process $_ -Verb PrintTo -ArgumentList '${printerName}' -Wait}`;
+
+        // Approche encore meilleure: utiliser Windows Print Spooler directement
+        try {
+          const printCmd = `Start-Process "${filePath}" -Verb PrintTo -ArgumentList "'${printerName}'" -WindowStyle Hidden -Wait`;
+          execSync(`powershell.exe -Command "${printCmd}"`, {
+            stdio: "ignore",
+          });
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    } else {
+      throw new Error(`Format non supporté: ${ext}`);
+    }
+  }
+
   for (let i = 0; i < copies; i++) {
-    await pdfToPrinter.print(tmpPath, { printer: printerName });
+    await printFile(tmpPath, printerName);
     console.log(`[PRINT] ${file.file_name} copie ${i + 1}/${copies} ✅`);
     await supabase
       .from("print_jobs")
@@ -1076,6 +1149,148 @@ ipcMain.handle("qr:generate", async (_, data) => {
   }
 });
 
+// ── IPC : Téléchargement avec autorisation ────────────────────────
+
+// ── Demande d'autorisation de téléchargement ─────────────
+ipcMain.handle(
+  "file:request-download",
+  async (_, { fileId, groupId, fileName }) => {
+    if (!printerCfg?.id) return { success: false, error: "Non configuré" };
+    try {
+      const { data: group } = await supabase
+        .from("file_groups")
+        .select("owner_id")
+        .eq("id", groupId)
+        .single();
+
+      if (!group) return { success: false, error: "Groupe introuvable" };
+
+      const { data: req, error } = await supabase
+        .from("download_requests")
+        .insert({
+          file_id: fileId,
+          group_id: groupId,
+          owner_id: group.owner_id,
+          printer_id: printerCfg.id,
+          status: "pending",
+          expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      console.log(`[DOWNLOAD] Demande créée: ${req.id} pour ${fileName}`);
+      return { success: true, requestId: req.id };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+);
+
+// ── Vérifier si demande approuvée ───────────────────────
+ipcMain.handle("file:check-download-approval", async (_, requestId) => {
+  const { data } = await supabase
+    .from("download_requests")
+    .select("status, file_id, expires_at")
+    .eq("id", requestId)
+    .single();
+  if (!data) return { status: "not_found" };
+  if (new Date(data.expires_at) < new Date()) return { status: "expired" };
+  return { status: data.status, fileId: data.file_id };
+});
+
+// ── Télécharger après approbation ───────────────────────
+ipcMain.handle(
+  "file:download-approved",
+  async (_, { requestId, fileId, fileName }) => {
+    try {
+      const { data: req } = await supabase
+        .from("download_requests")
+        .select("status, expires_at")
+        .eq("id", requestId)
+        .single();
+
+      if (!req || req.status !== "approved")
+        return { success: false, error: "Non autorisé ou expiré" };
+      if (new Date(req.expires_at) < new Date())
+        return { success: false, error: "Autorisation expirée" };
+
+      const { data: fileRow } = await supabase
+        .from("files")
+        .select("storage_path, encrypted_key")
+        .eq("id", fileId)
+        .single();
+
+      if (!fileRow) return { success: false, error: "Fichier introuvable" };
+
+      const { data: fileData } = await supabase.storage
+        .from("derewol-files")
+        .download(fileRow.storage_path);
+
+      // DÉCHIFFREMENT ET VALIDATION
+      const encryptedBuffer = Buffer.from(await fileData.arrayBuffer());
+      const decrypted = decryptFile(encryptedBuffer, fileRow.encrypted_key);
+
+      // ✅ VALIDATION 1: Vérifier que c'est un Buffer
+      if (!Buffer.isBuffer(decrypted)) {
+        throw new Error("Le déchiffrement n'a pas retourné un Buffer valide");
+      }
+
+      // ✅ VALIDATION 2: Vérifier que le buffer n'est pas vide
+      if (decrypted.length === 0) {
+        throw new Error("Le buffer déchiffré est vide");
+      }
+
+      // ✅ VALIDATION 3: Validation spécifique par type de fichier
+      if (!validateDecryptedBuffer(decrypted, fileName)) {
+        throw new Error(
+          "Le buffer déchiffré n'est pas valide pour ce type de fichier",
+        );
+      }
+
+      console.log(`[DOWNLOAD] ✅ Buffer validé: ${decrypted.length} bytes`);
+
+      // Sauvegarde du fichier
+      const { shell } = require("electron");
+      const safeName = fileName.replace(/[^a-zA-Z0-9._\-\s]/g, "_");
+      const derewolDir = getDerewolFilesDir();
+      const savePath = path.join(derewolDir, safeName);
+      fs.writeFileSync(savePath, decrypted);
+
+      await supabase
+        .from("download_requests")
+        .update({
+          status: "downloaded",
+          downloaded_at: new Date().toISOString(),
+        })
+        .eq("id", requestId);
+
+      console.log(`[DOWNLOAD] ✅ Fichier téléchargé: ${savePath}`);
+      shell.openPath(savePath);
+
+      // Suppression automatique après 30 minutes
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(savePath)) {
+            fs.unlinkSync(savePath);
+            console.log(`[DEREWOL FILES] Supprimé après 30min: ${safeName}`);
+          }
+        } catch (e) {
+          console.warn(
+            "[DEREWOL FILES] Erreur suppression différée:",
+            e.message,
+          );
+        }
+      }, DEREWOL_FILES_TTL_MS);
+
+      return { success: true, savePath };
+    } catch (err) {
+      console.error("[DOWNLOAD] ❌ Erreur validation:", err.message);
+      return { success: false, error: err.message };
+    }
+  },
+);
+
 // ── Vérification existence imprimeur (toutes les 30s) ──────────────
 let printerVerificationTimer = null;
 async function verifyPrinterExists() {
@@ -1237,6 +1452,10 @@ function launchApp(isFreshRegistration = false) {
     viewerSessions.clear();
   });
 
+  app.on("before-quit", () => {
+    cleanDerewolFilesDir();
+  });
+
   // ── Abonnement : check + push renderer + LIVE expiration detection ───────────
   // 🔐 SECURITY: Poll for expiration changes every 5 seconds (LIVE detection)
   // If expired detected → send activation modal immediately
@@ -1309,6 +1528,7 @@ app.whenReady().then(async () => {
   log("APP_START", { version: "1.0.0" });
   cleanSpooler();
   cleanTmpFiles();
+  cleanDerewolFilesDir(); // Nettoyage fichiers téléchargés résiduels
   await testConnection();
 
   printerCfg = loadConfig();
@@ -1360,6 +1580,7 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   stopPolling();
+  cleanDerewolFilesDir(); // Nettoyage dossiers téléchargés à la fermeture
   if (subscriptionTimer) {
     clearInterval(subscriptionTimer);
     subscriptionTimer = null;

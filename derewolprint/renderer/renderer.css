@@ -1378,6 +1378,31 @@ body.dark-mode .act-trial-card {
   cursor: not-allowed;
 }
 
+.act-notice {
+  display: none;
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(245, 240, 213, 0.95);
+  border: 1px solid #e3cf7a;
+  color: #6b4f08;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.act-notice.error {
+  background: rgba(254, 226, 226, 0.95);
+  border-color: #f9a8d4;
+  color: #9f1239;
+}
+
+.act-notice.success {
+  background: rgba(220, 252, 231, 0.95);
+  border-color: #4ade80;
+  color: #166534;
+}
+
 /* ──── Subscription Tab ──── */
 
 .act-whatsapp-section {
@@ -1747,4 +1772,337 @@ body.dark-mode .act-trial-card {
 
 .acc-footer p {
   margin: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   MODAL REDESIGN — April 2026 ──────────────────────────────────
+   ════════════════════════════════════════════════════════════════ */
+
+/* Overlay plein écran */
+#activation-backdrop,
+#subscription-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.activation-backdrop.show,
+#activation-backdrop.show,
+#subscription-overlay.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activation-backdrop,
+.sub-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(5px);
+}
+
+/* Box principale */
+.activation-box,
+.sub-overlay-box {
+  position: relative;
+  z-index: 1;
+  background: var(--surface, #1e2d21);
+  border-radius: 20px;
+  padding: 32px 30px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border, #2a3d2e);
+}
+
+/* Logo centré */
+.activation-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.act-logo-mark {
+  width: 30px;
+  height: 30px;
+  background: var(--accent, #f5c842);
+  border-radius: 8px;
+}
+.act-logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text, #e8f5e9);
+}
+.act-logo-text b {
+  color: var(--accent, #f5c842);
+}
+
+/* Titre */
+.activation-title {
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--text, #e8f5e9);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* Description */
+.activation-desc {
+  font-size: 13px;
+  color: var(--text-muted, #7a9a7e);
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+
+/* Tabs */
+.act-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg, #162018);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 22px;
+}
+.act-tab {
+  flex: 1;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted, #7a9a7e);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: "Inter", sans-serif;
+}
+.act-tab.active {
+  background: var(--surface, #1e2d21);
+  color: var(--text, #e8f5e9);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.act-tab:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Trial card */
+.act-trial-card {
+  text-align: center;
+  padding: 28px 20px;
+  background: var(--bg, #162018);
+  border-radius: 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border, #2a3d2e);
+}
+.act-trial-icon {
+  font-size: 42px;
+  margin-bottom: 10px;
+}
+.act-trial-duration {
+  font-size: 60px;
+  font-weight: 900;
+  color: var(--success, #4caf70);
+  line-height: 1;
+}
+.act-trial-label {
+  font-size: 15px;
+  color: var(--text-muted, #7a9a7e);
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+.act-trial-note {
+  font-size: 12px;
+  color: var(--text-muted, #7a9a7e);
+  line-height: 1.6;
+}
+
+/* Bouton principal */
+.act-btn-primary {
+  width: 100%;
+  padding: 14px;
+  background: var(--accent, #f5c842);
+  color: #111510;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: "Inter", sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.act-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.act-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Plans */
+.act-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.act-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--bg, #162018);
+  border-radius: 12px;
+  border: 2px solid transparent;
+  position: relative;
+  transition: border-color 0.2s;
+}
+.act-plan:hover {
+  border-color: var(--accent, #f5c842);
+}
+.act-plan--popular {
+  border-color: var(--accent, #f5c842);
+}
+
+.act-plan-left {
+  display: flex;
+  flex-direction: column;
+}
+.act-plan-label {
+  font-size: 11px;
+  color: var(--text-muted, #7a9a7e);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.act-plan-price {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text, #e8f5e9);
+}
+.act-plan-saving {
+  font-size: 11px;
+  color: var(--accent, #f5c842);
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.act-plan-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--accent, #f5c842);
+  color: #111510;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* WhatsApp */
+.act-whatsapp-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: #25d366;
+  color: #fff;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  font-family: "Inter", sans-serif;
+  transition: opacity 0.2s;
+}
+.act-whatsapp-btn:hover {
+  opacity: 0.9;
+}
+
+/* Code input */
+.act-code-row {
+  display: flex;
+  gap: 8px;
+}
+.act-code-row input {
+  flex: 1;
+  padding: 11px 14px;
+  border: 2px solid var(--border, #2a3d2e);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: monospace;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: var(--bg, #162018);
+  color: var(--text, #e8f5e9);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.act-code-row input:focus {
+  border-color: var(--accent, #f5c842);
+}
+
+.act-btn-activate {
+  padding: 11px 18px;
+  background: var(--success, #4caf70);
+  color: var(--bg, #162018);
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: "Inter", sans-serif;
+  transition: opacity 0.2s;
+}
+.act-btn-activate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.act-code-error {
+  font-size: 12px;
+  color: var(--danger, #ef5350);
+  margin-top: 6px;
+}
+
+.act-footer-note {
+  font-size: 11px;
+  color: var(--text-muted, #7a9a7e);
+  text-align: center;
+  margin-top: 18px;
+  line-height: 1.5;
+}
+
+/* Banner trial */
+#trial-banner {
+  position: fixed;
+  bottom: 0;
+  left: 220px;
+  right: 0;
+  z-index: 50;
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid;
+  font-family: "Inter", sans-serif;
 }

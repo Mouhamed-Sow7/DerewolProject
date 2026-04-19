@@ -47,6 +47,14 @@ contextBridge.exposeInMainWorld("derewol", {
   // ── QR code (Main process, works offline) ──────────────────────
   generateQR: async (data) => ipcRenderer.invoke("qr:generate", data),
 
+  // ── Download authorization ────────────────────────────────────
+  requestFileDownload: (data) =>
+    ipcRenderer.invoke("file:request-download", data),
+  checkDownloadApproval: (id) =>
+    ipcRenderer.invoke("file:check-download-approval", id),
+  downloadApprovedFile: (data) =>
+    ipcRenderer.invoke("file:download-approved", data),
+
   // ── Viewer sécurisé ────────────────────────────────────────
   viewerOpen: (jobId, fileId) =>
     ipcRenderer.invoke("viewer:open", jobId, fileId),

@@ -79,6 +79,15 @@ const _modalState = {
   trialAlreadyUsed: false,
 };
 
+let latestSubscriptionStatus = null;
+let activationModalHoldTimer = null;
+let activationModalPending = null;
+const ACTIVATION_MODAL_WAIT_MS = 200;
+
+function isSubscriptionActive(sub) {
+  return sub?.valid === true;
+}
+
 let activationInitialized = false;
 let acceptanceInitialized = false;
 let isShowingModal = false;
@@ -121,6 +130,16 @@ function bindActivationModal() {
 
   // ── Trial button ──
   const trialBtn = document.querySelector(".act-btn-activate");
+  const trialNotice = document.getElementById("act-trial-notice");
+
+  function showTrialNotice(message, type = "error") {
+    if (!trialNotice) return;
+    trialNotice.textContent = message;
+    trialNotice.classList.remove("error", "success");
+    trialNotice.classList.add(type);
+    trialNotice.style.display = "block";
+  }
+
   if (trialBtn) {
     trialBtn.addEventListener("click", async () => {
       if (_modalState.isActivating) return;
@@ -128,21 +147,27 @@ function bindActivationModal() {
       trialBtn.disabled = true;
       trialBtn.innerHTML =
         '<i class="fa-solid fa-spinner fa-spin"></i> Activation...';
+      if (trialNotice) trialNotice.style.display = "none";
 
       try {
         const res = await window.derewol.activateTrial();
         if (res?.success) {
           trialBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
+          if (trialNotice) {
+            ((trialNotice.textContent = "Votre essai est activé."),
+              trialNotice.classList.add("success"));
+            trialNotice.style.display = "block";
+          }
           localStorage.setItem("trialStarted", "true");
           setTimeout(() => hideActivationModal(), 1500);
         } else {
-          alert(res?.error || "Erreur activation essai");
+          showTrialNotice(res?.error || "Erreur activation essai", "error");
           trialBtn.disabled = false;
           trialBtn.innerHTML =
             '<i class="fa-solid fa-play"></i> Démarrer mon essai';
         }
       } catch (e) {
-        alert("Erreur: " + e.message);
+        showTrialNotice("Erreur: " + e.message, "error");
         trialBtn.disabled = false;
         trialBtn.innerHTML =
           '<i class="fa-solid fa-play"></i> Démarrer mon essai';
@@ -387,6 +412,16 @@ function bindAcceptanceModal() {
     });
   }
 
+  const acceptanceNotice = modal.querySelector("#acc-notice");
+
+  function showAcceptanceNotice(message, type = "error") {
+    if (!acceptanceNotice) return;
+    acceptanceNotice.textContent = message;
+    acceptanceNotice.classList.remove("hidden", "error", "success");
+    acceptanceNotice.classList.add(type);
+    acceptanceNotice.style.display = "block";
+  }
+
   // Accept button
   if (acceptBtn) {
     acceptBtn.addEventListener("click", async () => {
@@ -394,6 +429,7 @@ function bindAcceptanceModal() {
       acceptBtn.disabled = true;
       acceptBtn.innerHTML =
         '<i class="fa-solid fa-spinner fa-spin"></i> Traitement...';
+      if (acceptanceNotice) acceptanceNotice.classList.add("hidden");
 
       try {
         if (type === "trial") {
@@ -404,8 +440,9 @@ function bindAcceptanceModal() {
               hideAcceptanceModal();
             }, 1500);
           } else {
-            alert(
-              "Erreur: " + (result.error || "Impossible d\'activer l\'essai"),
+            showAcceptanceNotice(
+              result.error || "Impossible d'activer l'essai",
+              "error",
             );
             acceptBtn.disabled = false;
             acceptBtn.innerHTML =
@@ -423,9 +460,9 @@ function bindAcceptanceModal() {
               hideAcceptanceModal();
             }, 1500);
           } else {
-            alert(
-              "Erreur: " +
-                (result.error || "Impossible de confirmer le paiement"),
+            showAcceptanceNotice(
+              result.error || "Impossible de confirmer le paiement",
+              "error",
             );
             acceptBtn.disabled = false;
             acceptBtn.innerHTML =
@@ -433,7 +470,7 @@ function bindAcceptanceModal() {
           }
         }
       } catch (e) {
-        alert("Erreur: " + e.message);
+        showAcceptanceNotice("Erreur: " + e.message, "error");
         acceptBtn.disabled = false;
         acceptBtn.innerHTML = '<i class="fa-solid fa-check"></i> J\'accepte';
       }
@@ -1076,7 +1113,38 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      if (isSubscriptionActive(latestSubscriptionStatus)) {
+        console.log(
+          "[DEREWOL] Suppressing activation modal because subscription is already active",
+          latestSubscriptionStatus,
+        );
+        return;
+      }
+
       console.log("[DEREWOL] Received show:activation-modal event", data);
+
+      // Wait briefly for the subscription status event to arrive before showing,
+      // to avoid a flash when an active trial is verified quickly.
+      if (latestSubscriptionStatus === null) {
+        activationModalPending = data;
+        if (activationModalHoldTimer) clearTimeout(activationModalHoldTimer);
+        activationModalHoldTimer = setTimeout(() => {
+          activationModalHoldTimer = null;
+          activationModalPending = null;
+          if (isSubscriptionActive(latestSubscriptionStatus)) {
+            console.log(
+              "[DEREWOL] Activation modal cancelled after status arrived active",
+              latestSubscriptionStatus,
+            );
+            return;
+          }
+          isShowingModal = true;
+          window.showActivationModal(data);
+          isShowingModal = false;
+        }, ACTIVATION_MODAL_WAIT_MS);
+        return;
+      }
+
       isShowingModal = true;
       window.showActivationModal(data);
       isShowingModal = false;
@@ -1087,7 +1155,30 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.derewol?.onSubscriptionStatus) {
     window.derewol.onSubscriptionStatus((data) => {
       console.log("[DEREWOL] Received subscription:status event", data);
+      latestSubscriptionStatus = data || null;
+
+      if (
+        activationModalHoldTimer &&
+        isSubscriptionActive(latestSubscriptionStatus)
+      ) {
+        clearTimeout(activationModalHoldTimer);
+        activationModalHoldTimer = null;
+        activationModalPending = null;
+        console.log(
+          "[DEREWOL] Cancelled pending activation modal because subscription is active",
+          latestSubscriptionStatus,
+        );
+      }
+
       handleSubscriptionStatus(data);
+    });
+  }
+
+  // Listen for hide activation modal from main process
+  if (window.derewol?.onHideActivationModal) {
+    window.derewol.onHideActivationModal(() => {
+      console.log("[DEREWOL] Received hide:activation-modal event");
+      hideActivationModal();
     });
   }
 

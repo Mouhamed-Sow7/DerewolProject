@@ -136,6 +136,35 @@ function usePrintStatus(ownerId) {
   return { groups, loading };
 }
 
+// Hook: Surveille les demandes de téléchargement
+function useDownloadRequests(ownerId) {
+  const [pending, setPending] = useState([]);
+  const seenRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!ownerId) return;
+    const fetch = async () => {
+      const { data } = await supabase
+        .from("download_requests")
+        .select("id, file_id, status, requested_at, files(file_name)")
+        .eq("owner_id", ownerId)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString());
+
+      const news = (data || []).filter((r) => !seenRef.current.has(r.id));
+      if (news.length) {
+        news.forEach((r) => seenRef.current.add(r.id));
+        setPending((prev) => [...prev, ...news]);
+      }
+    };
+    fetch();
+    const iv = setInterval(fetch, 3000);
+    return () => clearInterval(iv);
+  }, [ownerId]);
+
+  return { pending, setPending };
+}
+
 function getFileIconClass(fileName) {
   const ext = fileName?.split(".")?.pop()?.toLowerCase() || "";
   switch (ext) {
@@ -872,7 +901,123 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
 }
 
 const MAX_FILES = 20;
-const MAX_SIZE_MB = 10;
+const MAX_SIZE_MB = 100;
+
+// Composant: Notification demande téléchargement
+function DownloadRequestNotif({ req, onRespond, C }) {
+  const [loading, setLoading] = useState(false);
+  const fileName = req.files?.file_name || "votre fichier";
+
+  async function respond(approved) {
+    setLoading(true);
+    await supabase
+      .from("download_requests")
+      .update({
+        status: approved ? "approved" : "rejected",
+        responded_at: new Date().toISOString(),
+      })
+      .eq("id", req.id);
+    onRespond(req.id);
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 20,
+        left: 12,
+        right: 12,
+        zIndex: 9500,
+        background: "#fff",
+        borderRadius: 14,
+        padding: "16px 18px",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+        border: `2px solid ${C.yellow}`,
+        fontFamily: "Inter, sans-serif",
+      }}
+    >
+      <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            flexShrink: 0,
+            background: "#fff3cd",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 18,
+            color: "#856404",
+          }}
+        >
+          <i className="fa-solid fa-download" />
+        </div>
+        <div>
+          <p
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: C.text,
+              marginBottom: 4,
+            }}
+          >
+            Demande de téléchargement
+          </p>
+          <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
+            L'imprimeur souhaite télécharger{" "}
+            <strong style={{ color: C.text }}>{fileName}</strong> pour le
+            modifier. Autorisez-vous ?
+          </p>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={() => respond(false)}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "10px",
+            borderRadius: 8,
+            cursor: "pointer",
+            border: "1px solid #fca5a5",
+            background: "#fee2e2",
+            color: "#dc2626",
+            fontWeight: 700,
+            fontSize: 13,
+            fontFamily: "Inter, sans-serif",
+          }}
+        >
+          <i className="fa-solid fa-xmark" /> Refuser
+        </button>
+        <button
+          onClick={() => respond(true)}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "10px",
+            borderRadius: 8,
+            cursor: "pointer",
+            border: "none",
+            background: C.green,
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 13,
+            fontFamily: "Inter, sans-serif",
+          }}
+        >
+          {loading ? (
+            <i className="fa-solid fa-spinner fa-spin" />
+          ) : (
+            <>
+              <i className="fa-solid fa-check" /> Autoriser
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function PrinterSPA({ showToast }) {
   const [slug, setSlug] = useState(null);
@@ -896,6 +1041,9 @@ export default function PrinterSPA({ showToast }) {
   const t = useTranslation(lang);
   const ownerId = session?.owner_id || null;
   const { groups, loading: groupsLoading } = usePrintStatus(ownerId);
+  const { pending: dlRequests, setPending: setDlRequests } =
+    useDownloadRequests(session?.owner_id);
+  const notifiedExpiredRef = useRef(new Set());
 
   function setLang(l) {
     setLangState(l);
@@ -1119,9 +1267,16 @@ export default function PrinterSPA({ showToast }) {
     };
   }, []);
 
-  // ─ Monitor expired groups and show notification ─────────────────
-  const notifiedExpiredRef = useRef(new Set());
+  // 🔥 Cleanup blob URLs when preview closes (prevent memory leaks)
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
+  // ─ Monitor expired groups and show notification ─────────────────
   useEffect(() => {
     if (!groups || groups.length === 0) return;
 
@@ -1200,32 +1355,65 @@ export default function PrinterSPA({ showToast }) {
     setPreviewLoading(true);
     setPreviewUrl("loading");
     try {
-      const { data } = await supabase.storage
-        .from("derewol-files")
-        .createSignedUrl(storagePath, 120);
+      const isPdf = /\.pdf$/i.test(fileName || "");
+      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName || "");
+      const isWord = /\.(doc|docx)$/i.test(fileName || "");
+      const isExcel = /\.(xls|xlsx)$/i.test(fileName || "");
+      const isPowerPoint = /\.(ppt|pptx)$/i.test(fileName || "");
+      const needsGoogleViewer = isWord || isExcel || isPowerPoint;
 
-      if (data?.signedUrl) {
-        const isPdf = /\.pdf$/i.test(fileName || "");
-        const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName || "");
-        const isWord = /\.(doc|docx)$/i.test(fileName || "");
-        const isExcel = /\.(xls|xlsx)$/i.test(fileName || "");
-        const isPowerPoint = /\.(ppt|pptx)$/i.test(fileName || "");
-        const needsGoogleViewer = isWord || isExcel || isPowerPoint;
+      if (needsGoogleViewer) {
+        // For Office docs, use signed URL with Google Viewer
+        const { data } = await supabase.storage
+          .from("derewol-files")
+          .createSignedUrl(storagePath, 120);
 
-        if (needsGoogleViewer) {
-          // Force Google Docs Viewer render with proper encoding
+        if (data?.signedUrl) {
           const encodedUrl = encodeURIComponent(data.signedUrl);
           const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodedUrl}`;
           setPreviewUrl(viewerUrl);
-        } else if (isPdf || isImage) {
+        } else {
+          setPreviewUrl(null);
+        }
+      } else if (isPdf) {
+        // 🔥 For PDFs: Fetch as blob and create blob URL to prevent browser controls
+        const { data: blob, error: dlError } = await supabase.storage
+          .from("derewol-files")
+          .download(storagePath);
+
+        if (dlError || !blob) {
+          console.error("PDF download failed:", dlError);
+          setPreviewUrl(null);
+          return;
+        }
+
+        // Create blob URL (prevents browser default PDF viewer controls)
+        const blobUrl = URL.createObjectURL(blob);
+        setPreviewUrl(blobUrl);
+      } else if (isImage) {
+        // For images, use signed URL
+        const { data } = await supabase.storage
+          .from("derewol-files")
+          .createSignedUrl(storagePath, 120);
+
+        if (data?.signedUrl) {
           setPreviewUrl(data.signedUrl);
         } else {
+          setPreviewUrl(null);
+        }
+      } else {
+        // For other file types, use Google Viewer
+        const { data } = await supabase.storage
+          .from("derewol-files")
+          .createSignedUrl(storagePath, 120);
+
+        if (data?.signedUrl) {
           const encodedUrl = encodeURIComponent(data.signedUrl);
           const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodedUrl}`;
           setPreviewUrl(viewerUrl);
+        } else {
+          setPreviewUrl(null);
         }
-      } else {
-        setPreviewUrl(null);
       }
     } catch (err) {
       console.error("Preview error:", err);
@@ -1814,6 +2002,18 @@ export default function PrinterSPA({ showToast }) {
           </div>
         </div>
       )}
+
+      {/* Notifications demandes teléchargement */}
+      {dlRequests.map((req) => (
+        <DownloadRequestNotif
+          key={req.id}
+          req={req}
+          C={C}
+          onRespond={(id) =>
+            setDlRequests((prev) => prev.filter((r) => r.id !== id))
+          }
+        />
+      ))}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>

@@ -134,6 +134,18 @@ export default function renderJobs(
               title="Prévisualiser"
               ><i class="fa-solid fa-eye"></i></button>
 
+            <button class="btn-req-download"
+              data-file-id="${item.fileId}"
+              data-group-id="${item.fileGroupId}"
+              data-file-name="${item.fileName}"
+              title="Demander au client l'autorisation de télécharger"
+              style="background:transparent;border:1px solid var(--border);
+                border-radius:6px;padding:4px 10px;cursor:pointer;
+                color:var(--text-muted);font-size:11px;white-space:nowrap;
+                font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:4px;">
+              <i class="fa-solid fa-download" style="font-size:10px"></i> Télécharger
+            </button>
+
             <button class="btn-reject-file"
               data-job-id="${item.jobId}"
               data-file-id="${item.fileId}"
@@ -201,6 +213,72 @@ export default function renderJobs(
   document.querySelectorAll(".btn-view-file").forEach((btn) => {
     btn.addEventListener("click", () => {
       window.derewol.viewerOpen(btn.dataset.jobId, btn.dataset.fileId);
+    });
+  });
+
+  // ── Demande téléchargement ────────────────────────────────
+  document.querySelectorAll(".btn-req-download").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const { fileId, groupId, fileName } = btn.dataset;
+      const origHTML = btn.innerHTML;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-clock"></i> Demande…';
+
+      const res = await window.derewol.requestFileDownload({
+        fileId,
+        groupId,
+        fileName,
+      });
+      if (!res.success) {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        return;
+      }
+
+      const requestId = res.requestId;
+      let attempts = 0;
+      const maxAttempts = 200; // 200 × 3s = 10 min
+
+      const poll = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(poll);
+          btn.disabled = false;
+          btn.innerHTML = origHTML;
+          return;
+        }
+
+        const check = await window.derewol.checkDownloadApproval(requestId);
+
+        if (check.status === "approved") {
+          clearInterval(poll);
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> DL…';
+          const dl = await window.derewol.downloadApprovedFile({
+            requestId,
+            fileId,
+            fileName,
+          });
+          if (dl.success) {
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> OK';
+            btn.style.color = "var(--success, #4caf70)";
+            btn.style.borderColor = "var(--success, #4caf70)";
+          } else {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+          }
+        } else if (check.status === "rejected" || check.status === "expired") {
+          clearInterval(poll);
+          btn.innerHTML = '<i class="fa-solid fa-ban"></i> Refusé';
+          btn.style.color = "var(--danger, #ef5350)";
+          setTimeout(() => {
+            btn.disabled = false;
+            btn.style.color = "";
+            btn.style.borderColor = "";
+            btn.innerHTML = origHTML;
+          }, 3000);
+        }
+      }, 3000);
     });
   });
 

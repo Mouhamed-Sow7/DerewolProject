@@ -6,12 +6,12 @@ import { loadSession } from "../lib/helpers";
 // Supprime espaces, accents, parenthèses, caractères spéciaux
 function sanitizeFileName(name) {
   return name
-    .normalize("NFD")                          // décompose accents
-    .replace(/[\u0300-\u036f]/g, "")           // supprime diacritiques
-    .replace(/\s+/g, "-")                      // espaces → tirets
-    .replace(/[^a-zA-Z0-9.\-_]/g, "_")        // autres caractères → underscore
-    .replace(/-+/g, "-")                       // tirets multiples → un seul
-    .replace(/_+/g, "_")                       // underscores multiples → un seul
+    .normalize("NFD") // décompose accents
+    .replace(/[\u0300-\u036f]/g, "") // supprime diacritiques
+    .replace(/\s+/g, "-") // espaces → tirets
+    .replace(/[^a-zA-Z0-9.\-_]/g, "_") // autres caractères → underscore
+    .replace(/-+/g, "-") // tirets multiples → un seul
+    .replace(/_+/g, "_") // underscores multiples → un seul
     .toLowerCase();
 }
 
@@ -20,8 +20,9 @@ async function hashFile(file) {
     const buffer = await file.arrayBuffer();
     const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
     return Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, "0")).join("");
-  } catch(e) {
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch (e) {
     return "hash-unavailable";
   }
 }
@@ -37,7 +38,8 @@ export default function useUpload() {
     try {
       setLoading(true);
       const session = loadSession();
-      if (!session?.display_id) return { success: false, message: "Session invalide" };
+      if (!session?.display_id)
+        return { success: false, message: "Session invalide" };
 
       const ownerId = session.display_id;
 
@@ -47,9 +49,10 @@ export default function useUpload() {
         .insert({
           owner_id: ownerId,
           status: "waiting",
-          expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+          expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
         })
-        .select().single();
+        .select()
+        .single();
 
       if (groupError) throw groupError;
 
@@ -63,37 +66,47 @@ export default function useUpload() {
           .from("derewol-files")
           .upload(storagePath, file);
 
-        if (uploadError) throw new Error(`Upload échoué pour "${file.name}" : ${uploadError.message}`);
+        if (uploadError)
+          throw new Error(
+            `Upload échoué pour "${file.name}" : ${uploadError.message}`,
+          );
 
-        const { error: fileError } = await supabase
-          .from("files")
-          .insert({
-            group_id: group.id,
-            file_name: file.name,       // nom original affiché
-            storage_path: storagePath,  // chemin sanitizé
-            encrypted_key: null,
-            file_hash: hash
-          });
+        const { error: fileError } = await supabase.from("files").insert({
+          group_id: group.id,
+          file_name: file.name, // nom original affiché
+          storage_path: storagePath, // chemin sanitizé
+          encrypted_key: null,
+          file_hash: hash,
+        });
 
         if (fileError) throw fileError;
       }
 
-      // Crée print_job APRÈS tous les uploads réussis
-      const { error: jobError } = await supabase
-        .from("print_jobs")
-        .insert({
+      // Get all files that were just uploaded
+      const { data: uploadedFiles, error: filesError } = await supabase
+        .from("files")
+        .select("id, storage_path, file_name")
+        .eq("group_id", group.id);
+
+      if (filesError || !uploadedFiles?.length)
+        throw new Error("Files not found after upload");
+
+      // 🔥 CREATE ONE PRINT_JOB PER FILE (critical for multi-file printing!)
+      for (const file of uploadedFiles) {
+        const { error: jobError } = await supabase.from("print_jobs").insert({
           group_id: group.id,
+          file_id: file.id, // ← Link to specific file!
           status: "queued",
           print_token: generateToken(),
-          copies_requested: 0,
-          copies_remaining: 0,
-          expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString()
+          copies_requested: 1,
+          copies_remaining: 1,
+          expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
         });
 
-      if (jobError) throw jobError;
+        if (jobError) throw jobError;
+      }
 
       return { success: true, groupId: group.id };
-
     } catch (err) {
       console.error("Upload error:", err.message);
       return { success: false, message: err.message };
