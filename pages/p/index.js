@@ -121,37 +121,40 @@ function extractSlug() {
 
 function usePrintStatus(ownerId) {
   const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const fetchGroups = useCallback(async () => {
-    if (!ownerId) return;
-    const data = await fetchGroupsByOwner(ownerId);
-    setGroups(data);
-    setLoading(false);
-  }, [ownerId]);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
+    if (!ownerId) {
+      setGroups([]);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    const fetchGroups = async () => {
+      try {
+        const data = await fetchGroupsByOwner(ownerId);
+        if (!cancelled) {
+          setGroups(data || []);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("[usePrintStatus] fetch error:", err?.message || err);
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchGroups();
-    // Real-time subscription for live updates
-    const channel = supabase
-      .channel(`file_groups_${ownerId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "file_groups",
-          filter: `owner_id=eq.${ownerId}`,
-        },
-        (payload) => {
-          console.log("File group change:", payload);
-          fetchGroups();
-        },
-      )
-      .subscribe();
+    const iv = setInterval(fetchGroups, 3000);
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      clearInterval(iv);
     };
-  }, [fetchGroups]);
+  }, [ownerId]);
+
   return { groups, loading };
 }
 
@@ -162,23 +165,34 @@ function useDownloadRequests(ownerId) {
 
   useEffect(() => {
     if (!ownerId) return;
-    const fetch = async () => {
-      const { data } = await supabase
-        .from("download_requests")
-        .select("id, file_id, status, requested_at, files(file_name)")
-        .eq("owner_id", ownerId)
-        .eq("status", "pending")
-        .gt("expires_at", new Date().toISOString());
+    let cancelled = false;
 
-      const news = (data || []).filter((r) => !seenRef.current.has(r.id));
-      if (news.length) {
-        news.forEach((r) => seenRef.current.add(r.id));
-        setPending((prev) => [...prev, ...news]);
+    const fetch = async () => {
+      if (cancelled) return;
+      try {
+        const { data } = await supabase
+          .from("download_requests")
+          .select("id, file_id, status, requested_at, files(file_name)")
+          .eq("owner_id", ownerId)
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString());
+
+        const news = (data || []).filter((r) => !seenRef.current.has(r.id));
+        if (news.length && !cancelled) {
+          news.forEach((r) => seenRef.current.add(r.id));
+          setPending((prev) => [...prev, ...news]);
+        }
+      } catch (err) {
+        console.warn("[useDownloadRequests] error:", err?.message || err);
       }
     };
+
     fetch();
     const iv = setInterval(fetch, 3000);
-    return () => clearInterval(iv);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, [ownerId]);
 
   return { pending, setPending };
@@ -778,7 +792,20 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
 }
 
 function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
-  if (groupsLoading) return null;
+  if (groupsLoading)
+    return (
+      <div
+        style={{
+          textAlign: "center",
+          padding: "20px 0",
+          color: C.muted,
+          fontSize: 13,
+        }}
+      >
+        <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />
+        Chargement...
+      </div>
+    );
 
   if (groups.length === 0) return null;
 
@@ -1135,6 +1162,11 @@ export default function PrinterSPA({ showToast }) {
   // SECURITY PROTECTIONS FOR SECURE PRINTING SaaS
   // ═══════════════════════════════════════════════════════════════
   useEffect(() => {
+    const isDev =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+
     // Disable right-click context menu
     const handleContextMenu = (e) => {
       e.preventDefault();
@@ -1161,22 +1193,22 @@ export default function PrinterSPA({ showToast }) {
         }
       }
       // F12 (DevTools)
-      if (e.key === "F12") {
+      if (e.key === "F12" && !isDev) {
         e.preventDefault();
         return false;
       }
       // Ctrl+Shift+I (DevTools)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "I") {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "I" && !isDev) {
         e.preventDefault();
         return false;
       }
       // Ctrl+Shift+C (DevTools Inspector)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C") {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C" && !isDev) {
         e.preventDefault();
         return false;
       }
       // Ctrl+Shift+J (DevTools Console)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "J") {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "J" && !isDev) {
         e.preventDefault();
         return false;
       }

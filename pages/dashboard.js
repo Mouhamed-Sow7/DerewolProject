@@ -7,53 +7,62 @@ import useSession from "../hooks/useSession";
 // ── Polling ───────────────────────────────────────────────────
 function usePrintStatus(displayId) {
   const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const fetchGroups = useCallback(async () => {
-    if (!displayId) return;
-    const { data, error } = await supabase
-      .from("file_groups")
-      .select(
-        `
+  useEffect(() => {
+    if (!displayId) {
+      setGroups([]);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    const fetchGroups = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("file_groups")
+          .select(
+            `
         id, status, expires_at,
         files ( id, file_name ),
         print_jobs ( id, status, copies_requested, copies_remaining, expires_at )
       `,
-      )
-      .eq("owner_id", displayId);
+          )
+          .eq("owner_id", displayId)
+          .in("status", [
+            "waiting",
+            "printing",
+            "completed",
+            "rejected",
+            "partial_rejected",
+            "expired",
+          ])
+          .order("created_at", { ascending: false })
+          .limit(50);
 
-    if (!error && data) {
-      const filtered = data.filter((g) => !["deleted"].includes(g.status));
-      filtered.sort((a, b) => new Date(b.expires_at) - new Date(a.expires_at));
-      setGroups(filtered);
-    }
-    setLoading(false);
-  }, [displayId]);
-
-  useEffect(() => {
-    fetchGroups();
-    // Real-time subscription for live updates
-    const channel = supabase
-      .channel(`file_groups_${displayId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "file_groups",
-          filter: `owner_id=eq.${displayId}`,
-        },
-        (payload) => {
-          console.log("File group change:", payload);
-          fetchGroups();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+        if (!cancelled && !error && data) {
+          const filtered = data.filter((g) => !["deleted"].includes(g.status));
+          filtered.sort(
+            (a, b) => new Date(b.expires_at) - new Date(a.expires_at),
+          );
+          setGroups(filtered);
+        }
+      } catch (err) {
+        console.warn("[dashboard] fetch error:", err?.message || err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
-  }, [fetchGroups]);
+
+    fetchGroups();
+    const iv = setInterval(fetchGroups, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [displayId]);
 
   return { groups, loading };
 }
