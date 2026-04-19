@@ -3,13 +3,13 @@
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── SECURITY: Anti-exfiltration event blocking ────────────────────────────
-document.addEventListener("copy",        (e) => e.preventDefault());
-document.addEventListener("cut",         (e) => e.preventDefault());
-document.addEventListener("paste",       (e) => e.preventDefault());
+document.addEventListener("copy", (e) => e.preventDefault());
+document.addEventListener("cut", (e) => e.preventDefault());
+document.addEventListener("paste", (e) => e.preventDefault());
 document.addEventListener("contextmenu", (e) => e.preventDefault());
-document.addEventListener("dragstart",   (e) => e.preventDefault());
-document.addEventListener("drop",        (e) => e.preventDefault());
-document.addEventListener("dragover",    (e) => e.preventDefault());
+document.addEventListener("dragstart", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => e.preventDefault());
+document.addEventListener("dragover", (e) => e.preventDefault());
 
 document.addEventListener("keydown", (e) => {
   const ctrl = e.ctrlKey || e.metaKey;
@@ -30,7 +30,7 @@ const state = {
   jobId: null,
   fileId: null,
   type: null,
-  path: null,
+  bytes: null,
   name: null,
   // Image
   imgRotation: 0,
@@ -40,7 +40,7 @@ const state = {
   imgCropActive: false,
   imgCropStart: null,
   imgCropRect: null,
-  imgOrigSrc: null,   // original file:// src (for re-render)
+  imgOrigSrc: null, // original file:// src (for re-render)
   // Excel
   xlsxWorkbook: null,
   xlsxActiveSheet: null,
@@ -52,36 +52,65 @@ const state = {
 // ── UI helpers ────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 function showPane(id) {
-  ["pdf-container","image-container","excel-container","word-container","generic-container"]
-    .forEach((p) => $(p).classList.add("hidden"));
+  [
+    "pdf-container",
+    "image-container",
+    "excel-container",
+    "word-container",
+    "generic-container",
+  ].forEach((p) => $(p).classList.add("hidden"));
   $(id).classList.remove("hidden");
 }
 function showToolbar(id) {
-  ["tb-pdf","tb-image","tb-excel"].forEach((t) => $(t).classList.add("hidden"));
+  ["tb-pdf", "tb-image", "tb-excel"].forEach((t) =>
+    $(t).classList.add("hidden"),
+  );
   if (id) $(id).classList.remove("hidden");
 }
 function setStatus(msg, type = "") {
   const el = $("status-msg");
   el.textContent = msg;
   el.className = "status-msg " + type;
-  if (msg) setTimeout(() => { el.textContent = ""; el.className = "status-msg"; }, 3500);
+  if (msg)
+    setTimeout(() => {
+      el.textContent = "";
+      el.className = "status-msg";
+    }, 3500);
 }
 
 // ── Entry point: wait for file data from main ─────────────────────────────
-window.viewer.onData(({ path, name, jobId, fileId, type }) => {
-  Object.assign(state, { path, name, jobId, fileId, type });
-  $("viewer-filename").textContent = name;
+window.viewer.onData((data) => {
+  const bytes = data.bytesArray ? new Uint8Array(data.bytesArray) : null;
+  Object.assign(state, {
+    bytes,
+    name: data.name,
+    jobId: data.jobId,
+    fileId: data.fileId,
+    type: data.type,
+  });
+
+  $("viewer-filename").textContent = data.name;
   $("loading-state").classList.add("hidden");
 
   startTTL();
-  initActions(type);
+  initActions(data.type);
 
-  switch (type) {
-    case "pdf":   initPDF(path);   break;
-    case "image": initImage(path); break;
-    case "excel": initExcel(path); break;
-    case "word":  initWord(path);  break;
-    default:      initGeneric(name); break;
+  switch (data.type) {
+    case "pdf":
+      initPDF();
+      break;
+    case "image":
+      initImage();
+      break;
+    case "excel":
+      initExcel();
+      break;
+    case "word":
+      initWord();
+      break;
+    default:
+      initGeneric(data.name);
+      break;
   }
 });
 
@@ -147,38 +176,117 @@ function initActions(type) {
 }
 
 // ── PDF ───────────────────────────────────────────────────────────────────
-// Uses Electron/Chromium's native PDF renderer via iframe.
-// Navigation handled internally by Chromium's PDF plugin.
-function initPDF(filePath) {
+// Render PDF pages on canvas via PDF.js, never via file:// URLs.
+async function initPDF() {
   showPane("pdf-container");
   showToolbar("tb-pdf");
 
-  const normalizedPath = filePath.replace(/\\/g, "/");
-  const iframe = document.createElement("iframe");
-  iframe.src = `file:///${normalizedPath}`;
-  iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
-  iframe.title = "PDF Preview";
-  $("pdf-container").appendChild(iframe);
+  const container = $("pdf-container");
+  container.innerHTML = "<div id='pdf-pages' class='pdf-pages'></div>";
+  const pagesDiv = $("pdf-pages");
 
-  // PDF toolbar controls are informational when using native renderer.
-  // Hide them since native viewer has its own controls.
-  $("tb-pdf").classList.add("hidden");
+  try {
+    if (!window.pdfjsLib) throw new Error("PDF.js est introuvable");
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "../../../node_modules/pdfjs-dist/build/pdf.worker.min.js";
+
+    const bytes = state.bytes;
+    if (!bytes) throw new Error("Données PDF manquantes");
+
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    state.pdfDoc = pdf;
+    state.pdfPage = 1;
+    state.pdfScale = 1.5;
+    state.pdfTotalPages = pdf.numPages;
+
+    $("pdf-page-info").textContent =
+      `${state.pdfPage} / ${state.pdfTotalPages}`;
+    renderPDFPage(state.pdfPage);
+
+    $("pdf-prev").addEventListener("click", () => {
+      if (state.pdfPage <= 1) return;
+      state.pdfPage -= 1;
+      renderPDFPage(state.pdfPage);
+    });
+
+    $("pdf-next").addEventListener("click", () => {
+      if (state.pdfPage >= state.pdfTotalPages) return;
+      state.pdfPage += 1;
+      renderPDFPage(state.pdfPage);
+    });
+
+    $("pdf-zoom-in").addEventListener("click", () => {
+      state.pdfScale = Math.min(3, state.pdfScale + 0.25);
+      $("pdf-zoom-val").textContent = `${Math.round(state.pdfScale * 100)}%`;
+      renderPDFPage(state.pdfPage);
+    });
+
+    $("pdf-zoom-out").addEventListener("click", () => {
+      state.pdfScale = Math.max(0.75, state.pdfScale - 0.25);
+      $("pdf-zoom-val").textContent = `${Math.round(state.pdfScale * 100)}%`;
+      renderPDFPage(state.pdfPage);
+    });
+  } catch (err) {
+    pagesDiv.innerHTML = `
+      <div style="padding:40px;text-align:center;color:#ef5350;">
+        <i class="fa-solid fa-triangle-exclamation" style="font-size:36px"></i>
+        <p style="margin-top:16px;font-weight:700;">Erreur de lecture PDF</p>
+        <p style="font-size:13px;opacity:0.8;">${err.message}</p>
+      </div>`;
+    showToolbar(null);
+  }
+}
+
+async function renderPDFPage(pageNumber) {
+  const pagesDiv = $("pdf-pages");
+  pagesDiv.innerHTML = "";
+
+  try {
+    const page = await state.pdfDoc.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: state.pdfScale });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.style.cssText = `display:block;width:100%;max-width:${viewport.width}px;margin:0 auto 12px;border-radius:8px;background:#fff;`;
+
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    pagesDiv.appendChild(canvas);
+    $("pdf-page-info").textContent = `${pageNumber} / ${state.pdfTotalPages}`;
+  } catch (err) {
+    pagesDiv.innerHTML = `
+      <div style="padding:40px;text-align:center;color:#ef5350;">
+        <i class="fa-solid fa-triangle-exclamation" style="font-size:36px"></i>
+        <p style="margin-top:16px;font-weight:700;">Erreur rendu PDF</p>
+        <p style="font-size:13px;opacity:0.8;">${err.message}</p>
+      </div>`;
+  }
 }
 
 // ── Image ─────────────────────────────────────────────────────────────────
-function initImage(filePath) {
+function initImage() {
   showPane("image-container");
   showToolbar("tb-image");
 
-  state.imgOrigSrc = `file:///${filePath.replace(/\\/g, "/")}`;
+  const bytes = state.bytes;
+  if (!bytes) {
+    initGeneric(state.name);
+    return;
+  }
 
+  const blob = new Blob([bytes]);
+  const url = URL.createObjectURL(blob);
   const img = new Image();
   img.onload = () => {
     renderImage(img);
     bindImageControls(img);
+    URL.revokeObjectURL(url);
   };
-  img.onerror = () => initGeneric(state.name);
-  img.src = state.imgOrigSrc;
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    initGeneric(state.name);
+  };
+  img.src = url;
 }
 
 function renderImage(imgEl) {
@@ -191,7 +299,7 @@ function renderImage(imgEl) {
   const cw = W * cos + H * sin;
   const ch = W * sin + H * cos;
 
-  canvas.width  = cw;
+  canvas.width = cw;
   canvas.height = ch;
 
   const ctx = canvas.getContext("2d");
@@ -225,8 +333,8 @@ function bindImageControls(imgEl) {
     state.imgCropRect = null;
     state.imgCropActive = false;
     $("filter-brightness").value = 100;
-    $("filter-contrast").value   = 100;
-    $("filter-saturate").value   = 100;
+    $("filter-contrast").value = 100;
+    $("filter-saturate").value = 100;
     $("img-crop-toggle").classList.remove("tb-btn--active");
     $("img-crop-apply").classList.add("hidden");
     $("crop-selection").classList.add("hidden");
@@ -234,9 +342,11 @@ function bindImageControls(imgEl) {
   });
 
   // Filters
-  ["brightness","contrast","saturate"].forEach((f) => {
+  ["brightness", "contrast", "saturate"].forEach((f) => {
     $(`filter-${f}`).addEventListener("input", (e) => {
-      state[`img${f.charAt(0).toUpperCase() + f.slice(1)}`] = parseInt(e.target.value);
+      state[`img${f.charAt(0).toUpperCase() + f.slice(1)}`] = parseInt(
+        e.target.value,
+      );
       renderImage(imgEl);
     });
   });
@@ -244,7 +354,10 @@ function bindImageControls(imgEl) {
   // Crop
   $("img-crop-toggle").addEventListener("click", () => {
     state.imgCropActive = !state.imgCropActive;
-    $("img-crop-toggle").classList.toggle("tb-btn--active", state.imgCropActive);
+    $("img-crop-toggle").classList.toggle(
+      "tb-btn--active",
+      state.imgCropActive,
+    );
     $("crop-selection").classList.toggle("hidden", !state.imgCropActive);
     if (!state.imgCropActive) {
       state.imgCropRect = null;
@@ -261,9 +374,10 @@ function bindImageControls(imgEl) {
 
 function setupCropListeners() {
   const canvas = $("image-canvas");
-  const sel    = $("crop-selection");
+  const sel = $("crop-selection");
   let dragging = false;
-  let startX = 0, startY = 0;
+  let startX = 0,
+    startY = 0;
 
   canvas.addEventListener("mousedown", (e) => {
     if (!state.imgCropActive) return;
@@ -271,9 +385,9 @@ function setupCropListeners() {
     const r = canvas.getBoundingClientRect();
     startX = e.clientX - r.left;
     startY = e.clientY - r.top;
-    sel.style.left   = `${startX}px`;
-    sel.style.top    = `${startY}px`;
-    sel.style.width  = "0px";
+    sel.style.left = `${startX}px`;
+    sel.style.top = `${startY}px`;
+    sel.style.width = "0px";
     sel.style.height = "0px";
   });
 
@@ -286,9 +400,9 @@ function setupCropListeners() {
     const y = Math.min(curY, startY);
     const w = Math.abs(curX - startX);
     const h = Math.abs(curY - startY);
-    sel.style.left   = `${x}px`;
-    sel.style.top    = `${y}px`;
-    sel.style.width  = `${w}px`;
+    sel.style.left = `${x}px`;
+    sel.style.top = `${y}px`;
+    sel.style.width = `${w}px`;
     sel.style.height = `${h}px`;
   });
 
@@ -298,7 +412,7 @@ function setupCropListeners() {
     const r = canvas.getBoundingClientRect();
     const curX = e.clientX - r.left;
     const curY = e.clientY - r.top;
-    const scaleX = canvas.width  / r.width;
+    const scaleX = canvas.width / r.width;
     const scaleY = canvas.height / r.height;
     state.imgCropRect = {
       x: Math.min(curX, startX) * scaleX,
@@ -317,13 +431,13 @@ function applyCrop(imgEl) {
   const { x, y, w, h } = state.imgCropRect;
   const src = $("image-canvas");
   const dst = document.createElement("canvas");
-  dst.width  = w;
+  dst.width = w;
   dst.height = h;
   dst.getContext("2d").drawImage(src, x, y, w, h, 0, 0, w, h);
 
   // Replace canvas content
   const mainCanvas = $("image-canvas");
-  mainCanvas.width  = w;
+  mainCanvas.width = w;
   mainCanvas.height = h;
   mainCanvas.getContext("2d").drawImage(dst, 0, 0);
 
@@ -336,32 +450,40 @@ function applyCrop(imgEl) {
 
 async function saveImage() {
   const canvas = $("image-canvas");
-  const ext  = state.name.split(".").pop().toLowerCase();
+  const ext = state.name.split(".").pop().toLowerCase();
   const mime = ext === "png" ? "image/png" : "image/jpeg";
-  const btn  = $("img-save");
+  const btn = $("img-save");
   btn.disabled = true;
   btn.textContent = "⏳ Sauvegarde…";
 
-  canvas.toBlob(async (blob) => {
-    if (!blob) { btn.disabled = false; btn.textContent = "💾 Sauvegarder"; return; }
-    try {
-      const ab   = await blob.arrayBuffer();
-      const data = Array.from(new Uint8Array(ab));
-      const res  = await window.viewer.save(state.jobId, state.fileId, data);
-      if (res.success) {
-        setStatus("Sauvegardé ✓", "ok");
-        btn.textContent = "✓ Sauvegardé";
-      } else {
-        setStatus("Erreur: " + res.error, "error");
+  canvas.toBlob(
+    async (blob) => {
+      if (!blob) {
+        btn.disabled = false;
+        btn.textContent = "💾 Sauvegarder";
+        return;
+      }
+      try {
+        const ab = await blob.arrayBuffer();
+        const data = Array.from(new Uint8Array(ab));
+        const res = await window.viewer.save(state.jobId, state.fileId, data);
+        if (res.success) {
+          setStatus("Sauvegardé ✓", "ok");
+          btn.textContent = "✓ Sauvegardé";
+        } else {
+          setStatus("Erreur: " + res.error, "error");
+          btn.textContent = "💾 Sauvegarder";
+          btn.disabled = false;
+        }
+      } catch (e) {
+        setStatus("Erreur sauvegarde", "error");
         btn.textContent = "💾 Sauvegarder";
         btn.disabled = false;
       }
-    } catch (e) {
-      setStatus("Erreur sauvegarde", "error");
-      btn.textContent = "💾 Sauvegarder";
-      btn.disabled = false;
-    }
-  }, mime, 0.92);
+    },
+    mime,
+    0.92,
+  );
 }
 
 // ── Excel ─────────────────────────────────────────────────────────────────
@@ -372,7 +494,7 @@ function initExcel(filePath) {
   let countdown = 3;
   const timerEl = $("excel-timer");
   const cbLabel = $("excel-checkbox-label");
-  const cb      = $("excel-confirm-cb");
+  const cb = $("excel-confirm-cb");
   const proceed = $("btn-excel-proceed");
 
   const tick = setInterval(() => {
@@ -385,7 +507,9 @@ function initExcel(filePath) {
     }
   }, 1000);
 
-  cb.addEventListener("change", () => { proceed.disabled = !cb.checked; });
+  cb.addEventListener("change", () => {
+    proceed.disabled = !cb.checked;
+  });
 
   proceed.addEventListener("click", () => {
     warning.classList.add("hidden");
@@ -398,12 +522,9 @@ async function loadExcel(filePath) {
   showToolbar("tb-excel");
 
   try {
-    const normalizedPath = filePath.replace(/\\/g, "/");
-    const res  = await fetch(`file:///${normalizedPath}`);
-    const ab   = await res.arrayBuffer();
-    const data = new Uint8Array(ab);
-
-    state.xlsxWorkbook = XLSX.read(data, { type: "array" });
+    const bytes = state.bytes;
+    if (!bytes) throw new Error("Données Excel manquantes");
+    state.xlsxWorkbook = XLSX.read(bytes, { type: "array" });
 
     const sel = $("excel-sheet-select");
     sel.innerHTML = "";
@@ -424,14 +545,16 @@ async function loadExcel(filePath) {
 
     $("excel-save").addEventListener("click", saveExcel);
   } catch (e) {
-    $("excel-table-wrap").innerHTML = `<p style="color:#dc2626;padding:16px">Erreur: ${e.message}</p>`;
+    $("excel-table-wrap").innerHTML =
+      `<p style="color:#dc2626;padding:16px">Erreur: ${e.message}</p>`;
   }
 }
 
 function renderSheet(sheetName) {
   const sheet = state.xlsxWorkbook.Sheets[sheetName];
   if (!sheet || !sheet["!ref"]) {
-    $("excel-table-wrap").innerHTML = "<p style='padding:16px;color:#999'>Feuille vide</p>";
+    $("excel-table-wrap").innerHTML =
+      "<p style='padding:16px;color:#999'>Feuille vide</p>";
     return;
   }
 
@@ -444,12 +567,12 @@ function renderSheet(sheetName) {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[addr];
-      const el   = document.createElement(r === range.s.r ? "th" : "td");
+      const el = document.createElement(r === range.s.r ? "th" : "td");
       el.textContent = cell ? XLSX.utils.format_cell(cell) : "";
 
       // Formulas → read-only
       const isFormula = cell && cell.t === "f";
-      el.contentEditable = (!isFormula && r !== range.s.r) ? "true" : "false";
+      el.contentEditable = !isFormula && r !== range.s.r ? "true" : "false";
       if (isFormula) el.title = "Formule (lecture seule)";
 
       el.dataset.r = r;
@@ -466,18 +589,19 @@ function renderSheet(sheetName) {
 }
 
 function onCellEdit(e) {
-  const el  = e.target;
-  const r   = parseInt(el.dataset.r);
-  const c   = parseInt(el.dataset.c);
-  const sn  = el.dataset.sheet;
+  const el = e.target;
+  const r = parseInt(el.dataset.r);
+  const c = parseInt(el.dataset.c);
+  const sn = el.dataset.sheet;
   const sheet = state.xlsxWorkbook.Sheets[sn];
-  const addr  = XLSX.utils.encode_cell({ r, c });
-  const raw   = el.textContent.trim();
-  const num   = parseFloat(raw);
+  const addr = XLSX.utils.encode_cell({ r, c });
+  const raw = el.textContent.trim();
+  const num = parseFloat(raw);
 
-  sheet[addr] = !isNaN(num) && raw !== ""
-    ? { t: "n", v: num, w: raw }
-    : { t: "s", v: raw, w: raw };
+  sheet[addr] =
+    !isNaN(num) && raw !== ""
+      ? { t: "n", v: num, w: raw }
+      : { t: "s", v: raw, w: raw };
 }
 
 async function saveExcel() {
@@ -485,9 +609,12 @@ async function saveExcel() {
   btn.disabled = true;
   btn.textContent = "⏳ Sauvegarde…";
   try {
-    const out  = XLSX.write(state.xlsxWorkbook, { bookType: "xlsx", type: "array" });
+    const out = XLSX.write(state.xlsxWorkbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
     const data = Array.from(new Uint8Array(out));
-    const res  = await window.viewer.save(state.jobId, state.fileId, data);
+    const res = await window.viewer.save(state.jobId, state.fileId, data);
     if (res.success) {
       setStatus("Sauvegardé ✓", "ok");
       btn.textContent = "✓ Sauvegardé";
@@ -509,11 +636,10 @@ async function initWord(filePath) {
   showToolbar(null); // No Word toolbar
 
   try {
-    const normalizedPath = filePath.replace(/\\/g, "/");
-    const res = await fetch(`file:///${normalizedPath}`);
-    const ab  = await res.arrayBuffer();
+    const bytes = state.bytes;
+    if (!bytes) throw new Error("Données Word manquantes");
 
-    const result = await mammoth.convertToHtml({ arrayBuffer: ab });
+    const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
     const content = $("word-content");
     content.innerHTML = result.value;
 

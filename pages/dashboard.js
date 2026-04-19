@@ -149,7 +149,11 @@ function TimerPill({ expiresAt, status }) {
 function GroupCard({ group }) {
   const job = group.print_jobs?.[0];
   const files = group.files || [];
-  const status = group.status;
+  const hasPrintingJob = group.print_jobs?.some(
+    (job) => job?.status === "printing",
+  );
+  const status =
+    hasPrintingJob && group.status === "waiting" ? "printing" : group.status;
   const copies = job?.copies_requested || 0;
   const copiesRemaining = job?.copies_remaining || 0;
   const jobExpiresAt = job?.expires_at;

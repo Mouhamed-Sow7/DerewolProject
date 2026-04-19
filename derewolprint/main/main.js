@@ -329,10 +329,12 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
     win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
 
-    // 5. Once loaded, send metadata (path only — no buffer in IPC)
+    const bytesArray = Array.from(decrypted);
+
+    // 5. Once loaded, send the file bytes only — never expose a temp file URL.
     win.webContents.once("did-finish-load", () => {
       win.webContents.send("viewer:data", {
-        path: tmpPath,
+        bytesArray,
         name: file.file_name,
         jobId,
         fileId,

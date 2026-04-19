@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Derewol — Hors ligne</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: #1e4d2b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'DM Sans', sans-serif;
+      color: #fff;
+      text-align: center;
+      padding: 24px;
+    }
+    .card {
+      background: #ffffff12;
+      border: 1px solid #ffffff20;
+      border-radius: 20px;
+      padding: 48px 36px;
+      max-width: 360px;
+    }
+    .icon { font-size: 56px; margin-bottom: 20px; }
+    h1 { font-size: 22px; margin-bottom: 10px; }
+    p { color: #a8c9b0; font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
+    button {
+      background: #f5c842;
+      color: #111510;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📡</div>
+    <h1>Vous êtes hors ligne</h1>
+    <p>Vérifiez votre connexion internet. Vos fichiers sont en sécurité et seront synchronisés dès le retour du réseau.</p>
+    <button onclick="location.reload()">Réessayer</button>
+  </div>
+</body>
+</html>

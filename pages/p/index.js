@@ -393,30 +393,6 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const job = group.print_jobs?.[0];
   const allFiles = group.files || [];
 
-  // Calcul statut d'affichage basé sur les fichiers (source de vérité client)
-  const rejectedFiles = allFiles.filter(
-    (f) => f.isRejected || f.rejected === true,
-  );
-  const activeFiles = allFiles.filter(
-    (f) => !f.isRejected && f.rejected !== true,
-  );
-
-  let displayStatus = group.status;
-  if (allFiles.length > 0) {
-    if (rejectedFiles.length === allFiles.length) {
-      displayStatus = "rejected";
-    } else if (rejectedFiles.length > 0) {
-      displayStatus = "partial_rejected";
-    }
-  }
-
-  // Un groupe "rejected" ou "completed" va dans l'historique
-  const isHistoryGroup =
-    history ||
-    ["completed", "rejected", "expired", "partial_rejected"].includes(
-      displayStatus,
-    );
-
   const remainingFiles = [];
   const historyFiles = [];
 
@@ -442,6 +418,73 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const THRESHOLD = 3;
   const visibleFiles = expanded ? files : files.slice(0, THRESHOLD);
   const hiddenCount = Math.max(0, files.length - THRESHOLD);
+
+  const hasPrintingJob = group.print_jobs?.some(
+    (job) => job?.status === "printing",
+  );
+  const haRejectedFile = allFiles.some(
+    (f) => f.rejected || f.status === "rejected",
+  );
+  const allRejected = allFiles.every(
+    (f) => f.rejected || f.status === "rejected",
+  );
+  // ── FIX: Determine displayStatus from actual file state ────────────
+  // If ALL files are rejected → show "rejected", not "completed"
+  const uiStatus =
+    allFiles.length > 0 && allRejected
+      ? "rejected"
+      : group.remainingCount === 0
+        ? "completed"
+        : haRejectedFile && !allRejected
+          ? "partial"
+          : hasPrintingJob
+            ? "printing"
+            : group.status;
+  const statusConfig = {
+    waiting: {
+      label: t("waiting"),
+      bg: "#f5c842",
+      color: "#111510",
+      border: "#f5c842",
+    },
+    printing: {
+      label: t("printing"),
+      bg: "#1d4ed8",
+      color: "#fff",
+      border: "#1d4ed8",
+    },
+    completed: {
+      label: t("completed"),
+      bg: "#6b7280",
+      color: "#fff",
+      border: "#6b7280",
+    },
+    rejected: {
+      label: t("rejected"),
+      bg: "#e53935",
+      color: "#fff",
+      border: "#e53935",
+    },
+    partial: {
+      label: "Partiel",
+      bg: "#fff3cd",
+      color: "#856404",
+      border: "#ffc107",
+    },
+    expired: {
+      label: t("expired"),
+      bg: "#f3f4f6",
+      color: "#6b7280",
+      border: "#d1d5db",
+    },
+  };
+  const config = statusConfig[uiStatus] || statusConfig.waiting;
+
+  // Un groupe "rejected" ou "completed" va dans l'historique
+  const isHistoryGroup =
+    history ||
+    ["completed", "rejected", "expired", "partial_rejected"].includes(uiStatus);
+
   return (
     <div
       style={{
@@ -503,7 +546,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 flexWrap: "wrap",
               }}
             >
-              <StatusBadge status={displayStatus} />
+              <StatusBadge status={uiStatus} />
             </div>
           </div>
         </div>
@@ -665,125 +708,42 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
         </div>
       )}
       <div style={{ padding: "10px 16px 14px" }}>
-        {/* En attente : SEULEMENT si des fichiers actifs existent */}
-        {displayStatus === "waiting" && activeFiles.length > 0 && (
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#92600a",
-              background: "#fff8d6",
-              padding: "8px 12px",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <i className="fa-solid fa-hourglass-half" />
-            En attente de l'imprimeur
+        {/* ── FIX: Use uiStatus (calculated) instead of status (database) ──── */}
+        {uiStatus === "waiting" && remainingFiles.length > 0 && (
+          <p style={{ color: "#92600a", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-hourglass-end" /> {t("waitingMsg")}
           </p>
         )}
-
-        {/* Partiel : certains rejetés, d'autres en attente */}
-        {displayStatus === "partial_rejected" && (
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#856404",
-              background: "#fff3cd",
-              padding: "8px 12px",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <i className="fa-solid fa-triangle-exclamation" />
-            {rejectedFiles.length} rejeté{rejectedFiles.length > 1 ? "s" : ""}{" "}
-            —&nbsp;
-            {activeFiles.length} en attente
+        {uiStatus === "printing" && (
+          <p style={{ color: "#1d4ed8", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-print" /> {t("printingMsg")}
           </p>
         )}
-
-        {/* Impression */}
-        {displayStatus === "printing" && (
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#1d4ed8",
-              background: "#dbeafe",
-              padding: "8px 12px",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <i className="fa-solid fa-print" />
-            Impression en cours…
+        {uiStatus === "completed" &&
+          remainingFiles.length === 0 &&
+          !allRejected && (
+            <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
+              <i className="fa-solid fa-check" /> {t("completedMsg")}
+            </p>
+          )}
+        {uiStatus === "rejected" && allRejected && (
+          <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-xmark" /> Tous les fichiers ont été
+            rejetés
           </p>
         )}
-
-        {/* Terminé */}
-        {displayStatus === "completed" && (
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#166534",
-              background: "#dcfce7",
-              padding: "8px 12px",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <i className="fa-solid fa-check" />
-            Terminé — fichiers supprimés
+        {uiStatus === "partial" && (
+          <p style={{ color: "#856404", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-alert-triangle" /> {historyFiles.length}{" "}
+            fichier
+            {historyFiles.length > 1 ? "s" : ""} rejeté
+            {historyFiles.length > 1 ? "s" : ""} — {remainingFiles.length} en
+            attente
           </p>
         )}
-
-        {/* Tout rejeté */}
-        {displayStatus === "rejected" && (
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#dc2626",
-              background: "#fee2e2",
-              padding: "8px 12px",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <i className="fa-solid fa-xmark" />
-            Tous les fichiers ont été rejetés
-          </p>
-        )}
-
-        {/* Expiré */}
-        {displayStatus === "expired" && (
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#6b7280",
-              background: "#f3f4f6",
-              padding: "8px 12px",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <i className="fa-solid fa-clock" />
-            Délai dépassé — renvoyez vos fichiers
+        {uiStatus === "expired" && (
+          <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-clock" /> {t("expiredMsg")}
           </p>
         )}
       </div>
@@ -817,6 +777,12 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
     const remainingFiles = [];
     const rejectedFiles = [];
 
+    const effectiveStatus = group.print_jobs?.some(
+      (job) => job?.status === "printing",
+    )
+      ? "printing"
+      : group.status;
+
     allFiles.forEach((file) => {
       if (
         file.status === "completed" ||
@@ -841,9 +807,9 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
     // 1. Database says so, OR
     // 2. ALL files are rejected (even if DB is still "waiting")
     if (
-      group.status === "completed" ||
-      group.status === "rejected" ||
-      group.status === "expired" ||
+      effectiveStatus === "completed" ||
+      effectiveStatus === "rejected" ||
+      effectiveStatus === "expired" ||
       allRejected
     ) {
       historyGroups.push(group);
@@ -1648,8 +1614,8 @@ export default function PrinterSPA({ showToast }) {
             <i className="fa-solid fa-print" /> {printer.name}
           </span>
         )}
-        {/* Badge session — affiche le display_code court, pas le owner_id complet */}
-        {session?.display_code && (
+        {/* Badge session — affiche le owner_id stable du client anonymisé */}
+        {(session?.owner_id || session?.display_code) && (
           <span
             style={{
               background: C.yellow,
@@ -1661,7 +1627,7 @@ export default function PrinterSPA({ showToast }) {
               fontSize: 13,
             }}
           >
-            {session.display_code}
+            {session.owner_id || session.display_code}
           </span>
         )}
         <div style={{ position: "relative" }}>
