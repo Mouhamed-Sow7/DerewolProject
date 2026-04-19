@@ -130,8 +130,27 @@ function usePrintStatus(ownerId) {
   }, [ownerId]);
   useEffect(() => {
     fetchGroups();
-    const interval = setInterval(fetchGroups, 3000);
-    return () => clearInterval(interval);
+    // Real-time subscription for live updates
+    const channel = supabase
+      .channel(`file_groups_${ownerId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "file_groups",
+          filter: `owner_id=eq.${ownerId}`,
+        },
+        (payload) => {
+          console.log("File group change:", payload);
+          fetchGroups();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchGroups]);
   return { groups, loading };
 }
