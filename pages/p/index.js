@@ -397,10 +397,15 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const historyFiles = [];
 
   allFiles.forEach((file) => {
+    const fileJob = group.print_jobs?.find((j) => j.file_id === file.id);
+    file.jobStatus = fileJob?.status || "pending";
+    file.errorMessage = fileJob?.error_message;
     if (
       file.status === "completed" ||
       file.status === "rejected" ||
-      file.rejected === true
+      file.rejected === true ||
+      file.jobStatus === "completed" ||
+      file.jobStatus === "failed"
     ) {
       historyFiles.push(file);
     } else {
@@ -625,6 +630,22 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
               >
                 {f.file_name}
               </span>
+              {f.jobStatus && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: f.jobStatus === "failed" ? "#e53935" : f.jobStatus === "completed" ? "#166534" : "#f5c842",
+                    background: f.jobStatus === "failed" ? "#fdecea" : f.jobStatus === "completed" ? "#d1fae5" : "#fef3c7",
+                    padding: "2px 8px",
+                    borderRadius: 20,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {f.jobStatus === "failed" ? "Échec" : f.jobStatus === "completed" ? "Imprimé" : f.jobStatus === "printing" ? "Impression" : "En attente"}
+                </span>
+              )}
               {(f.rejected || f.status === "rejected") && (
                 <span
                   style={{
@@ -661,6 +682,47 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                   }}
                 >
                   <i className="fa-regular fa-eye" /> Voir
+                </button>
+              )}
+              {f.jobStatus === "failed" && (
+                <button
+                  onClick={() => {
+                    const fileJob = group.print_jobs?.find((j) => j.file_id === f.id);
+                    if (fileJob && window.derewol) {
+                      // Get printer name from config or default
+                      window.derewol.getPrinters().then(printers => {
+                        const defaultPrinter = printers.find(p => p.isDefault) || printers[0];
+                        if (defaultPrinter) {
+                          window.derewol.retryJob(fileJob.id, defaultPrinter.name).then(result => {
+                            if (result.success) {
+                              alert("Relance en cours...");
+                            } else {
+                              alert("Erreur lors de la relance: " + result.error);
+                            }
+                          });
+                        } else {
+                          alert("Aucune imprimante disponible");
+                        }
+                      });
+                    }
+                  }}
+                  style={{
+                    background: "#fef3c7",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    color: "#f59e0b",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    flexShrink: 0,
+                    fontFamily: "Inter, sans-serif",
+                  }}
+                >
+                  <i className="fa-solid fa-rotate-right" /> Relancer
                 </button>
               )}
               {f.status === "rejected" && (

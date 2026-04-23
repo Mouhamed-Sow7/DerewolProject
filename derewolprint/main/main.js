@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
-const { execSync } = require("child_process");
+const { exec, execSync } = require("child_process");
 const {
   decryptFile,
   encryptFile,
@@ -10,6 +10,16 @@ const {
   secureDelete,
   validateDecryptedBuffer,
 } = require("../services/crypto");
+
+function execShell(command, options = {}) {
+  return new Promise((resolve, reject) => {
+    exec(command, { shell: true, ...options }, (error, stdout, stderr) => {
+      if (error) return reject(error);
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
 const supabase = require("../services/supabase");
 const { startPolling, stopPolling } = require("../services/polling");
 const { log } = require("../services/logger");
@@ -87,17 +97,17 @@ let subscriptionTimer = null;
 let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
 
 // ── Spooler cleanup ─────────────────────────────────────────────
-function cleanSpooler() {
+async function cleanSpooler() {
   try {
-    execSync("net stop spooler /y", { stdio: "ignore" });
-    execSync('del /Q /F /S "C:\\Windows\\System32\\spool\\PRINTERS\\*.*"', {
-      shell: true,
-      stdio: "ignore",
-    });
-    execSync("net start spooler", { stdio: "ignore" });
+    await execShell("net stop spooler /y", { timeout: 30000 });
+    await execShell(
+      'del /Q /F /S "C:\\Windows\\System32\\spool\\PRINTERS\\*.*"',
+      { timeout: 30000 },
+    );
+    await execShell("net start spooler", { timeout: 30000 });
     console.log("[CLEANUP] Spooler nettoyé ✅");
   } catch (e) {
-    console.log("[CLEANUP] Spooler déjà propre");
+    console.log("[CLEANUP] Erreur nettoyage du spooler:", e.message);
   }
 }
 
@@ -456,11 +466,10 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
         `$d.Close([ref]$false)`,
         `$w.Quit()`,
       ].join("; ");
-      execSync(
+      await execShell(
         `powershell -NonInteractive -WindowStyle Hidden -Command "${ps}"`,
         {
           timeout: 30000,
-          stdio: "ignore",
         },
       );
       log("VIEWER_PRINT_WORD", { jobId, fileId });
@@ -806,22 +815,17 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
     } else if (
       [".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".rtf"].includes(ext)
     ) {
-      // Office: utiliser Windows Shell PrintTo
-      return new Promise((resolve, reject) => {
-        const cmd = `powershell.exe -Command "& {Add-Type -AssemblyName System.Printing; $printer = New-Object System.Printing.PrintQueue((New-Object System.Printing.LocalPrintServer), '${printerName}'); (New-Object -ComObject Word.Application,Excel.Application,LibreOffice.Calc* -ErrorAction SilentlyContinue).Print(1,1,1,1,$false,$null,0,$false); Start-Process -FilePath '${filePath.replace(/\\/g, "\\\\")}' -Verb PrintTo -ArgumentList '${printerName}' -Wait}"`;
-
-        // Approche plus simple et native: utiliser Windows rundll32
-        const simpleCmd = `rundll32.exe printui.dll PrintUIEntry /p /n "${printerName}"`;
-
-        // Meilleure approche: utiliser powershell directement
-        const psCmd = `(New-Object -ComObject Shell.Application).CreateShortCut('${filePath}').TargetPath | % {Start-Process $_ -Verb PrintTo -ArgumentList '${printerName}' -Wait}`;
-
-        // Approche encore meilleure: utiliser Windows Print Spooler directement
+      // Office: utiliser Windows Shell PrintTo sans bloquer le main thread
+      return new Promise(async (resolve, reject) => {
         try {
-          const printCmd = `Start-Process "${filePath}" -Verb PrintTo -ArgumentList "'${printerName}'" -WindowStyle Hidden -Wait`;
-          execSync(`powershell.exe -Command "${printCmd}"`, {
-            stdio: "ignore",
-          });
+          const safePath = filePath.replace(/\\/g, "\\\\");
+          const printCmd = `Start-Process -FilePath "${safePath}" -Verb PrintTo -ArgumentList "${printerName}" -WindowStyle Hidden`;
+          await execShell(
+            `powershell.exe -NoProfile -NonInteractive -Command "${printCmd}"`,
+            {
+              timeout: 60000,
+            },
+          );
           resolve();
         } catch (e) {
           reject(e);
@@ -841,10 +845,26 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       .eq("id", jobId);
   }
 
-  await supabase
+  const { error: jobUpdateError } = await supabase
     .from("print_jobs")
     .update({ status: "completed", copies_remaining: 0 })
     .eq("id", jobId);
+  if (jobUpdateError) {
+    console.warn(
+      `[PRINT] update print_jobs failed for job ${jobId}: ${jobUpdateError.message}`,
+    );
+  }
+
+  // ✅ Sync file_groups status too
+  const { error: groupUpdateError } = await supabase
+    .from("file_groups")
+    .update({ status: "completed" })
+    .eq("id", fileGroupId);
+  if (groupUpdateError) {
+    console.warn(
+      `[PRINT] update file_groups failed for group ${fileGroupId}: ${groupUpdateError.message}`,
+    );
+  }
 
   // ✅ Return cleanup info (cleanup scheduled separately, not here)
   return {
@@ -976,16 +996,22 @@ ipcMain.handle(
           }, PRINT_DELAY_MS); // 30s timer per file (independent from loop)
         } catch (err) {
           console.error(`[PRINT] ❌ ${item.fileName} :`, err.message);
+
+          // Marquer le job comme failed, pas completed
+          await supabase
+            .from("print_jobs")
+            .update({
+              status: "failed",
+              error_message:
+                err.message?.substring(0, 200) || "Erreur inconnue",
+            })
+            .eq("id", item.jobId);
+
           errors.push({
             jobId: item.jobId,
             fileName: item.fileName,
             error: err.message,
           });
-          // Mark job as failed in DB — do NOT delete it, do NOT delete storage
-          await supabase
-            .from("print_jobs")
-            .update({ status: "failed" })
-            .eq("id", item.jobId);
           await insertHistory({
             ownerId,
             displayId: ownerId,
@@ -998,11 +1024,27 @@ ipcMain.handle(
         }
       }
 
+      // ✅ Dériver le statut final du groupe basé sur les résultats réels
+      let finalGroupStatus = "completed"; // par défaut
+      if (errors.length > 0) {
+        const successCount = results.length;
+        const failCount = errors.length;
+        finalGroupStatus = successCount > 0 ? "partial_completed" : "failed";
+      }
+
       if (fileGroupId) {
-        await supabase
+        const { error: groupUpdateError } = await supabase
           .from("file_groups")
-          .update({ status: "completed" })
+          .update({ status: finalGroupStatus })
           .eq("id", fileGroupId);
+        if (groupUpdateError) {
+          console.warn(
+            `[PRINT] final update file_groups failed for group ${fileGroupId}: ${groupUpdateError.message}`,
+          );
+        }
+        console.log(
+          `[PRINT] Groupe final status: ${finalGroupStatus} (${results.length} ok, ${errors.length} failed)`,
+        );
       }
 
       return errors.length > 0
@@ -1024,6 +1066,102 @@ ipcMain.handle(
     }
   },
 );
+
+// ── IPC : Retry failed job ──────────────────────────────────────
+ipcMain.handle("job:retry", async (event, jobId, printerName) => {
+  try {
+    // 🔐 SECURITY: Enforce backend access control FIRST
+    const enforced = await enforceAccess("print", ["active", "trial"]);
+    if (!enforced.allowed) {
+      return { success: false, error: "Subscription required to print" };
+    }
+
+    if (processingJobs.has(jobId))
+      return { success: false, error: "Job déjà en cours" };
+
+    processingJobs.add(jobId);
+
+    // Reset job status to pending
+    await supabase
+      .from("print_jobs")
+      .update({ status: "pending", error_message: null })
+      .eq("id", jobId);
+
+    // Get job details
+    const { data: job } = await supabase
+      .from("print_jobs")
+      .select("copies_requested, file_groups ( id, owner_id, files ( file_name ) )")
+      .eq("id", jobId)
+      .single();
+
+    if (!job) return { success: false, error: "Job introuvable" };
+
+    const copies = job.copies_requested || 1;
+    const fileName = job.file_groups?.files?.[0]?.file_name || "fichier";
+
+    log("PRINT_RETRY", { jobId, fileName, copies, printer: printerName });
+
+    // Print the job
+    const result = await printSingleJobNoDelay(jobId, printerName, copies);
+
+    // Update group status if needed
+    const fileGroupId = result.fileGroupId;
+    if (fileGroupId) {
+      // Check if all jobs in group are completed
+      const { data: allJobs } = await supabase
+        .from("print_jobs")
+        .select("status")
+        .eq("group_id", fileGroupId);
+
+      const allCompleted = allJobs.every(j => j.status === "completed");
+      const hasFailures = allJobs.some(j => j.status === "failed");
+
+      let newStatus = "completed";
+      if (hasFailures && allCompleted) newStatus = "partial_completed";
+      else if (hasFailures) newStatus = "failed";
+
+      await supabase
+        .from("file_groups")
+        .update({ status: newStatus })
+        .eq("id", fileGroupId);
+    }
+
+    // Schedule cleanup
+    setTimeout(async () => {
+      try {
+        await supabase.storage.from("derewol-files").remove([result.storagePath]);
+        if (fs.existsSync(result.tmpPath)) secureDelete(result.tmpPath);
+        await supabase.from("print_jobs").delete().eq("id", jobId);
+      } catch (e) {
+        console.warn(`[RETRY] Erreur nettoyage ${result.fileName}:`, e.message);
+      }
+    }, PRINT_DELAY_MS);
+
+    await insertHistory({
+      ownerId: result.ownerId,
+      displayId: result.ownerId,
+      fileName: result.fileName,
+      copies: result.copies,
+      printerName,
+      status: "completed",
+      groupId: result.fileGroupId,
+    });
+
+    return { success: true, result };
+  } catch (err) {
+    console.error("[RETRY] Erreur :", err.message);
+    await supabase
+      .from("print_jobs")
+      .update({
+        status: "failed",
+        error_message: err.message?.substring(0, 200) || "Erreur inconnue",
+      })
+      .eq("id", jobId);
+    return { success: false, error: err.message };
+  } finally {
+    processingJobs.delete(jobId);
+  }
+});
 
 // ── IPC : Rejet ─────────────────────────────────────────────────
 ipcMain.handle("job:reject", async (event, jobId) => {
@@ -1394,6 +1532,77 @@ async function enforceAccess(action, requiredStatus = ["active", "trial"]) {
     status: access.status,
   });
   return { allowed: true, access };
+}
+
+async function uploadModifiedFile(localFilePath, storagePath, fileGroupId) {
+  const { dialog } = require("electron");
+  const { createHash } = require("crypto");
+
+  // 1. Télécharge la version actuelle pour comparer
+  const { data: existing } = await supabase.storage
+    .from("derewol-files")
+    .download(storagePath);
+
+  if (existing) {
+    const hashExisting = createHash("md5")
+      .update(Buffer.from(await existing.arrayBuffer()))
+      .digest("hex");
+
+    const hashNew = createHash("md5")
+      .update(require("fs").readFileSync(localFilePath))
+      .digest("hex");
+
+    // 2. Fichiers identiques → rien à faire
+    if (hashExisting === hashNew) {
+      return { success: true, action: "skipped", reason: "Fichier identique" };
+    }
+
+    // 3. Différents → confirmation
+    const { response } = await dialog.showMessageBox({
+      type: "warning",
+      buttons: ["Écraser le fichier client", "Annuler"],
+      title: "Fichier modifié détecté",
+      message: `Le fichier a été modifié.`,
+      detail:
+        "Voulez-vous remplacer le fichier original du client par cette version ?",
+    });
+
+    if (response === 1) return { success: false, action: "cancelled" };
+  }
+
+  // 4. Chiffrement + upload (ta logique existante)
+  const fileBuffer = require("fs").readFileSync(localFilePath);
+  const { newKey, encrypted } = encryptFile(fileBuffer);
+  const hash = createHash("md5").update(fileBuffer).digest("hex");
+
+  const { error: upErr } = await supabase.storage
+    .from("derewol-files")
+    .update(storagePath, encrypted, {
+      upsert: true,
+      contentType: "application/octet-stream",
+    });
+
+  if (upErr) return { success: false, error: upErr.message };
+
+  // 5. Update DB + audit log
+  await supabase
+    .from("files")
+    .update({
+      encrypted_key: newKey,
+      hash_printed: hash,
+      modified_at: new Date().toISOString(),
+    })
+    .eq("storage_path", storagePath);
+
+  // 6. Log d'audit
+  await supabase.from("audit_logs").insert({
+    storage_path: storagePath,
+    file_group_id: fileGroupId,
+    action: "file_replaced_by_printer",
+    timestamp: new Date().toISOString(),
+  });
+
+  return { success: true, action: "replaced" };
 }
 
 // ── Helpers boot ────────────────────────────────────────────────

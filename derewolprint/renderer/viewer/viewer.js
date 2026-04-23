@@ -187,8 +187,7 @@ async function initPDF() {
 
   try {
     if (!window.pdfjsLib) throw new Error("PDF.js est introuvable");
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "../../../node_modules/pdfjs-dist/build/pdf.worker.min.js";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.js";
 
     const bytes = state.bytes;
     if (!bytes) throw new Error("Données PDF manquantes");

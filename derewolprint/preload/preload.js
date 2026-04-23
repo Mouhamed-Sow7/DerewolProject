@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("derewol", {
   confirmPrint: (groupId, printerName, copies, jobCopies) =>
     ipcRenderer.invoke("job:confirm", groupId, printerName, copies, jobCopies),
   rejectJob: (jobId) => ipcRenderer.invoke("job:reject", jobId),
+  retryJob: (jobId, printerName) =>
+    ipcRenderer.invoke("job:retry", jobId, printerName),
 
   // ── Utilitaires ───────────────────────────────────────────
   sendLog: (message) => ipcRenderer.invoke("log:write", message),
