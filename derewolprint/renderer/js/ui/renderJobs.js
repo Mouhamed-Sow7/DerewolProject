@@ -12,7 +12,7 @@ function setFileCopies(jobId, fileId, val) {
 
 function formatClientId(id) {
   if (!id) return "Client";
-  if (id.startsWith("DW-anon-")) return "#" + id.slice(-6).toUpperCase();
+  if (id.startsWith("DW-anon-")) return id.toUpperCase();
   return id.slice(0, 8).toUpperCase();
 }
 

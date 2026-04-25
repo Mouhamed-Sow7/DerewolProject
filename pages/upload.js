@@ -16,15 +16,17 @@ export default function Upload({ showToast }) {
   if (!ready || !session) return null;
 
   function addFiles(newFiles) {
-    const pdfs = Array.from(newFiles).filter(f => f.type === "application/pdf");
-    const valid = pdfs.filter(f => {
+    const pdfs = Array.from(newFiles).filter(
+      (f) => f.type === "application/pdf",
+    );
+    const valid = pdfs.filter((f) => {
       if (f.size > MAX_SIZE_MB * 1024 * 1024) {
         showToast(`"${f.name}" dépasse ${MAX_SIZE_MB}MB`, "error");
         return false;
       }
       return true;
     });
-    setSelected(prev => {
+    setSelected((prev) => {
       const combined = [...prev, ...valid];
       if (combined.length > MAX_FILES) {
         showToast(`Maximum ${MAX_FILES} fichiers par envoi`, "error");
@@ -34,10 +36,21 @@ export default function Upload({ showToast }) {
     });
   }
 
-  function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); }
-  function handleDrop(e) { e.preventDefault(); e.stopPropagation(); addFiles(e.dataTransfer.files); }
-  function handleFileChange(e) { addFiles(e.target.files); }
-  function removeFile(index) { setSelected(prev => prev.filter((_, i) => i !== index)); }
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    addFiles(e.dataTransfer.files);
+  }
+  function handleFileChange(e) {
+    addFiles(e.target.files);
+  }
+  function removeFile(index) {
+    setSelected((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleUpload() {
     if (!selected.length || loading) return;
@@ -55,11 +68,10 @@ export default function Upload({ showToast }) {
   return (
     <div className="container">
       <div className="upload-card">
-
         <div className="header">
           <h2>Envoyer vos fichiers</h2>
           <div className="session-info">
-            <span>ID : {session.display_id}</span>
+            <span>ID : {session.display_code || session.display_id}</span>
             <span>📱 {session.phone}</span>
           </div>
         </div>
@@ -72,12 +84,17 @@ export default function Upload({ showToast }) {
             onClick={() => document.getElementById("file-input").click()}
           >
             <input
-              id="file-input" type="file" accept="application/pdf"
-              multiple style={{ display: "none" }} onChange={handleFileChange}
+              id="file-input"
+              type="file"
+              accept="application/pdf"
+              multiple
+              style={{ display: "none" }}
+              onChange={handleFileChange}
             />
             <p className="drop-title">Glissez vos PDF ici</p>
             <span className="drop-sub">
-              ou cliquez · {remaining} fichier{remaining > 1 ? "s" : ""} restant{remaining > 1 ? "s" : ""}
+              ou cliquez · {remaining} fichier{remaining > 1 ? "s" : ""} restant
+              {remaining > 1 ? "s" : ""}
             </span>
           </div>
         )}
@@ -87,14 +104,22 @@ export default function Upload({ showToast }) {
             {selected.map((file, index) => (
               <div key={index} className="file-item">
                 <span title={file.name}>{file.name}</span>
-                <button onClick={() => removeFile(index)} aria-label="Supprimer">✕</button>
+                <button
+                  onClick={() => removeFile(index)}
+                  aria-label="Supprimer"
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>
         )}
 
         {selected.length > 0 && (
-          <p className="files-count">{selected.length}/{MAX_FILES} fichier{selected.length > 1 ? "s" : ""}</p>
+          <p className="files-count">
+            {selected.length}/{MAX_FILES} fichier
+            {selected.length > 1 ? "s" : ""}
+          </p>
         )}
 
         <button
@@ -108,7 +133,6 @@ export default function Upload({ showToast }) {
         <div className="security-note">
           <small>🔒 Fichiers supprimés automatiquement après impression</small>
         </div>
-
       </div>
     </div>
   );

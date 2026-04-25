@@ -34,6 +34,34 @@ const {
   saveConfig,
   clearConfig,
 } = require("../services/printerConfig");
+
+function parseVirtualPrinterArg(argv) {
+  if (!Array.isArray(argv)) return null;
+  const index = argv.findIndex(
+    (arg) =>
+      arg === "-vprint" ||
+      arg.startsWith("-vprint:") ||
+      arg.startsWith("-vprint=") ||
+      arg === "--vprint",
+  );
+  if (index === -1) return null;
+
+  const arg = argv[index];
+  if (arg.includes(":") || arg.includes("=")) {
+    const [, value] = arg.split(/[:=]/);
+    return value?.trim() || "vprint test";
+  }
+
+  const next = argv[index + 1];
+  if (typeof next === "string" && !next.startsWith("-")) {
+    return next.trim();
+  }
+
+  return "vprint test";
+}
+
+const virtualPrinterName = parseVirtualPrinterArg(process.argv);
+
 const {
   checkSubscription,
   activateCode,
@@ -86,17 +114,31 @@ async function getInstalledPrinters() {
     require("child_process").exec(cmd, { windowsHide: true }, (err, stdout) => {
       if (err) {
         console.warn("[PRINTERS] Fallback liste vide:", err.message);
-        return resolve([]);
+        const fallback = virtualPrinterName
+          ? [{ name: virtualPrinterName }]
+          : [];
+        return resolve(fallback);
       }
       try {
         const raw = JSON.parse(stdout.trim());
         const list = Array.isArray(raw) ? raw : [raw];
         // Filter out null/undefined entries to prevent .toLowerCase() crashes
         const clean = list.filter((p) => p && typeof p === "string");
-        console.log("[PRINTERS] Détectées:", clean);
-        resolve(clean);
+        const printers = clean.map((name) => ({ name }));
+        if (virtualPrinterName) {
+          const exists = printers.some((p) => p.name === virtualPrinterName);
+          if (!exists) printers.push({ name: virtualPrinterName });
+        }
+        console.log(
+          "[PRINTERS] Détectées:",
+          printers.map((p) => p.name),
+        );
+        resolve(printers);
       } catch (e) {
-        resolve([]);
+        const fallback = virtualPrinterName
+          ? [{ name: virtualPrinterName }]
+          : [];
+        resolve(fallback);
       }
     });
   });

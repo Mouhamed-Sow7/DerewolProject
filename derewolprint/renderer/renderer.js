@@ -647,17 +647,17 @@ function initSettings() {
   window.derewol.getPrinters().then((printers) => {
     const sel = document.getElementById("setting-printer");
     const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
-    const real = printers.filter(
-      (p) =>
-        p && p.name && !blacklist.some((b) => p.name.toLowerCase().includes(b)),
-    );
+    const real = printers.filter((p) => {
+      const name = typeof p === "string" ? p : p?.name;
+      return name && !blacklist.some((b) => name.toLowerCase().includes(b));
+    });
     sel.innerHTML =
       '<option value="">Auto-détection</option>' +
       real
-        .map(
-          (p) =>
-            `<option value="${p.name}" ${settings.printer === p.name ? "selected" : ""}>${p.name}</option>`,
-        )
+        .map((p) => {
+          const name = typeof p === "string" ? p : p.name;
+          return `<option value="${name}" ${settings.printer === name ? "selected" : ""}>${name}</option>`;
+        })
         .join("");
   });
 }
@@ -1219,10 +1219,10 @@ window.derewol.getPrinters().then((printers) => {
   const select = document.getElementById("printer-select");
   const dot = document.getElementById("printer-dot");
   const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
-  const real = printers.filter(
-    (p) =>
-      p && p.name && !blacklist.some((b) => p.name.toLowerCase().includes(b)),
-  );
+  const real = printers.filter((p) => {
+    const name = typeof p === "string" ? p : p?.name;
+    return name && !blacklist.some((b) => name.toLowerCase().includes(b));
+  });
 
   if (real.length === 0) {
     select.innerHTML = "<option>Aucune imprimante physique</option>";
@@ -1230,11 +1230,17 @@ window.derewol.getPrinters().then((printers) => {
     return;
   }
   select.innerHTML = real
-    .map((p) => `<option value="${p.name}">${p.name}</option>`)
+    .map((p) => {
+      const name = typeof p === "string" ? p : p.name;
+      return `<option value="${name}">${name}</option>`;
+    })
     .join("");
   const preferred =
     settings.printer ||
-    real.find((p) => p && p.name && p.name.toLowerCase().includes("hp"))?.name;
+    real.find((p) => {
+      const name = typeof p === "string" ? p : p.name;
+      return name.toLowerCase().includes("hp");
+    })?.name;
   if (preferred) select.value = preferred;
   dot.style.background = "var(--jaune)";
 });
