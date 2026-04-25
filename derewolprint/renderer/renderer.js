@@ -648,7 +648,8 @@ function initSettings() {
     const sel = document.getElementById("setting-printer");
     const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
     const real = printers.filter(
-      (p) => !blacklist.some((b) => p.name.toLowerCase().includes(b)),
+      (p) =>
+        p && p.name && !blacklist.some((b) => p.name.toLowerCase().includes(b)),
     );
     sel.innerHTML =
       '<option value="">Auto-détection</option>' +
@@ -1208,7 +1209,8 @@ window.derewol.getPrinters().then((printers) => {
   const dot = document.getElementById("printer-dot");
   const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
   const real = printers.filter(
-    (p) => !blacklist.some((b) => p.name.toLowerCase().includes(b)),
+    (p) =>
+      p && p.name && !blacklist.some((b) => p.name.toLowerCase().includes(b)),
   );
 
   if (real.length === 0) {
@@ -1221,7 +1223,7 @@ window.derewol.getPrinters().then((printers) => {
     .join("");
   const preferred =
     settings.printer ||
-    real.find((p) => p.name.toLowerCase().includes("hp"))?.name;
+    real.find((p) => p && p.name && p.name.toLowerCase().includes("hp"))?.name;
   if (preferred) select.value = preferred;
   dot.style.background = "var(--jaune)";
 });

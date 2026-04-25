@@ -91,8 +91,10 @@ async function getInstalledPrinters() {
       try {
         const raw = JSON.parse(stdout.trim());
         const list = Array.isArray(raw) ? raw : [raw];
-        console.log("[PRINTERS] Détectées:", list);
-        resolve(list);
+        // Filter out null/undefined entries to prevent .toLowerCase() crashes
+        const clean = list.filter((p) => p && typeof p === "string");
+        console.log("[PRINTERS] Détectées:", clean);
+        resolve(clean);
       } catch (e) {
         resolve([]);
       }
