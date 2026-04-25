@@ -246,7 +246,7 @@ export default function Dashboard({ showToast }) {
   const router = useRouter();
 
   // Tous les hooks avant return conditionnel
-  const displayId = session?.display_id || null;
+  const displayId = session?.owner_id || null;
   const { groups, loading } = usePrintStatus(displayId);
 
   if (!ready || !session) return null;
@@ -273,7 +273,7 @@ export default function Dashboard({ showToast }) {
           </span>
         </div>
         <div className="db-header-right">
-          <span className="db-session-id">{session.display_id}</span>
+          <span className="db-session-id">{session.display_code}</span>
           <button className="db-btn-logout" onClick={handleLogout}>
             Déconnexion
           </button>

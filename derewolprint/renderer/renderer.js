@@ -809,12 +809,23 @@ function animateRemove(id) {
 // ── Impression ────────────────────────────────────────────────
 function confirmJob(groupId, group) {
   if (printingGroups.has(groupId)) return;
+
+  const printerName = document.getElementById("printer-select").value;
+
+  // ⚠️ Guard: Vérifier qu'une imprimante est sélectionnée
+  if (!printerName || printerName.trim() === "") {
+    showModal(
+      "⚠️ Aucune imprimante sélectionnée",
+      "Vous devez sélectionner une imprimante avant de pouvoir imprimer. Veuillez choisir une imprimante et réessayer.",
+    );
+    return;
+  }
+
   printingGroups.add(groupId);
 
   const card = document.getElementById(groupId);
   const btn = card.querySelector(".btn-print");
   const btnReject = card.querySelector(".btn-reject");
-  const printerName = document.getElementById("printer-select").value;
 
   const jobCopies = group.items.map((item) => ({
     jobId: item.jobId,
