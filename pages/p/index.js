@@ -1914,7 +1914,7 @@ export default function PrinterSPA({ showToast }) {
             ) : (
               <>
                 {/* 🔥 SECURITY: Comprehensive download blocking - MULTIPLE LAYERS */}
-                {/* Layer 1: Full-screen interactive overlay - blocks ALL mouse/touch events to iframe */}
+                {/* Layer 1: Transparent toolbar blocker overlay */}
                 <div
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -1950,19 +1950,11 @@ export default function PrinterSPA({ showToast }) {
                     right: 0,
                     height: "150px",
                     zIndex: 9999,
-                    background: C.green,
+                    background: "transparent",
                     pointerEvents: "auto",
                     cursor: "not-allowed",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontSize: 12,
-                    fontWeight: "bold",
                   }}
-                >
-                  🔒 Download désactivé
-                </div>
+                />
                 {/* Layer 2: Full-screen overlay below toolbar - blocks any interaction */}
                 <div
                   onMouseDown={(e) => {
@@ -1990,7 +1982,7 @@ export default function PrinterSPA({ showToast }) {
                     pointerEvents: "auto",
                   }}
                 />
-                {/* Layer 3: iframe with maximum sandbox restrictions */}
+                {/* Layer 3: iframe with sandbox adjusted for Google Docs Viewer */}
                 <iframe
                   src={
                     previewUrl?.includes("#") || previewUrl?.includes("?")
@@ -2008,7 +2000,7 @@ export default function PrinterSPA({ showToast }) {
                     pointerEvents: "none",
                   }}
                   title={previewName}
-                  sandbox="allow-same-origin"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-top-navigation-by-user-activation"
                   referrerPolicy="no-referrer"
                   onError={() => {
                     setPreviewUrl(null);
