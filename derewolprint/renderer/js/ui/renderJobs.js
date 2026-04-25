@@ -10,6 +10,12 @@ function setFileCopies(jobId, fileId, val) {
   copiesPerFile[`${jobId}_${fileId}`] = val;
 }
 
+function formatClientId(id) {
+  if (!id) return "Client";
+  if (id.startsWith("DW-anon-")) return "#" + id.slice(-6).toUpperCase();
+  return id.slice(0, 8).toUpperCase();
+}
+
 function getFileIconClass(fileName) {
   const ext = fileName?.split(".")?.pop()?.toLowerCase() || "";
   switch (ext) {
@@ -171,7 +177,7 @@ export default function renderJobs(
           <input type="checkbox" class="job-checkbox" data-id="${group.id}"
             ${checkedIds.has(group.id) ? "checked" : ""}>
           <div>
-            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${group.ownerId ? group.ownerId.substring(0, 20) : "#" + group.clientId.slice(-8)} ${btBadge} ${groupStatusBadge}</div>
+            <div class="job-client-id"><i class="fa-regular fa-user"></i> ${formatClientId(group.clientId)} ${btBadge} ${groupStatusBadge}</div>
             <div class="job-time">${group.time} · ${group.items.length} fichier${group.items.length > 1 ? "s" : ""} · ${statusBadge}</div>
           </div>
         </div>

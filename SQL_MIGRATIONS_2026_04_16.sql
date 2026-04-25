@@ -56,3 +56,13 @@ WHERE status IN ('queued', 'printing');
 CREATE INDEX IF NOT EXISTS idx_file_groups_status 
 ON file_groups(status) 
 WHERE status IN ('waiting', 'printing', 'expired');
+
+-- 5. Add status check constraints
+ALTER TABLE print_jobs DROP CONSTRAINT IF EXISTS print_jobs_status_check;
+ALTER TABLE print_jobs ADD CONSTRAINT print_jobs_status_check
+  CHECK (status IN ('queued','printing','completed','rejected','expired','failed'));
+
+ALTER TABLE file_groups DROP CONSTRAINT IF EXISTS file_groups_status_check;
+ALTER TABLE file_groups ADD CONSTRAINT file_groups_status_check
+  CHECK (status IN ('waiting','printing','completed','partial_completed',
+                    'failed','rejected','partial_rejected','expired'));

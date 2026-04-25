@@ -52,60 +52,6 @@ async function expireStaleGroups(printerId) {
 }
 
 async function fetchPendingJobs(printerId) {
-  // ── HANDLE EXPIRED JOBS FIRST (consolidate expiration logic) ──
-  // This ensures expired files are cleaned up before fetching pending ones
-  try {
-    const now = new Date().toISOString();
-
-    // Find jobs that have expired
-    const { data: expiredJobs } = await supabase
-      .from("print_jobs")
-      .select("id, file_groups(id)")
-      .lt("expires_at", now)
-      .in("status", ["queued", "printing"]);
-
-    if (expiredJobs?.length > 0) {
-      const groupIds = [
-        ...new Set(expiredJobs.map((j) => j.file_groups?.id).filter(Boolean)),
-      ];
-
-      // Mark jobs as expired
-      await supabase
-        .from("print_jobs")
-        .update({ status: "expired" })
-        .in(
-          "id",
-          expiredJobs.map((j) => j.id),
-        );
-
-      // Mark groups as expired (only if currently waiting/printing)
-      await supabase
-        .from("file_groups")
-        .update({ status: "expired" })
-        .in("id", groupIds)
-        .in("status", ["waiting", "printing"]);
-
-      // Remove files from storage
-      for (const groupId of groupIds) {
-        const { data: files } = await supabase
-          .from("files")
-          .select("storage_path")
-          .eq("group_id", groupId);
-
-        const paths = files?.map((f) => f.storage_path).filter(Boolean) || [];
-        if (paths.length > 0) {
-          await supabase.storage.from("derewol-files").remove(paths);
-        }
-      }
-
-      console.log(
-        `[POLLING] ⏰ ${groupIds.length} group(s) expiré(s) — fichiers nettoyés`,
-      );
-    }
-  } catch (e) {
-    console.warn("[POLLING] Expiration check error:", e.message);
-  }
-
   // ── NOW FETCH PENDING (non-expired) JOBS ──
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const now = new Date().toISOString();
@@ -124,7 +70,12 @@ async function fetchPendingJobs(printerId) {
     )
     .in("status", ["queued", "printing"])
     .gt("expires_at", now) // ← Exclude expired jobs
-    .gt("created_at", twoHoursAgo);
+    .gt("created_at", twoHoursAgo)
+    .not(
+      "file_groups.status",
+      "in",
+      '("completed","failed","expired","partial_completed")',
+    );
 
   // Filtre via file_groups.printer_id
   if (printerId) {
@@ -180,10 +131,15 @@ async function fetchPendingJobs(printerId) {
     }
   }
 
-  // Filtre côté JS pour être sûr (Supabase nested filter pas toujours fiable)
+  // Retourner UNIQUEMENT les jobs non expirés et non printing-terminés
   const filtered = (data || [])
-    .filter((job) => !printerId || job.file_groups?.printer_id === printerId)
-    .filter((job) => !job.expires_at || new Date(job.expires_at) >= new Date());
+    .filter((j) => {
+      if (!j.expires_at) return true;
+      if (j.status === "printing") return true; // Toujours garder les jobs en impression
+      if (j.status === "queued" && j.expires_at < now) return false; // Exclure les expirés
+      return true;
+    })
+    .filter((job) => !printerId || job.file_groups?.printer_id === printerId);
 
   if (filtered.length > 0)
     console.log("[POLLING] Jobs actifs :", filtered.length);

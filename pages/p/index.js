@@ -140,6 +140,7 @@ function usePrintStatus(ownerId) {
           setGroups(data || []);
           setLoading(false);
         }
+        console.log("[PWA] ownerId:", ownerId, "| groups:", data?.length);
       } catch (err) {
         console.error("[usePrintStatus] fetch error:", err?.message || err);
         if (!cancelled) setLoading(false);
@@ -356,6 +357,18 @@ function StatusBadge({ status }) {
       color: "#856404",
       border: "#ffc107",
     },
+    partial_completed: {
+      label: "Partiel",
+      bg: "#fff3cd",
+      color: "#856404",
+      border: "#ffc107",
+    },
+    failed: {
+      label: "Échec",
+      bg: "#fdecea",
+      color: "#b91c1c",
+      border: "#fca5a5",
+    },
     expired: {
       label: "Expiré",
       bg: "#f3f4f6",
@@ -433,18 +446,20 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const allRejected = allFiles.every(
     (f) => f.rejected || f.status === "rejected",
   );
-  // ── FIX: Determine displayStatus from actual file state ────────────
-  // If ALL files are rejected → show "rejected", not "completed"
-  const uiStatus =
-    allFiles.length > 0 && allRejected
-      ? "rejected"
-      : group.remainingCount === 0
-        ? "completed"
-        : haRejectedFile && !allRejected
-          ? "partial"
-          : hasPrintingJob
-            ? "printing"
-            : group.status;
+  // Utiliser derivedStatus si disponible, sinon calculer
+  const displayStatus =
+    group.derivedStatus ||
+    (() => {
+      const files = group.files || [];
+      const rejectedFiles = files.filter((f) => f.isRejected || f.rejected);
+      const activeFiles = files.filter((f) => !f.isRejected && !f.rejected);
+      if (files.length > 0) {
+        if (rejectedFiles.length === files.length) return "rejected";
+        if (rejectedFiles.length > 0 && activeFiles.length === 0)
+          return "partial_rejected";
+      }
+      return group.status;
+    })();
   const statusConfig = {
     waiting: {
       label: t("waiting"),
@@ -483,12 +498,20 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       border: "#d1d5db",
     },
   };
-  const config = statusConfig[uiStatus] || statusConfig.waiting;
+  const config = statusConfig[displayStatus] || statusConfig.waiting;
 
-  // Un groupe "rejected" ou "completed" va dans l'historique
+  // Un groupe "rejected", "completed" ou partiellement terminé va dans l'historique
   const isHistoryGroup =
     history ||
-    ["completed", "rejected", "expired", "partial_rejected"].includes(uiStatus);
+    [
+      "completed",
+      "rejected",
+      "expired",
+      "partial_rejected",
+      "partial",
+      "partial_completed",
+      "failed",
+    ].includes(displayStatus);
 
   return (
     <div
@@ -551,7 +574,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                 flexWrap: "wrap",
               }}
             >
-              <StatusBadge status={uiStatus} />
+              <StatusBadge status={displayStatus} />
             </div>
           </div>
         </div>
@@ -635,15 +658,31 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
                   style={{
                     fontSize: 11,
                     fontWeight: 700,
-                    color: f.jobStatus === "failed" ? "#e53935" : f.jobStatus === "completed" ? "#166534" : "#f5c842",
-                    background: f.jobStatus === "failed" ? "#fdecea" : f.jobStatus === "completed" ? "#d1fae5" : "#fef3c7",
+                    color:
+                      f.jobStatus === "failed"
+                        ? "#e53935"
+                        : f.jobStatus === "completed"
+                          ? "#166534"
+                          : "#f5c842",
+                    background:
+                      f.jobStatus === "failed"
+                        ? "#fdecea"
+                        : f.jobStatus === "completed"
+                          ? "#d1fae5"
+                          : "#fef3c7",
                     padding: "2px 8px",
                     borderRadius: 20,
                     whiteSpace: "nowrap",
                     flexShrink: 0,
                   }}
                 >
-                  {f.jobStatus === "failed" ? "Échec" : f.jobStatus === "completed" ? "Imprimé" : f.jobStatus === "printing" ? "Impression" : "En attente"}
+                  {f.jobStatus === "failed"
+                    ? "Échec"
+                    : f.jobStatus === "completed"
+                      ? "Imprimé"
+                      : f.jobStatus === "printing"
+                        ? "Impression"
+                        : "En attente"}
                 </span>
               )}
               {(f.rejected || f.status === "rejected") && (
@@ -687,19 +726,26 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
               {f.jobStatus === "failed" && (
                 <button
                   onClick={() => {
-                    const fileJob = group.print_jobs?.find((j) => j.file_id === f.id);
+                    const fileJob = group.print_jobs?.find(
+                      (j) => j.file_id === f.id,
+                    );
                     if (fileJob && window.derewol) {
                       // Get printer name from config or default
-                      window.derewol.getPrinters().then(printers => {
-                        const defaultPrinter = printers.find(p => p.isDefault) || printers[0];
+                      window.derewol.getPrinters().then((printers) => {
+                        const defaultPrinter =
+                          printers.find((p) => p.isDefault) || printers[0];
                         if (defaultPrinter) {
-                          window.derewol.retryJob(fileJob.id, defaultPrinter.name).then(result => {
-                            if (result.success) {
-                              alert("Relance en cours...");
-                            } else {
-                              alert("Erreur lors de la relance: " + result.error);
-                            }
-                          });
+                          window.derewol
+                            .retryJob(fileJob.id, defaultPrinter.name)
+                            .then((result) => {
+                              if (result.success) {
+                                alert("Relance en cours...");
+                              } else {
+                                alert(
+                                  "Erreur lors de la relance: " + result.error,
+                                );
+                              }
+                            });
                         } else {
                           alert("Aucune imprimante disponible");
                         }
@@ -769,46 +815,79 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
           )}
         </div>
       )}
-      <div style={{ padding: "10px 16px 14px" }}>
-        {/* ── FIX: Use uiStatus (calculated) instead of status (database) ──── */}
-        {uiStatus === "waiting" && remainingFiles.length > 0 && (
-          <p style={{ color: "#92600a", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-hourglass-end" /> {t("waitingMsg")}
+      {/* ── FIX: Use displayStatus (calculated) instead of status (database) ──── */}
+      {displayStatus === "waiting" && remainingFiles.length > 0 && (
+        <p style={{ color: "#92600a", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-hourglass-end" /> {t("waitingMsg")}
+        </p>
+      )}
+      {displayStatus === "printing" && (
+        <p style={{ color: "#1d4ed8", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-print" /> {t("printingMsg")}
+        </p>
+      )}
+      {displayStatus === "completed" &&
+        remainingFiles.length === 0 &&
+        !allRejected && (
+          <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
+            <i className="fa-solid fa-check" /> {t("completedMsg")}
           </p>
         )}
-        {uiStatus === "printing" && (
-          <p style={{ color: "#1d4ed8", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-print" /> {t("printingMsg")}
-          </p>
-        )}
-        {uiStatus === "completed" &&
-          remainingFiles.length === 0 &&
-          !allRejected && (
-            <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
-              <i className="fa-solid fa-check" /> {t("completedMsg")}
-            </p>
-          )}
-        {uiStatus === "rejected" && allRejected && (
-          <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-xmark" /> Tous les fichiers ont été
-            rejetés
-          </p>
-        )}
-        {uiStatus === "partial" && (
-          <p style={{ color: "#856404", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-alert-triangle" /> {historyFiles.length}{" "}
-            fichier
-            {historyFiles.length > 1 ? "s" : ""} rejeté
-            {historyFiles.length > 1 ? "s" : ""} — {remainingFiles.length} en
-            attente
-          </p>
-        )}
-        {uiStatus === "expired" && (
-          <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
-            <i className="fa-solid fa-clock" /> {t("expiredMsg")}
-          </p>
-        )}
-      </div>
+      {displayStatus === "partial_completed" && (
+        <p
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#856404",
+            background: "#fff3cd",
+            padding: "8px 12px",
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <i className="fa-solid fa-triangle-exclamation" />
+          Certains fichiers imprimés, d'autres ont échoué
+        </p>
+      )}
+      {displayStatus === "failed" && (
+        <p
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#b91c1c",
+            background: "#fdecea",
+            padding: "8px 12px",
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <i className="fa-solid fa-xmark-circle" />
+          Échec de l'impression pour tous les fichiers
+        </p>
+      )}
+      {displayStatus === "rejected" && allRejected && (
+        <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-xmark" /> Tous les fichiers ont été rejetés
+        </p>
+      )}
+      {displayStatus === "partial" && (
+        <p style={{ color: "#856404", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-alert-triangle" /> {historyFiles.length}{" "}
+          fichier
+          {historyFiles.length > 1 ? "s" : ""} rejeté
+          {historyFiles.length > 1 ? "s" : ""} — {remainingFiles.length} en
+          attente
+        </p>
+      )}
+      {displayStatus === "expired" && (
+        <p style={{ color: "#6b7280", fontSize: 13, fontWeight: 500 }}>
+          <i className="fa-solid fa-clock" /> {t("expiredMsg")}
+        </p>
+      )}
     </div>
   );
 }
@@ -829,70 +908,21 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
       </div>
     );
 
-  if (groups.length === 0) return null;
-
-  const activeGroups = [];
-  const historyGroups = [];
-
-  groups.forEach((group) => {
-    const allFiles = group.files || [];
-    const remainingFiles = [];
-    const rejectedFiles = [];
-
-    const effectiveStatus = group.print_jobs?.some(
-      (job) => job?.status === "printing",
-    )
-      ? "printing"
-      : group.status;
-
-    allFiles.forEach((file) => {
-      if (
-        file.status === "completed" ||
-        file.status === "rejected" ||
-        file.rejected === true
-      ) {
-        rejectedFiles.push(file);
-      } else {
-        remainingFiles.push(file);
-      }
-    });
-
-    group.remainingFiles = remainingFiles;
-    group.remainingCount = remainingFiles.length;
-
-    // ── FIX: Calculate if ALL files are rejected ──────────────────
-    const allRejected =
-      allFiles.length > 0 &&
-      allFiles.every((f) => f.rejected || f.status === "rejected");
-
-    // Move to history if:
-    // 1. Database says so, OR
-    // 2. ALL files are rejected (even if DB is still "waiting")
-    if (
-      effectiveStatus === "completed" ||
-      effectiveStatus === "rejected" ||
-      effectiveStatus === "expired" ||
-      allRejected
-    ) {
-      historyGroups.push(group);
-    } else if (remainingFiles.length > 0) {
-      activeGroups.push(group);
-    }
-
-    // Also add partial rejections to history
-    if (
-      rejectedFiles.length > 0 &&
-      remainingFiles.length === 0 &&
-      !allRejected
-    ) {
-      const historyGroup = {
-        ...group,
-        files: rejectedFiles,
-        remainingCount: 0,
-      };
-      historyGroups.push(historyGroup);
-    }
-  });
+  const DONE = [
+    "completed",
+    "partial_completed",
+    "failed",
+    "rejected",
+    "partial_rejected",
+    "expired",
+  ];
+  const active = groups.filter(
+    (g) => !DONE.includes(g.derivedStatus || g.status),
+  );
+  const history = groups.filter((g) =>
+    DONE.includes(g.derivedStatus || g.status),
+  );
+  if (!active.length && !history.length) return null;
 
   return (
     <div style={{ marginTop: 24 }}>
@@ -903,7 +933,7 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
           marginBottom: 20,
         }}
       />
-      {activeGroups.length > 0 && (
+      {active.length > 0 && (
         <section className="active-section">
           <h3
             style={{
@@ -925,11 +955,11 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
                 marginLeft: 8,
               }}
             >
-              {activeGroups.length}
+              {active.length}
             </span>
           </h3>
           <div className="active-list">
-            {activeGroups.map((g) => (
+            {active.map((g) => (
               <GroupCard
                 key={`active-${g.id}`}
                 group={g}
@@ -941,10 +971,10 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
           </div>
         </section>
       )}
-      {historyGroups.length > 0 && (
+      {history.length > 0 && (
         <section
           className="history-section"
-          style={{ marginTop: activeGroups.length > 0 ? 20 : 0 }}
+          style={{ marginTop: active.length > 0 ? 20 : 0 }}
         >
           <h3
             style={{
@@ -957,7 +987,7 @@ function StatusSection({ groups, groupsLoading, onPreview, C, t, onSendMore }) {
             {t("history")}
           </h3>
           <div className="history-list">
-            {historyGroups.map((g) => (
+            {history.map((g) => (
               <GroupCard
                 key={`history-${g.id}`}
                 group={g}

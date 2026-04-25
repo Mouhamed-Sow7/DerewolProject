@@ -77,9 +77,28 @@ function cleanDerewolFilesDir() {
 // ── Détection mode production/développement ─────────────────────
 let isDev = process.env.NODE_ENV === "development";
 
-// ── Protection screenshot (ADMIN ONLY - secret code required) ──
-let screenshotProtectionEnabled = false; // sera mis à jour dans whenReady
-const ADMIN_SECRET_CODE = "DEREWOL2026ADMIN"; // Secret code to disable protection
+// ── Détection dynamique de toutes les imprimantes Windows ──
+async function getInstalledPrinters() {
+  return new Promise((resolve) => {
+    const cmd =
+      "powershell -NoProfile -NonInteractive -Command " +
+      '"Get-Printer | Select-Object -ExpandProperty Name | ConvertTo-Json"';
+    require("child_process").exec(cmd, { windowsHide: true }, (err, stdout) => {
+      if (err) {
+        console.warn("[PRINTERS] Fallback liste vide:", err.message);
+        return resolve([]);
+      }
+      try {
+        const raw = JSON.parse(stdout.trim());
+        const list = Array.isArray(raw) ? raw : [raw];
+        console.log("[PRINTERS] Détectées:", list);
+        resolve(list);
+      } catch (e) {
+        resolve([]);
+      }
+    });
+  });
+}
 
 // ── Print delay before deleting files from storage ──────────────
 // This gives the printer time to physically print before we delete the file.
@@ -315,7 +334,23 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
         devTools: false, // Disable DevTools in viewer (anti-exfiltration)
         webSecurity: false, // Required: fetch('file:///…') for xlsx/mammoth
         sandbox: false,
+        // ── BLOQUER téléchargement depuis le viewer ──────────
+        webviewTag: false,
+        allowRunningInsecureContent: false,
       },
+    });
+
+    // Intercepter TOUS les téléchargements dans cette fenêtre
+    win.webContents.session.on("will-download", (event) => {
+      event.preventDefault(); // Bloquer tout téléchargement
+      console.log("[VIEWER] Téléchargement bloqué");
+    });
+
+    // Bloquer navigation externe
+    win.webContents.on("will-navigate", (e, url) => {
+      if (!url.startsWith("file://")) {
+        e.preventDefault();
+      }
     });
 
     // Content protection (blocks screenshot API) in production
@@ -815,25 +850,53 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
     } else if (
       [".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".rtf"].includes(ext)
     ) {
-      // Office: utiliser Windows Shell PrintTo sans bloquer le main thread
-      return new Promise(async (resolve, reject) => {
-        try {
-          const safePath = filePath.replace(/\\/g, "\\\\");
-          const printCmd = `Start-Process -FilePath "${safePath}" -Verb PrintTo -ArgumentList "${printerName}" -WindowStyle Hidden`;
-          await execShell(
-            `powershell.exe -NoProfile -NonInteractive -Command "${printCmd}"`,
-            {
-              timeout: 60000,
-            },
-          );
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      });
+      // Office: impression silencieuse sans fenêtre
+      await printOfficeFile(filePath, printerName);
     } else {
       throw new Error(`Format non supporté: ${ext}`);
     }
+  }
+
+  // Fonction d'impression Office silencieuse
+  async function printOfficeFile(filePath, printerName) {
+    const ext = path.extname(filePath).toLowerCase();
+    const normalized = filePath.replace(/\\/g, "/");
+
+    if ([".doc", ".docx"].includes(ext)) {
+      const cmd =
+        "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command " +
+        '"$w = New-Object -ComObject Word.Application; ' +
+        "$w.Visible = $false; " +
+        "$d = $w.Documents.Open('" +
+        normalized +
+        "'); " +
+        "$d.PrintOut([System.Reflection.Missing]::Value,[System.Reflection.Missing]::Value,0,'" +
+        printerName +
+        "'); " +
+        "Start-Sleep -Seconds 5; " +
+        "$d.Close([ref]$false); " +
+        '$w.Quit()"';
+      return execShell(cmd, { windowsHide: true, timeout: 45000 });
+    }
+
+    if ([".xls", ".xlsx"].includes(ext)) {
+      const cmd =
+        "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command " +
+        '"$x = New-Object -ComObject Excel.Application; ' +
+        "$x.Visible = $false; $x.DisplayAlerts = $false; " +
+        "$wb = $x.Workbooks.Open('" +
+        normalized +
+        "'); " +
+        "$wb.PrintOut(1,1,1,\$false,\$false,\$false,'" +
+        printerName +
+        "'); " +
+        "Start-Sleep -Seconds 5; " +
+        "$wb.Close($false); " +
+        '$x.Quit()"';
+      return execShell(cmd, { windowsHide: true, timeout: 45000 });
+    }
+
+    throw new Error("Format non supporté pour impression Office : " + ext);
   }
 
   for (let i = 0; i < copies; i++) {
@@ -852,17 +915,6 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   if (jobUpdateError) {
     console.warn(
       `[PRINT] update print_jobs failed for job ${jobId}: ${jobUpdateError.message}`,
-    );
-  }
-
-  // ✅ Sync file_groups status too
-  const { error: groupUpdateError } = await supabase
-    .from("file_groups")
-    .update({ status: "completed" })
-    .eq("id", fileGroupId);
-  if (groupUpdateError) {
-    console.warn(
-      `[PRINT] update file_groups failed for group ${fileGroupId}: ${groupUpdateError.message}`,
     );
   }
 
@@ -1025,25 +1077,35 @@ ipcMain.handle(
       }
 
       // ✅ Dériver le statut final du groupe basé sur les résultats réels
-      let finalGroupStatus = "completed"; // par défaut
-      if (errors.length > 0) {
-        const successCount = results.length;
-        const failCount = errors.length;
-        finalGroupStatus = successCount > 0 ? "partial_completed" : "failed";
-      }
-
+      // ── Finaliser le groupe APRÈS tous les fichiers ──────────
       if (fileGroupId) {
-        const { error: groupUpdateError } = await supabase
+        const { data: jobResults } = await supabase
+          .from("print_jobs")
+          .select("status")
+          .eq("file_group_id", fileGroupId);
+
+        const statuses = (jobResults || []).map((j) => j.status);
+        const allDone = statuses.every((s) => s === "completed");
+        const allFailed = statuses.every((s) => s === "failed");
+        const groupStatus = allDone
+          ? "completed"
+          : allFailed
+            ? "failed"
+            : "partial_completed";
+
+        await supabase
           .from("file_groups")
-          .update({ status: finalGroupStatus })
+          .update({ status: groupStatus })
           .eq("id", fileGroupId);
-        if (groupUpdateError) {
-          console.warn(
-            `[PRINT] final update file_groups failed for group ${fileGroupId}: ${groupUpdateError.message}`,
-          );
-        }
+
         console.log(
-          `[PRINT] Groupe final status: ${finalGroupStatus} (${results.length} ok, ${errors.length} failed)`,
+          "[GROUP] " +
+            fileGroupId +
+            " → " +
+            groupStatus +
+            " (" +
+            statuses.join(", ") +
+            ")",
         );
       }
 
@@ -1090,7 +1152,9 @@ ipcMain.handle("job:retry", async (event, jobId, printerName) => {
     // Get job details
     const { data: job } = await supabase
       .from("print_jobs")
-      .select("copies_requested, file_groups ( id, owner_id, files ( file_name ) )")
+      .select(
+        "copies_requested, file_groups ( id, owner_id, files ( file_name ) )",
+      )
       .eq("id", jobId)
       .single();
 
@@ -1113,8 +1177,8 @@ ipcMain.handle("job:retry", async (event, jobId, printerName) => {
         .select("status")
         .eq("group_id", fileGroupId);
 
-      const allCompleted = allJobs.every(j => j.status === "completed");
-      const hasFailures = allJobs.some(j => j.status === "failed");
+      const allCompleted = allJobs.every((j) => j.status === "completed");
+      const hasFailures = allJobs.some((j) => j.status === "failed");
 
       let newStatus = "completed";
       if (hasFailures && allCompleted) newStatus = "partial_completed";
@@ -1129,7 +1193,9 @@ ipcMain.handle("job:retry", async (event, jobId, printerName) => {
     // Schedule cleanup
     setTimeout(async () => {
       try {
-        await supabase.storage.from("derewol-files").remove([result.storagePath]);
+        await supabase.storage
+          .from("derewol-files")
+          .remove([result.storagePath]);
         if (fs.existsSync(result.tmpPath)) secureDelete(result.tmpPath);
         await supabase.from("print_jobs").delete().eq("id", jobId);
       } catch (e) {
@@ -1257,7 +1323,9 @@ ipcMain.handle("job:reject", async (event, jobId) => {
 });
 
 // ── IPC : Imprimantes ───────────────────────────────────────────
-ipcMain.handle("printer:list", async () => await getAvailablePrinters());
+ipcMain.handle("printer:list", async () => {
+  return await getInstalledPrinters();
+});
 ipcMain.handle("printer:default", async () => await getDefaultPrinter());
 ipcMain.handle("log:write", async (_, message) => {
   console.log("[LOG]", message);
