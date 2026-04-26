@@ -59,4 +59,21 @@ if (!url || !key) {
 
 const supabase = createClient(url, key);
 
-module.exports = supabase;
+// ── Generate signed URL for Office Online viewer (120s TTL) ──
+async function getSignedUrlForOfficeViewer(storagePath, format) {
+  console.log(`[SUPABASE] getSignedUrlForOfficeViewer: ${storagePath}, format: ${format}`);
+
+  const { data, error } = await supabase.storage
+    .from("derewol-files")
+    .createSignedUrl(storagePath, 120); // 120 seconds TTL
+
+  if (error) {
+    console.error("[SUPABASE] Signed URL error:", error.message);
+    throw new Error(`Failed to generate signed URL: ${error.message}`);
+  }
+
+  console.log(`[SUPABASE] Signed URL generated: ${data.signedUrl}`);
+  return data.signedUrl;
+}
+
+module.exports = { supabase, getSignedUrlForOfficeViewer };

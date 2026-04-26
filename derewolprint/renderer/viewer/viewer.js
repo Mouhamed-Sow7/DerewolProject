@@ -110,8 +110,10 @@ async function initViewerBridge() {
 
     window.viewer.onData((data) => {
       const bytes = data.bytesArray ? new Uint8Array(data.bytesArray) : null;
+      const signedUrl = data.signedUrl || null;
       Object.assign(state, {
         bytes,
+        signedUrl,
         name: data.name,
         jobId: data.jobId,
         fileId: data.fileId,
@@ -468,7 +470,31 @@ async function saveImage() {
 }
 
 // ── Excel ─────────────────────────────────────────────────────────────────
-function initExcel(filePath) {
+function initExcel() {
+  showPane("excel-container");
+  showToolbar("tb-excel");
+
+  if (state.signedUrl) {
+    // Use Office Online viewer
+    loadExcelOnline();
+  } else {
+    // Fallback to local conversion (should not happen for .xlsx)
+    loadExcelLocal();
+  }
+}
+
+function loadExcelOnline() {
+  const container = $("excel-container");
+  container.innerHTML = `
+    <iframe src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(state.signedUrl)}"
+            style="width:100%;height:100%;border:none;"
+            title="Excel Online Viewer">
+    </iframe>
+  `;
+  console.log("[VIEWER] Loaded Excel in Office Online viewer");
+}
+
+function loadExcelLocal() {
   const warning = $("excel-warning");
   warning.classList.remove("hidden");
 
@@ -494,11 +520,12 @@ function initExcel(filePath) {
 
   proceed.addEventListener("click", () => {
     warning.classList.add("hidden");
-    loadExcel(filePath);
+    loadExcelLocal();
   });
 }
+}
 
-async function loadExcel(filePath) {
+async function loadExcelLocal() {
   showPane("excel-container");
   showToolbar("tb-excel");
 
@@ -612,10 +639,31 @@ async function saveExcel() {
 }
 
 // ── Word ──────────────────────────────────────────────────────────────────
-async function initWord(filePath) {
+async function initWord() {
   showPane("word-container");
   showToolbar(null); // No Word toolbar
 
+  if (state.signedUrl) {
+    // Use Office Online viewer
+    loadWordOnline();
+  } else {
+    // Fallback to local conversion
+    loadWordLocal();
+  }
+}
+
+function loadWordOnline() {
+  const container = $("word-container");
+  container.innerHTML = `
+    <iframe src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(state.signedUrl)}"
+            style="width:100%;height:100%;border:none;"
+            title="Word Online Viewer">
+    </iframe>
+  `;
+  console.log("[VIEWER] Loaded Word in Office Online viewer");
+}
+
+async function loadWordLocal() {
   try {
     const bytes = state.bytes;
     if (!bytes) throw new Error("Données Word manquantes");

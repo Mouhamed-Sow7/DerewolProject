@@ -20,7 +20,10 @@ function execShell(command, options = {}) {
   });
 }
 
-const supabase = require("../services/supabase");
+const {
+  supabase,
+  getSignedUrlForOfficeViewer,
+} = require("../services/supabase");
 const { startPolling, stopPolling } = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
@@ -340,26 +343,41 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const file = files.find((f) => f.id === fileId) || files[0];
     if (!file) return { success: false, error: "Fichier introuvable" };
 
-    // 2. Download + decrypt
-    const { data: fileData, error: dlError } = await supabase.storage
-      .from("derewol-files")
-      .download(file.storage_path);
+    // 2. Check if Office file → use signed URL instead of download
+    const ext = path.extname(file.file_name).toLowerCase();
+    const isOfficeFile = [".docx", ".xlsx"].includes(ext);
 
-    if (dlError) return { success: false, error: dlError.message };
+    let signedUrl = null;
+    let decrypted = null;
+    let tmpPath = null;
 
-    const decrypted = decryptFile(
-      Buffer.from(await fileData.arrayBuffer()),
-      file.encrypted_key,
-    );
+    if (isOfficeFile) {
+      // Generate signed URL for Office Online viewer
+      signedUrl = await getSignedUrlForOfficeViewer(
+        file.storage_path,
+        ext === ".docx" ? "docx" : "xlsx",
+      );
+    } else {
+      // Download + decrypt for local files (PDF, images)
+      const { data: fileData, error: dlError } = await supabase.storage
+        .from("derewol-files")
+        .download(file.storage_path);
 
-    if (!decrypted || decrypted.length < 4)
-      return { success: false, error: "Fichier invalide" };
+      if (dlError) return { success: false, error: dlError.message };
 
-    // 3. Write tmp file (path only sent to viewer, never the buffer itself)
-    const ext = path.extname(file.file_name) || ".bin";
-    const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
-    const tmpPath = path.join(os.tmpdir(), tmpName);
-    fs.writeFileSync(tmpPath, decrypted);
+      decrypted = decryptFile(
+        Buffer.from(await fileData.arrayBuffer()),
+        file.encrypted_key,
+      );
+
+      if (!decrypted || decrypted.length < 4)
+        return { success: false, error: "Fichier invalide" };
+
+      // 3. Write tmp file for local files
+      const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
+      tmpPath = path.join(os.tmpdir(), tmpName);
+      fs.writeFileSync(tmpPath, decrypted);
+    }
 
     // 4. Open viewer BrowserWindow (CHILD of mainWindow - closes when parent closes)
     const win = new BrowserWindow({
@@ -418,17 +436,27 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
     win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
 
-    const bytesArray = Array.from(decrypted);
-
-    // 5. Once loaded, send the file bytes only — never expose a temp file URL.
+    // 5. Once loaded, send file data
     win.webContents.once("did-finish-load", () => {
-      win.webContents.send("viewer:data", {
-        bytesArray,
+      const data = {
         name: file.file_name,
         jobId,
         fileId,
         type: getFileType(file.file_name),
-      });
+      };
+
+      if (isOfficeFile) {
+        // Send signed URL for Office Online viewer
+        data.signedUrl = signedUrl;
+        console.log(
+          `[VIEWER] Sending signed URL for Office file: ${file.file_name}`,
+        );
+      } else {
+        // Send bytes for local rendering
+        data.bytesArray = Array.from(decrypted);
+      }
+
+      win.webContents.send("viewer:data", data);
     });
 
     // 6. TTL: auto-close after 30 minutes
@@ -517,7 +545,7 @@ ipcMain.handle("viewer:save", async (_event, jobId, fileId, dataArray) => {
   }
 });
 
-// viewer:print — print original file from tmp path
+// viewer:print — print modified file (re-download latest from storage)
 ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
   const sessionKey = viewerSessionKey(jobId, fileId);
   const session = viewerSessions.get(sessionKey);
@@ -526,10 +554,47 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
   const ext = path.extname(session.tmpPath).toLowerCase();
 
   try {
+    // 🔥 Re-download latest file from storage to get modifications
+    const { data: fileRow, error: dbErr } = await supabase
+      .from("files")
+      .select("storage_path, encrypted_key")
+      .eq("id", fileId)
+      .single();
+
+    if (dbErr || !fileRow) {
+      console.error("[VIEWER] Erreur DB file:", dbErr?.message);
+      return { success: false, error: "Fichier introuvable" };
+    }
+
+    const { data: fileData, error: dlErr } = await supabase.storage
+      .from("derewol-files")
+      .download(fileRow.storage_path);
+
+    if (dlErr || !fileData) {
+      console.error("[VIEWER] Erreur download:", dlErr?.message);
+      return { success: false, error: "Téléchargement échoué" };
+    }
+
+    const decrypted = decryptFile(
+      Buffer.from(await fileData.arrayBuffer()),
+      fileRow.encrypted_key,
+    );
+
+    // Validate buffer
+    if (!validateDecryptedBuffer(decrypted)) {
+      return { success: false, error: "Fichier corrompu après déchiffrement" };
+    }
+
+    // Overwrite tmpPath with modified version
+    fs.writeFileSync(session.tmpPath, decrypted);
+    console.log(
+      `[VIEWER] Fichier mis à jour pour impression: ${session.tmpPath} (${decrypted.length} bytes)`,
+    );
+
     if (ext === ".pdf") {
       const printer = printerCfg?.name;
       await pdfToPrinter.print(session.tmpPath, printer ? { printer } : {});
-      log("VIEWER_PRINT_PDF", { jobId, fileId });
+      log("VIEWER_PRINT_PDF", { jobId, fileId, bytes: decrypted.length });
       return { success: true };
     }
 
@@ -551,7 +616,7 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
           timeout: 30000,
         },
       );
-      log("VIEWER_PRINT_WORD", { jobId, fileId });
+      log("VIEWER_PRINT_WORD", { jobId, fileId, bytes: decrypted.length });
       return { success: true };
     }
 
@@ -1069,7 +1134,7 @@ ipcMain.handle(
 
           // 🔥 SCHEDULE CLEANUP INDEPENDENTLY (30s delay per file)
           // This allows next file to start printing immediately
-          const pathToClear = result.tmpPath;
+          // NOTE: Keep local files as buffer until app close (no secureDelete)
           const storageToClear = result.storagePath;
           const jobIdToClear = item.jobId;
 
@@ -1079,8 +1144,7 @@ ipcMain.handle(
                 .from("derewol-files")
                 .remove([storageToClear]);
               console.log(`[PRINT] ${result.fileName} → Storage nettoyé ✅`);
-              if (pathToClear && fs.existsSync(pathToClear))
-                secureDelete(pathToClear);
+              // Removed: secureDelete(pathToClear) - keep as buffer until app close
               await supabase.from("print_jobs").delete().eq("id", jobIdToClear);
               console.log(`[PRINT] ${result.fileName} → DB supprimé ✅`);
             } catch (e) {
