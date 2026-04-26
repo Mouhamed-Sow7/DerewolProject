@@ -1377,10 +1377,10 @@ export default function PrinterSPA({ showToast }) {
       const isWord = /\.(doc|docx)$/i.test(fileName || "");
       const isExcel = /\.(xls|xlsx)$/i.test(fileName || "");
       const isPowerPoint = /\.(ppt|pptx)$/i.test(fileName || "");
-      const needsGoogleViewer = isWord || isExcel || isPowerPoint;
+      const needsOfficeViewer = isWord || isExcel || isPowerPoint;
 
-      if (needsGoogleViewer) {
-        // For Office docs, use signed URL with Google Viewer
+      if (isPdf) {
+        // Use Google Viewer for PDFs, which is already working
         const { data } = await supabase.storage
           .from("derewol-files")
           .createSignedUrl(storagePath, 120);
@@ -1392,21 +1392,19 @@ export default function PrinterSPA({ showToast }) {
         } else {
           setPreviewUrl(null);
         }
-      } else if (isPdf) {
-        // 🔥 For PDFs: Fetch as blob and create blob URL to prevent browser controls
-        const { data: blob, error: dlError } = await supabase.storage
+      } else if (needsOfficeViewer) {
+        // Use Microsoft Office Online viewer for Word/Excel/PowerPoint files
+        const { data } = await supabase.storage
           .from("derewol-files")
-          .download(storagePath);
+          .createSignedUrl(storagePath, 120);
 
-        if (dlError || !blob) {
-          console.error("PDF download failed:", dlError);
+        if (data?.signedUrl) {
+          const encodedUrl = encodeURIComponent(data.signedUrl);
+          const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
+          setPreviewUrl(viewerUrl);
+        } else {
           setPreviewUrl(null);
-          return;
         }
-
-        // Create blob URL (prevents browser default PDF viewer controls)
-        const blobUrl = URL.createObjectURL(blob);
-        setPreviewUrl(blobUrl);
       } else if (isImage) {
         // For images, use signed URL
         const { data } = await supabase.storage
@@ -2000,7 +1998,7 @@ export default function PrinterSPA({ showToast }) {
                     pointerEvents: "none",
                   }}
                   title={previewName}
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-top-navigation-by-user-activation"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals allow-top-navigation allow-top-navigation-by-user-activation"
                   referrerPolicy="no-referrer"
                   onError={() => {
                     setPreviewUrl(null);
