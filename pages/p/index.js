@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import supabase, {
   getPrinterBySlug,
-  createFileGroup,
+  getOrCreateActiveFileGroup,
   uploadFileToGroup,
   fetchGroupsByOwner,
   updateFilesCount,
@@ -1450,7 +1450,7 @@ export default function PrinterSPA({ showToast }) {
     uploadingRef.current = true;
     setUploading(true);
     try {
-      const groupId = await createFileGroup({
+      const { groupId, existingFilesCount } = await getOrCreateActiveFileGroup({
         ownerId: session.owner_id,
         printerId: printer.id,
       });
@@ -1463,7 +1463,7 @@ export default function PrinterSPA({ showToast }) {
           copies: getFileCopy(selected[i], i),
         });
       }
-      await updateFilesCount(groupId, selected.length);
+      await updateFilesCount(groupId, existingFilesCount + selected.length);
       showToast?.(t("sending"));
       setSelected([]);
       setFileCopies({});
