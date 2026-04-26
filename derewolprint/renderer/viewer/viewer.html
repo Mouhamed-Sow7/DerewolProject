@@ -34,9 +34,6 @@
     <header id="viewer-header">
       <button id="btn-close" class="hdr-btn hdr-btn--close">✕ Fermer</button>
       <span id="viewer-filename" class="hdr-filename">Chargement…</span>
-      <button id="btn-print" class="hdr-btn hdr-btn--print hidden">
-        ⎙ Imprimer
-      </button>
     </header>
 
     <!-- ── Toolbar (dynamic per type) ─────────────────────────────── -->
@@ -179,7 +176,6 @@
     </footer>
 
     <!-- Local libs from node_modules (relative to renderer/viewer/) -->
-    <script src="pdf.min.js"></script>
     <script src="../../node_modules/xlsx/dist/xlsx.full.min.js"></script>
     <script src="../../node_modules/mammoth/mammoth.browser.min.js"></script>
     <script>
@@ -193,6 +189,6 @@
       document.addEventListener("contextmenu", (e) => e.preventDefault());
       document.addEventListener("dragstart", (e) => e.preventDefault());
     </script>
-    <script src="viewer.js"></script>
+    <script type="module" src="viewer.js"></script>
   </body>
 </html>

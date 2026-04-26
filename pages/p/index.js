@@ -1953,34 +1953,7 @@ export default function PrinterSPA({ showToast }) {
                     cursor: "not-allowed",
                   }}
                 />
-                {/* Layer 2: Full-screen overlay below toolbar - blocks any interaction */}
-                <div
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onTouchStart={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onContextMenu={(e) => e.preventDefault()}
-                  onDrop={(e) => e.preventDefault()}
-                  onDragOver={(e) => e.preventDefault()}
-                  style={{
-                    position: "absolute",
-                    top: 150,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 998,
-                    pointerEvents: "auto",
-                  }}
-                />
-                {/* Layer 3: iframe with sandbox adjusted for Google Docs Viewer */}
+                {/* Layer 2: iframe with sandbox adjusted for Google Docs Viewer */}
                 <iframe
                   src={
                     previewUrl?.includes("#") || previewUrl?.includes("?")
@@ -1995,7 +1968,7 @@ export default function PrinterSPA({ showToast }) {
                     minHeight: "400px",
                     position: "relative",
                     zIndex: 1,
-                    pointerEvents: "none",
+                    pointerEvents: "auto",
                   }}
                   title={previewName}
                   sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals allow-top-navigation allow-top-navigation-by-user-activation"

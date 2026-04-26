@@ -2,6 +2,11 @@
 // viewer.js — DerewolPrint Secure File Viewer
 // ══════════════════════════════════════════════════════════════════════════
 
+function createPdfBlobUrl(bytes) {
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  return URL.createObjectURL(blob);
+}
+
 // ── SECURITY: Anti-exfiltration event blocking ────────────────────────────
 document.addEventListener("copy", (e) => e.preventDefault());
 document.addEventListener("cut", (e) => e.preventDefault());
@@ -79,40 +84,80 @@ function setStatus(msg, type = "") {
 }
 
 // ── Entry point: wait for file data from main ─────────────────────────────
-window.viewer.onData((data) => {
-  const bytes = data.bytesArray ? new Uint8Array(data.bytesArray) : null;
-  Object.assign(state, {
-    bytes,
-    name: data.name,
-    jobId: data.jobId,
-    fileId: data.fileId,
-    type: data.type,
+function waitForViewerReady(timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      if (
+        window.viewer &&
+        typeof window.viewer.onData === "function" &&
+        typeof window.viewer.onTTLExpired === "function"
+      ) {
+        return resolve(window.viewer);
+      }
+      if (Date.now() - start >= timeout) {
+        return reject(new Error("Viewer IPC unavailable"));
+      }
+      setTimeout(check, 50);
+    };
+    check();
   });
+}
 
-  $("viewer-filename").textContent = data.name;
-  $("loading-state").classList.add("hidden");
+async function initViewerBridge() {
+  try {
+    await waitForViewerReady();
 
-  startTTL();
-  initActions(data.type);
+    window.viewer.onData((data) => {
+      const bytes = data.bytesArray ? new Uint8Array(data.bytesArray) : null;
+      Object.assign(state, {
+        bytes,
+        name: data.name,
+        jobId: data.jobId,
+        fileId: data.fileId,
+        type: data.type,
+      });
 
-  switch (data.type) {
-    case "pdf":
-      initPDF();
-      break;
-    case "image":
-      initImage();
-      break;
-    case "excel":
-      initExcel();
-      break;
-    case "word":
-      initWord();
-      break;
-    default:
-      initGeneric(data.name);
-      break;
+      $("viewer-filename").textContent = data.name;
+      $("loading-state").classList.add("hidden");
+
+      startTTL();
+      initActions(data.type);
+
+      switch (data.type) {
+        case "pdf":
+          initPDF();
+          break;
+        case "image":
+          initImage();
+          break;
+        case "excel":
+          initExcel();
+          break;
+        case "word":
+          initWord();
+          break;
+        default:
+          initGeneric(data.name);
+          break;
+      }
+    });
+
+    window.viewer.onTTLExpired(() => {
+      clearInterval(state.ttlInterval);
+      $("ttl-countdown").textContent = "Expiré";
+      $("ttl-countdown").style.color = "#dc2626";
+      setStatus("Session expirée — fermeture dans 3s", "error");
+      setTimeout(closeViewer, 3000);
+    });
+  } catch (err) {
+    $("loading-state").classList.add("hidden");
+    setStatus("Erreur viewer interne : " + err.message, "error");
+    console.error(err);
   }
-});
+}
+
+initViewerBridge();
 
 // ── TTL countdown ─────────────────────────────────────────────────────────
 function startTTL() {
@@ -126,19 +171,9 @@ function startTTL() {
     if (state.ttlSeconds <= 0) {
       clearInterval(state.ttlInterval);
       el.textContent = "Expiré";
-      $("btn-print").disabled = true;
     }
   }, 1000);
 }
-
-window.viewer.onTTLExpired(() => {
-  clearInterval(state.ttlInterval);
-  $("ttl-countdown").textContent = "Expiré";
-  $("ttl-countdown").style.color = "#dc2626";
-  $("btn-print").disabled = true;
-  setStatus("Session expirée — fermeture dans 3s", "error");
-  setTimeout(closeViewer, 3000);
-});
 
 // ── Close / Print ─────────────────────────────────────────────────────────
 function closeViewer() {
@@ -148,85 +183,32 @@ function closeViewer() {
 
 function initActions(type) {
   $("btn-close").addEventListener("click", closeViewer);
-
-  // Show print button only for PDF and Word
-  if (type === "pdf" || type === "word") {
-    $("btn-print").classList.remove("hidden");
-    $("btn-print").addEventListener("click", async () => {
-      const btn = $("btn-print");
-      btn.disabled = true;
-      btn.textContent = "⏳ Impression…";
-      try {
-        const res = await window.viewer.print(state.jobId, state.fileId);
-        if (res.success) {
-          btn.textContent = "✓ Imprimé";
-          setStatus("Fichier envoyé à l'imprimante", "ok");
-        } else {
-          btn.textContent = "⎙ Imprimer";
-          btn.disabled = false;
-          setStatus("Erreur : " + (res.error || "Impression échouée"), "error");
-        }
-      } catch (e) {
-        btn.textContent = "⎙ Imprimer";
-        btn.disabled = false;
-        setStatus("Erreur impression", "error");
-      }
-    });
-  }
 }
 
 // ── PDF ───────────────────────────────────────────────────────────────────
 // Render PDF pages on canvas via PDF.js, never via file:// URLs.
 async function initPDF() {
   showPane("pdf-container");
-  showToolbar("tb-pdf");
+  showToolbar(null);
 
   const container = $("pdf-container");
-  container.innerHTML = "<div id='pdf-pages' class='pdf-pages'></div>";
-  const pagesDiv = $("pdf-pages");
+  container.innerHTML = "";
 
   try {
-    if (!window.pdfjsLib) throw new Error("PDF.js est introuvable");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.js";
-
     const bytes = state.bytes;
     if (!bytes) throw new Error("Données PDF manquantes");
 
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-    state.pdfDoc = pdf;
-    state.pdfPage = 1;
-    state.pdfScale = 1.5;
-    state.pdfTotalPages = pdf.numPages;
+    const pdfUrl = createPdfBlobUrl(bytes);
+    const iframe = document.createElement("iframe");
+    iframe.src = pdfUrl;
+    iframe.title = "Aperçu PDF";
+    iframe.style.width = "100%";
+    iframe.style.height = "100%";
+    iframe.style.border = "none";
 
-    $("pdf-page-info").textContent =
-      `${state.pdfPage} / ${state.pdfTotalPages}`;
-    renderPDFPage(state.pdfPage);
-
-    $("pdf-prev").addEventListener("click", () => {
-      if (state.pdfPage <= 1) return;
-      state.pdfPage -= 1;
-      renderPDFPage(state.pdfPage);
-    });
-
-    $("pdf-next").addEventListener("click", () => {
-      if (state.pdfPage >= state.pdfTotalPages) return;
-      state.pdfPage += 1;
-      renderPDFPage(state.pdfPage);
-    });
-
-    $("pdf-zoom-in").addEventListener("click", () => {
-      state.pdfScale = Math.min(3, state.pdfScale + 0.25);
-      $("pdf-zoom-val").textContent = `${Math.round(state.pdfScale * 100)}%`;
-      renderPDFPage(state.pdfPage);
-    });
-
-    $("pdf-zoom-out").addEventListener("click", () => {
-      state.pdfScale = Math.max(0.75, state.pdfScale - 0.25);
-      $("pdf-zoom-val").textContent = `${Math.round(state.pdfScale * 100)}%`;
-      renderPDFPage(state.pdfPage);
-    });
+    container.appendChild(iframe);
   } catch (err) {
-    pagesDiv.innerHTML = `
+    container.innerHTML = `
       <div style="padding:40px;text-align:center;color:#ef5350;">
         <i class="fa-solid fa-triangle-exclamation" style="font-size:36px"></i>
         <p style="margin-top:16px;font-weight:700;">Erreur de lecture PDF</p>
