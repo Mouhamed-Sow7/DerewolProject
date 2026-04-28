@@ -1948,6 +1948,7 @@ body.dark-mode .act-trial-card {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 16px;
+  margin-top: 2px;
 }
 
 .act-plan {
@@ -2058,7 +2059,7 @@ body.dark-mode .act-trial-card {
   padding: 26px 28px;
   text-align: center;
   border: 0.5px solid var(--border, #d4dbd2);
-  width: 260px;
+  width: 300px;
 }
 
 .act-whatsapp-zoom-title {
@@ -2075,8 +2076,8 @@ body.dark-mode .act-trial-card {
 }
 
 .act-whatsapp-qr-big {
-  width: 160px;
-  height: 160px;
+  width: 220px;
+  /* height: 220px; */
   margin: 0 auto 10px;
   border-radius: 12px;
   overflow: hidden;
@@ -2114,7 +2115,7 @@ body.dark-mode .act-trial-card {
   font-size: 12px;
   color: var(--muted, #7a8c78);
   font-weight: 500;
-  margin-bottom: 6px;
+  margin-bottom: 13px;
   display: block;
 }
 

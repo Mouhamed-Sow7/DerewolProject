@@ -314,7 +314,7 @@
             <div class="act-whatsapp-zoom-sub">Scannez depuis l'app Wave</div>
             <div class="act-whatsapp-qr-big">
               <img
-                src="assets/wave-qr.png"
+                src="../assets/wave-qr.png"
                 alt="Wave QR"
                 style="width: 100%; height: 100%; object-fit: cover"
               />
@@ -351,7 +351,7 @@
             </div>
             <div class="act-whatsapp-qr-big">
               <img
-                src="assets/wave-qr.png"
+                src="../assets/wave-qr.png"
                 alt="OM QR"
                 style="width: 100%; height: 100%; object-fit: cover"
               />
@@ -564,7 +564,7 @@
             </div>
 
             <!-- Boutons Wave et OM -->
-            <div style="display: flex; gap: 8px; margin-bottom: 10px">
+            <div style="display: flex; gap: 8px; margin-bottom: 15px">
               <button
                 style="
                   flex: 1;
@@ -653,6 +653,7 @@
                   gap: 8px;
                   align-items: center;
                   margin-bottom: 6px;
+                  width: 100%;
                 "
               >
                 <input
@@ -660,12 +661,12 @@
                   class="act-code-input"
                   id="act-code-input"
                   placeholder="DW-XXXX-XXXX-XXXX"
-                  style="flex: 1; min-width: 0"
+                  style="flex: 1; min-width: 0; width: auto"
                 />
                 <button
                   class="act-code-btn"
                   id="act-code-btn"
-                  style="flex-shrink: 0"
+                  style="flex-shrink: 0; width: auto"
                 >
                   Activer
                 </button>
@@ -681,7 +682,7 @@
                 "
                 onclick="document.querySelector('[data-act-tab=trial]').click()"
               >
-                \u2190 Retour à l'essai gratuit
+                ← Retour à l'essai gratuit
               </div>
             </div>
           </div>
@@ -689,6 +690,57 @@
 
         <div class="act-footer">
           <p>ID imprimante : <span id="act-printer-slug">—</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="acceptance-backdrop" id="acceptance-backdrop">
+      <div class="acceptance-modal" id="acceptance-modal">
+        <div class="acc-header">
+          <div class="acc-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <h2 class="acc-title">Conditions d'activation</h2>
+        </div>
+        <div class="acc-content">
+          <div id="acc-trial" class="acc-section">
+            <h3><i class="fa-solid fa-check"></i> Essai gratuit</h3>
+            <ul class="acc-list">
+              <li>
+                <i class="fa-solid fa-check"></i> Accès complet pendant 7 jours.
+              </li>
+              <li>
+                <i class="fa-solid fa-check"></i> Sans engagement ni paiement
+                immédiat.
+              </li>
+            </ul>
+            <p class="acc-text">
+              En confirmant, vous acceptez de démarrer l'essai gratuit pour
+              Derewol Print.
+            </p>
+          </div>
+          <div id="acc-payment" class="acc-section" style="display: none">
+            <h3><i class="fa-solid fa-credit-card"></i> Paiement</h3>
+            <ul class="acc-list">
+              <li>
+                <i class="fa-solid fa-info"></i> Vous serez redirigé vers la
+                page de paiement.
+              </li>
+              <li>
+                <i class="fa-solid fa-info"></i> Votre plan s'activera après
+                validation du paiement.
+              </li>
+            </ul>
+            <p class="acc-text">
+              Saisissez ensuite votre code d'activation pour finaliser
+              l'activation.
+            </p>
+          </div>
+          <div id="acc-notice" class="acc-text" style="display: none"></div>
+        </div>
+        <div class="acc-actions">
+          <button class="acc-btn-cancel" id="acc-btn-cancel">Annuler</button>
+          <button class="acc-btn-accept" id="acc-btn-accept" data-type="trial">
+            J'accepte
+          </button>
         </div>
       </div>
     </div>
