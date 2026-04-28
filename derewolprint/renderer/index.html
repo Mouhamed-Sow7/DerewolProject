@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data: https://api.qrserver.com;"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https://api.qrserver.com;"
     />
     <title>DerewolPrint</title>
     <link
@@ -280,12 +280,107 @@
     <!-- ── Modale activation ─────────────────────────────────────── -->
     <div class="activation-backdrop" id="activation-backdrop">
       <div class="activation-modal" id="activation-modal">
+        <!-- Overlay WhatsApp (fermable) -->
+        <div class="act-whatsapp-overlay" id="act-whatsapp-overlay">
+          <div class="act-whatsapp-zoom-box">
+            <div class="act-whatsapp-zoom-title">Contactez-nous</div>
+            <div class="act-whatsapp-zoom-sub">
+              Scannez ou appelez le numéro
+            </div>
+            <div class="act-whatsapp-qr-big">
+              <img
+                src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://wa.me/221781220391"
+                alt="WhatsApp QR"
+              />
+            </div>
+            <div class="act-whatsapp-number">+221 78 122 03 91</div>
+            <button
+              class="act-btn-close-wa"
+              onclick="
+                document
+                  .getElementById('act-whatsapp-overlay')
+                  .classList.remove('on')
+              "
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+
+        <!-- Overlay Wave (fermable) -->
+        <div class="act-whatsapp-overlay" id="act-wave-overlay">
+          <div class="act-whatsapp-zoom-box">
+            <div class="act-whatsapp-zoom-title">Payer via Wave</div>
+            <div class="act-whatsapp-zoom-sub">Scannez depuis l'app Wave</div>
+            <div class="act-whatsapp-qr-big">
+              <img
+                src="assets/wave-qr.png"
+                alt="Wave QR"
+                style="width: 100%; height: 100%; object-fit: cover"
+              />
+            </div>
+            <div
+              style="
+                font-size: 12px;
+                color: var(--muted);
+                margin-bottom: 14px;
+                line-height: 1.5;
+              "
+            >
+              Àprès paiement, entrez votre<br />code d'activation ci-dessous.
+            </div>
+            <button
+              class="act-btn-close-wa"
+              onclick="
+                document
+                  .getElementById('act-wave-overlay')
+                  .classList.remove('on')
+              "
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+
+        <!-- Overlay Orange Money (fermable) -->
+        <div class="act-whatsapp-overlay" id="act-om-overlay">
+          <div class="act-whatsapp-zoom-box">
+            <div class="act-whatsapp-zoom-title">Payer via Orange Money</div>
+            <div class="act-whatsapp-zoom-sub">
+              Scannez depuis l'app Orange Money
+            </div>
+            <div class="act-whatsapp-qr-big">
+              <img
+                src="assets/wave-qr.png"
+                alt="OM QR"
+                style="width: 100%; height: 100%; object-fit: cover"
+              />
+            </div>
+            <div
+              style="
+                font-size: 12px;
+                color: var(--muted);
+                margin-bottom: 14px;
+                line-height: 1.5;
+              "
+            >
+              Àprès paiement, entrez votre<br />code d'activation ci-dessous.
+            </div>
+            <button
+              class="act-btn-close-wa"
+              onclick="
+                document.getElementById('act-om-overlay').classList.remove('on')
+              "
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+
         <div class="act-header">
           <div class="act-logo">Derewol<b>Print</b></div>
-          <div class="act-title">Activation Derewol Print</div>
-          <div class="act-description">
-            Démarrez votre essai gratuit ou activez votre code.
-          </div>
+          <div class="act-title">Activation</div>
+          <div class="act-description">Choisissez comment démarrer</div>
         </div>
 
         <div class="act-tabs">
@@ -300,20 +395,137 @@
               <div class="act-trial-icon">
                 <i class="fa-solid fa-star"></i>
               </div>
-              <div class="act-trial-title">Essai gratuit</div>
-              <div class="act-trial-duration">7 jours</div>
-              <div class="act-trial-text">
-                Accès complet à toutes les fonctionnalités sans engagement.
-              </div>
+              <div class="act-trial-duration">7</div>
+              <div class="act-trial-text">jours d'essai gratuit</div>
               <div
                 class="act-notice"
                 id="act-trial-notice"
                 style="display: none"
               ></div>
-              <button class="act-btn-activate">
-                <i class="fa-solid fa-play"></i>
-                Démarrer mon essai
+              <div
+                style="
+                  display: flex;
+                  flex-direction: column;
+                  gap: 7px;
+                  margin-bottom: 18px;
+                  text-align: left;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 9px;
+                    font-size: 13px;
+                    color: var(--text);
+                  "
+                >
+                  <span
+                    style="
+                      width: 17px;
+                      height: 17px;
+                      background: #d4f0e0;
+                      border-radius: 50%;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      flex-shrink: 0;
+                    "
+                  >
+                    <svg width="9" height="9" viewBox="0 0 10 10">
+                      <polyline
+                        points="2,5 4.5,7.5 8,3"
+                        stroke="#1e4d2b"
+                        stroke-width="1.5"
+                        fill="none"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </span>
+                  Accès complet à toutes les fonctionnalités
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 9px;
+                    font-size: 13px;
+                    color: var(--text);
+                  "
+                >
+                  <span
+                    style="
+                      width: 17px;
+                      height: 17px;
+                      background: #d4f0e0;
+                      border-radius: 50%;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      flex-shrink: 0;
+                    "
+                  >
+                    <svg width="9" height="9" viewBox="0 0 10 10">
+                      <polyline
+                        points="2,5 4.5,7.5 8,3"
+                        stroke="#1e4d2b"
+                        stroke-width="1.5"
+                        fill="none"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </span>
+                  Impression illimitée
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 9px;
+                    font-size: 13px;
+                    color: var(--text);
+                  "
+                >
+                  <span
+                    style="
+                      width: 17px;
+                      height: 17px;
+                      background: #d4f0e0;
+                      border-radius: 50%;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      flex-shrink: 0;
+                    "
+                  >
+                    <svg width="9" height="9" viewBox="0 0 10 10">
+                      <polyline
+                        points="2,5 4.5,7.5 8,3"
+                        stroke="#1e4d2b"
+                        stroke-width="1.5"
+                        fill="none"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </span>
+                  Sans engagement, sans carte bancaire
+                </div>
+              </div>
+              <button class="act-btn-activate" id="act-btn-trial">
+                Démarrer mon essai gratuit
               </button>
+            </div>
+            <div
+              style="text-align: center; margin-bottom: 14px; font-size: 12px"
+            >
+              <span style="color: var(--muted)">Déjà abonné ? </span>
+              <span
+                style="color: #1e4d2b; font-weight: 500; cursor: pointer"
+                onclick="
+                  document.querySelector('[data-act-tab=subscription]').click()
+                "
+                >Voir les offres →</span
+              >
             </div>
           </div>
 
@@ -328,72 +540,155 @@
               <div class="act-plan" data-plan="1month">
                 <div class="act-plan-left">
                   <div class="act-plan-label">1 mois</div>
-                  <div class="act-plan-price">5 000 FCFA</div>
+                  <div class="act-plan-price">5 000</div>
+                  <div class="act-plan-label">FCFA</div>
                 </div>
               </div>
-
               <div class="act-plan act-plan--popular" data-plan="3months">
+                <div class="act-plan-badge plan-badge">Meilleur</div>
                 <div class="act-plan-left">
                   <div class="act-plan-label">3 mois</div>
-                  <div class="act-plan-price">12 500 FCFA</div>
-                  <div class="act-plan-saving">Économie 3 000 FCFA</div>
+                  <div class="act-plan-price">12 500</div>
+                  <div class="act-plan-label">FCFA</div>
+                  <div class="act-plan-saving">−3 000 FCFA</div>
                 </div>
-                <div class="act-plan-badge plan-badge">MEILLEUR</div>
               </div>
-
               <div class="act-plan" data-plan="6months">
                 <div class="act-plan-left">
                   <div class="act-plan-label">6 mois</div>
-                  <div class="act-plan-price">25 500 FCFA</div>
-                  <div class="act-plan-saving">Économie 4 500 FCFA</div>
+                  <div class="act-plan-price">25 500</div>
+                  <div class="act-plan-label">FCFA</div>
+                  <div class="act-plan-saving">−4 500 FCFA</div>
                 </div>
               </div>
             </div>
 
-            <div class="act-whatsapp-section">
-              <div class="act-whatsapp-text">
-                Contacter le support via WhatsApp
-              </div>
-              <div class="act-whatsapp-content whatsapp-qr-content">
-                <!-- QR Code -->
-                <div style="text-align: center">
-                  <img
-                    src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wa.me/221781220391"
-                    alt="WhatsApp QR Code"
-                    class="whatsapp-qr-image"
+            <!-- Boutons Wave et OM -->
+            <div style="display: flex; gap: 8px; margin-bottom: 10px">
+              <button
+                style="
+                  flex: 1;
+                  padding: 11px 8px;
+                  background: var(--bg, #f3f3f3);
+                  border: 0.5px solid var(--border, #d4dbd2);
+                  border-radius: 10px;
+                  font-size: 13px;
+                  font-weight: 500;
+                  color: var(--text);
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 7px;
+                "
+                onclick="
+                  document
+                    .getElementById('act-wave-overlay')
+                    .classList.add('on')
+                "
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#00b9f2">
+                  <path
+                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"
                   />
-                  <p class="whatsapp-qr-label">Scannez avec votre téléphone</p>
-                </div>
-                <!-- Direct Link Button -->
-                <div>
-                  <button class="act-whatsapp-btn" id="act-whatsapp-link">
-                    <i class="fa-brands fa-whatsapp"></i>
-                    Ouvrir WhatsApp
-                  </button>
-                  <p class="whatsapp-support-text">
-                    +221 78 122 03 91<br />
-                    Disponible 24/7
-                  </p>
-                </div>
-              </div>
+                </svg>
+                Payer Wave
+              </button>
+              <button
+                style="
+                  flex: 1;
+                  padding: 11px 8px;
+                  background: var(--bg, #f3f3f3);
+                  border: 0.5px solid var(--border, #d4dbd2);
+                  border-radius: 10px;
+                  font-size: 13px;
+                  font-weight: 500;
+                  color: var(--text);
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 7px;
+                "
+                onclick="
+                  document.getElementById('act-om-overlay').classList.add('on')
+                "
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#f5821f">
+                  <circle cx="12" cy="12" r="10" />
+                  <text
+                    x="12"
+                    y="16"
+                    text-anchor="middle"
+                    font-size="9"
+                    fill="white"
+                    font-weight="bold"
+                  >
+                    OM
+                  </text>
+                </svg>
+                Payer OM
+              </button>
+            </div>
+
+            <!-- WhatsApp contact discret -->
+            <div class="act-whatsapp-section">
+              <button
+                class="act-contact-btn"
+                onclick="
+                  document
+                    .getElementById('act-whatsapp-overlay')
+                    .classList.add('on')
+                "
+              >
+                Contactez-nous ?
+              </button>
             </div>
 
             <div class="act-code-section">
-              <label class="act-code-label">Vous avez un code ?</label>
-              <input
-                type="text"
-                class="act-code-input"
-                id="act-code-input"
-                placeholder="DW-XXXX-XXXX-XXXX"
-              />
-              <button class="act-code-btn" id="act-code-btn">Activer</button>
+              <label class="act-code-label">Code d'activation reçu</label>
+              <div
+                style="
+                  display: flex;
+                  gap: 8px;
+                  align-items: center;
+                  margin-bottom: 6px;
+                "
+              >
+                <input
+                  type="text"
+                  class="act-code-input"
+                  id="act-code-input"
+                  placeholder="DW-XXXX-XXXX-XXXX"
+                  style="flex: 1; min-width: 0"
+                />
+                <button
+                  class="act-code-btn"
+                  id="act-code-btn"
+                  style="flex-shrink: 0"
+                >
+                  Activer
+                </button>
+              </div>
               <div class="act-code-error" id="act-code-error"></div>
+              <div
+                style="
+                  text-align: center;
+                  margin: 10px 0 14px;
+                  font-size: 12px;
+                  color: #1e4d2b;
+                  cursor: pointer;
+                "
+                onclick="document.querySelector('[data-act-tab=trial]').click()"
+              >
+                \u2190 Retour à l'essai gratuit
+              </div>
             </div>
           </div>
         </div>
 
         <div class="act-footer">
-          <p>ID imprimante: <span id="act-printer-slug">—</span></p>
+          <p>ID imprimante : <span id="act-printer-slug">—</span></p>
         </div>
       </div>
     </div>
