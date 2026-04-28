@@ -1,0 +1,192 @@
+
+<style>
+:root{--dw-green:#1e4d2b;--dw-green-light:#d4f0e0;--dw-gold:#f5c842;--dw-gold-bg:#fffbf0;--dw-wave:#00b9f2;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-sans,system-ui,sans-serif);}
+.scene{min-height:680px;background:rgba(0,0,0,0.52);display:flex;align-items:center;justify-content:center;border-radius:16px;position:relative;padding:24px;}
+.card{background:var(--color-background-primary);border-radius:20px;width:440px;border:0.5px solid var(--color-border-tertiary);overflow:visible;}
+.head{padding:24px 28px 18px;text-align:center;border-bottom:0.5px solid var(--color-border-tertiary);}
+.brand{font-size:13px;font-weight:500;color:var(--color-text-secondary);letter-spacing:0.04em;margin-bottom:3px;}
+.brand b{color:var(--dw-gold);}
+.htitle{font-size:19px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px;}
+.hsub{font-size:12px;color:var(--color-text-secondary);}
+.body{padding:18px 28px 0;}
+.tabs{display:flex;background:var(--color-background-secondary);border-radius:10px;padding:3px;gap:3px;margin-bottom:18px;}
+.tab{flex:1;padding:8px;text-align:center;font-size:13px;cursor:pointer;border-radius:8px;border:none;background:transparent;color:var(--color-text-secondary);transition:all 0.15s;}
+.tab.on{background:var(--color-background-primary);font-weight:500;color:var(--dw-green);border:0.5px solid var(--color-border-secondary);}
+.panel{display:none;}
+.panel.on{display:block;}
+.trial-hero{background:var(--color-background-secondary);border-radius:16px;padding:22px;text-align:center;border:0.5px solid var(--color-border-tertiary);margin-bottom:14px;}
+.trial-icon{width:46px;height:46px;background:#fff8e0;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;}
+.trial-num{font-size:52px;font-weight:500;color:var(--dw-green);line-height:1;}
+.trial-label{font-size:13px;color:var(--color-text-secondary);margin:2px 0 16px;}
+.check-list{display:flex;flex-direction:column;gap:7px;margin-bottom:18px;text-align:left;}
+.check-item{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--color-text-primary);}
+.check-dot{width:17px;height:17px;background:var(--dw-green-light);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.btn-primary{width:100%;padding:12px;background:var(--dw-green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;letter-spacing:0.01em;}
+.foot-link{text-align:center;margin-bottom:14px;font-size:12px;}
+.foot-link span{color:var(--dw-green);font-weight:500;cursor:pointer;}
+.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px;}
+.plan{border:0.5px solid var(--color-border-tertiary);border-radius:12px;padding:13px 8px;text-align:center;cursor:pointer;position:relative;transition:border-color 0.15s;}
+.plan.best{border:1.5px solid var(--dw-gold);background:var(--dw-gold-bg);}
+.plan-badge{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--dw-gold);color:#7a4f00;font-size:10px;font-weight:500;padding:2px 9px;border-radius:20px;white-space:nowrap;}
+.plan-dur{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px;}
+.plan-price{font-size:16px;font-weight:500;color:var(--color-text-primary);}
+.plan-cur{font-size:11px;color:var(--color-text-secondary);}
+.plan-save{font-size:10px;color:var(--dw-green);margin-top:2px;}
+.wave-row{background:var(--color-background-secondary);border-radius:12px;padding:14px;display:flex;align-items:center;gap:14px;margin-bottom:14px;border:0.5px solid var(--color-border-tertiary);}
+.qr-thumb{width:86px;height:86px;border-radius:8px;cursor:pointer;overflow:hidden;flex-shrink:0;border:0.5px solid var(--color-border-tertiary);position:relative;}
+.qr-thumb:hover .zoom-hint{opacity:1;}
+.zoom-hint{position:absolute;inset:0;background:rgba(0,0,0,0.42);display:flex;align-items:center;justify-content:center;border-radius:7px;opacity:0;transition:opacity 0.15s;pointer-events:none;}
+.wave-info{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px;}
+.wave-sub{font-size:12px;color:var(--color-text-secondary);line-height:1.5;}
+.code-label{font-size:12px;color:var(--color-text-secondary);font-weight:500;margin-bottom:6px;}
+.code-row{display:flex;gap:8px;margin-bottom:14px;}
+.code-row input{flex:1;padding:9px 11px;font-size:13px;border:0.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none;}
+.btn-act{padding:9px 14px;background:var(--dw-green);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;}
+.back-link{text-align:center;margin-bottom:14px;font-size:12px;color:var(--dw-green);cursor:pointer;}
+.foot{padding:11px 28px;border-top:0.5px solid var(--color-border-tertiary);text-align:center;}
+.foot-id{font-size:11px;color:var(--color-text-secondary);}
+.qr-overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,0.6);z-index:20;align-items:center;justify-content:center;border-radius:16px;}
+.qr-overlay.on{display:flex;}
+.qr-zoom-box{background:var(--color-background-primary);border-radius:16px;padding:26px 28px;text-align:center;border:0.5px solid var(--color-border-tertiary);width:260px;}
+.qr-zoom-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px;}
+.qr-zoom-sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:14px;}
+.qr-big{width:190px;height:190px;background:var(--dw-wave);border-radius:12px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;}
+.qr-note{font-size:11px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.5;}
+.btn-close{padding:9px 22px;background:var(--color-background-secondary);color:var(--color-text-primary);border:0.5px solid var(--color-border-secondary);border-radius:8px;font-size:13px;cursor:pointer;}
+</style>
+
+<div class="scene" id="root">
+  <div class="qr-overlay" id="qr-overlay">
+    <div class="qr-zoom-box">
+      <div class="qr-zoom-title">Payer via Wave</div>
+      <div class="qr-zoom-sub">Scannez depuis l'app Wave</div>
+      <div class="qr-big">
+        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+          <rect x="5" y="5" width="30" height="30" rx="3" fill="white" opacity="0.9"/>
+          <rect x="10" y="10" width="20" height="20" rx="2" fill="#00b9f2"/>
+          <rect x="45" y="5" width="30" height="30" rx="3" fill="white" opacity="0.9"/>
+          <rect x="50" y="10" width="20" height="20" rx="2" fill="#00b9f2"/>
+          <rect x="5" y="45" width="30" height="30" rx="3" fill="white" opacity="0.9"/>
+          <rect x="10" y="50" width="20" height="20" rx="2" fill="#00b9f2"/>
+          <rect x="45" y="45" width="8" height="8" rx="1" fill="white" opacity="0.9"/>
+          <rect x="55" y="45" width="8" height="8" rx="1" fill="white" opacity="0.9"/>
+          <rect x="65" y="45" width="8" height="8" rx="1" fill="white" opacity="0.9"/>
+          <rect x="45" y="55" width="8" height="8" rx="1" fill="white" opacity="0.9"/>
+          <rect x="65" y="55" width="8" height="8" rx="1" fill="white" opacity="0.9"/>
+          <rect x="45" y="65" width="8" height="8" rx="1" fill="white" opacity="0.9"/>
+          <rect x="55" y="65" width="18" height="8" rx="1" fill="white" opacity="0.9"/>
+        </svg>
+      </div>
+      <div class="qr-note">Après paiement, entrez votre<br>code d'activation ci-dessous.</div>
+      <button class="btn-close" onclick="document.getElementById('qr-overlay').classList.remove('on')">Fermer</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <div class="brand">Derewol<b>Print</b></div>
+      <div class="htitle">Activation</div>
+      <div class="hsub">Choisissez comment démarrer</div>
+    </div>
+    <div class="body">
+      <div class="tabs">
+        <button class="tab on" onclick="switchTab('trial')">Essai gratuit</button>
+        <button class="tab" onclick="switchTab('sub')">Abonnement</button>
+      </div>
+
+      <div class="panel on" id="panel-trial">
+        <div class="trial-hero">
+          <div class="trial-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#f5c842"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <div class="trial-num">7</div>
+          <div class="trial-label">jours d'essai gratuit</div>
+          <div class="check-list">
+            <div class="check-item"><span class="check-dot"><svg width="9" height="9" viewBox="0 0 10 10"><polyline points="2,5 4.5,7.5 8,3" stroke="#1e4d2b" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>Accès complet à toutes les fonctionnalités</div>
+            <div class="check-item"><span class="check-dot"><svg width="9" height="9" viewBox="0 0 10 10"><polyline points="2,5 4.5,7.5 8,3" stroke="#1e4d2b" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>Impression illimitée</div>
+            <div class="check-item"><span class="check-dot"><svg width="9" height="9" viewBox="0 0 10 10"><polyline points="2,5 4.5,7.5 8,3" stroke="#1e4d2b" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></span>Sans engagement, sans carte bancaire</div>
+          </div>
+          <button class="btn-primary" id="act-btn-trial">Démarrer mon essai gratuit</button>
+        </div>
+        <div class="foot-link">
+          <span style="color:var(--color-text-secondary);">Déjà abonné ? </span>
+          <span onclick="switchTab('sub')">Voir les offres →</span>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-sub">
+        <div class="plans">
+          <div class="plan">
+            <div class="plan-dur">1 mois</div>
+            <div class="plan-price">5 000</div>
+            <div class="plan-cur">FCFA</div>
+          </div>
+          <div class="plan best">
+            <div class="plan-badge">Meilleur</div>
+            <div class="plan-dur">3 mois</div>
+            <div class="plan-price">12 500</div>
+            <div class="plan-cur">FCFA</div>
+            <div class="plan-save">−3 000 FCFA</div>
+          </div>
+          <div class="plan">
+            <div class="plan-dur">6 mois</div>
+            <div class="plan-price">25 500</div>
+            <div class="plan-cur">FCFA</div>
+            <div class="plan-save">−4 500 FCFA</div>
+          </div>
+        </div>
+        <div class="wave-row">
+          <div class="qr-thumb" onclick="document.getElementById('qr-overlay').classList.add('on')">
+            <div style="width:100%;height:100%;background:var(--dw-wave);display:flex;align-items:center;justify-content:center;">
+              <svg width="54" height="54" viewBox="0 0 54 54" fill="none">
+                <rect x="3" y="3" width="20" height="20" rx="2" fill="white" opacity="0.9"/>
+                <rect x="6" y="6" width="14" height="14" rx="1" fill="#00b9f2"/>
+                <rect x="31" y="3" width="20" height="20" rx="2" fill="white" opacity="0.9"/>
+                <rect x="34" y="6" width="14" height="14" rx="1" fill="#00b9f2"/>
+                <rect x="3" y="31" width="20" height="20" rx="2" fill="white" opacity="0.9"/>
+                <rect x="6" y="34" width="14" height="14" rx="1" fill="#00b9f2"/>
+                <rect x="31" y="31" width="5" height="5" rx="1" fill="white" opacity="0.9"/>
+                <rect x="38" y="31" width="5" height="5" rx="1" fill="white" opacity="0.9"/>
+                <rect x="45" y="31" width="5" height="5" rx="1" fill="white" opacity="0.9"/>
+                <rect x="31" y="38" width="5" height="5" rx="1" fill="white" opacity="0.9"/>
+                <rect x="38" y="38" width="5" height="5" rx="1" fill="white" opacity="0.9"/>
+                <rect x="45" y="38" width="5" height="5" rx="1" fill="white" opacity="0.9"/>
+                <rect x="31" y="45" width="19" height="5" rx="1" fill="white" opacity="0.9"/>
+              </svg>
+            </div>
+            <div class="zoom-hint">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
+            </div>
+          </div>
+          <div>
+            <div class="wave-info">Payer via Wave</div>
+            <div class="wave-sub">Scannez avec l'app Wave et envoyez le montant du plan choisi.<br><span style="font-size:11px;opacity:0.8;">Cliquez sur le QR pour l'agrandir.</span></div>
+          </div>
+        </div>
+        <div class="code-label">Code d'activation reçu</div>
+        <div class="code-row">
+          <input id="act-code-input" placeholder="DW-XXXX-XXXX-XXXX"/>
+          <button class="btn-act" id="act-code-btn">Activer</button>
+        </div>
+        <div id="act-code-error" style="font-size:12px;color:var(--color-text-danger,#a32d2d);min-height:14px;margin-top:-8px;margin-bottom:10px;"></div>
+        <div class="back-link" onclick="switchTab('trial')">← Retour à l'essai gratuit</div>
+      </div>
+    </div>
+    <div class="foot">
+      <span class="foot-id">ID imprimante : <span id="act-printer-slug">—</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(name){
+  ['trial','sub'].forEach(p=>{
+    document.getElementById('panel-'+p).classList.toggle('on',p===name);
+    document.querySelectorAll('.tab').forEach((t,i)=>{
+      t.classList.toggle('on',(name==='trial'&&i===0)||(name==='sub'&&i===1));
+    });
+  });
+}
+</script>
