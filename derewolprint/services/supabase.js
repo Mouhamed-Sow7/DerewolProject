@@ -1,3 +1,4 @@
+require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const { createClient } = require("@supabase/supabase-js");
 const path = require("path");
 const fs = require("fs");
@@ -61,7 +62,9 @@ const supabase = createClient(url, key);
 
 // ── Generate signed URL for Office Online viewer (120s TTL) ──
 async function getSignedUrlForOfficeViewer(storagePath, format) {
-  console.log(`[SUPABASE] getSignedUrlForOfficeViewer: ${storagePath}, format: ${format}`);
+  console.log(
+    `[SUPABASE] getSignedUrlForOfficeViewer: ${storagePath}, format: ${format}`,
+  );
 
   const { data, error } = await supabase.storage
     .from("derewol-files")
@@ -76,4 +79,7 @@ async function getSignedUrlForOfficeViewer(storagePath, format) {
   return data.signedUrl;
 }
 
-module.exports = { supabase, getSignedUrlForOfficeViewer };
+// Client service_role (bypass RLS)
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || null;
+const supabaseAdmin = serviceKey ? createClient(url, serviceKey) : null;
+module.exports = { supabase, supabaseAdmin, getSignedUrlForOfficeViewer };

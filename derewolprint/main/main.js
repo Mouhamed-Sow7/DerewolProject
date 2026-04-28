@@ -675,7 +675,8 @@ ipcMain.handle("setup:check-slug", async (_, slug) => {
 ipcMain.handle("setup:register", async (_, { name, slug, ownerPhone }) => {
   try {
     const owner_phone = (ownerPhone || "").toString().trim() || null;
-    const { data, error } = await supabase
+    const { supabaseAdmin } = require("../services/supabase");
+    const { data, error } = await supabaseAdmin
       .from("printers")
       .insert({ name, slug, owner_phone })
       .select()
