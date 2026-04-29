@@ -128,6 +128,10 @@ async function getInstalledPrinters() {
         // Filter out null/undefined entries to prevent .toLowerCase() crashes
         const clean = list.filter((p) => p && typeof p === "string");
         const printers = clean.map((name) => ({ name }));
+        // 🔥 Toujours ajouter Mp-Pdf comme imprimante virtuelle
+        const mpPdfExists = printers.some((p) => p.name === "Mp-Pdf");
+        if (!mpPdfExists) printers.push({ name: "Mp-Pdf" });
+
         if (virtualPrinterName) {
           const exists = printers.some((p) => p.name === virtualPrinterName);
           if (!exists) printers.push({ name: virtualPrinterName });
@@ -557,7 +561,7 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
     // 🔥 Re-download latest file from storage to get modifications
     const { data: fileRow, error: dbErr } = await supabase
       .from("files")
-      .select("storage_path, encrypted_key")
+      .select("storage_path, encrypted_key, file_name")
       .eq("id", fileId)
       .single();
 
@@ -588,7 +592,10 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
     // Overwrite tmpPath with modified version
     fs.writeFileSync(session.tmpPath, decrypted);
     console.log(
-      `[VIEWER] Fichier mis à jour pour impression: ${session.tmpPath} (${decrypted.length} bytes)`,
+      `[PRINT] Taille fichier re-téléchargé: ${decrypted.length} bytes`,
+    );
+    console.log(
+      `[VIEWER] Fichier mis à jour pour impression: ${fileRow.file_name}`,
     );
 
     if (ext === ".pdf") {
@@ -953,6 +960,41 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   // 🔥 Helper pour imprimer fichiers multi-formats
   async function printFile(filePath, printerName) {
     const ext = path.extname(filePath).toLowerCase();
+
+    // 🔥 Gestion spéciale pour imprimante virtuelle Mp-Pdf
+    if (printerName === "Mp-Pdf") {
+      const mpPdfFolder = path.join(os.homedir(), "Documents", "Mp-Pdf");
+      if (!fs.existsSync(mpPdfFolder)) {
+        fs.mkdirSync(mpPdfFolder, { recursive: true });
+      }
+
+      const fileName = path.basename(filePath, ext);
+      const outputPdfPath = path.join(mpPdfFolder, `${fileName}.pdf`);
+
+      if (ext === ".pdf") {
+        // Copier directement le PDF
+        fs.copyFileSync(filePath, outputPdfPath);
+        console.log(`[PRINT] PDF copié dans Mp-Pdf: ${outputPdfPath}`);
+      } else if ([".doc", ".docx"].includes(ext)) {
+        // Convertir Word en PDF silencieusement
+        const normalized = filePath.replace(/\\/g, "\\\\");
+        const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
+        const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
+        await execShell(cmd, { windowsHide: true, timeout: 30000 });
+        console.log(`[PRINT] Word converti en PDF dans Mp-Pdf: ${outputPdfPath}`);
+      } else if ([".xls", ".xlsx"].includes(ext)) {
+        // Convertir Excel en PDF
+        const normalized = filePath.replace(/\\/g, "\\\\");
+        const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
+        const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
+        await execShell(cmd, { windowsHide: true, timeout: 30000 });
+        console.log(`[PRINT] Excel converti en PDF dans Mp-Pdf: ${outputPdfPath}`);
+      } else {
+        throw new Error(`Format non supporté pour Mp-Pdf: ${ext}`);
+      }
+
+      return;
+    }
 
     if (ext === ".pdf") {
       // PDF: utiliser pdf-to-printer

@@ -1399,6 +1399,8 @@ window.derewol.getPrinters().then((printers) => {
   const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
   const real = printers.filter((p) => {
     const name = typeof p === "string" ? p : p?.name;
+    // 🔥 Ne pas filtrer Mp-Pdf
+    if (name === "Mp-Pdf") return true;
     return name && !blacklist.some((b) => name.toLowerCase().includes(b));
   });
 
@@ -1418,7 +1420,8 @@ window.derewol.getPrinters().then((printers) => {
     real.find((p) => {
       const name = typeof p === "string" ? p : p.name;
       return name.toLowerCase().includes("hp");
-    })?.name;
+    })?.name ||
+    "Mp-Pdf"; // 🔥 Défaut sur Mp-Pdf si aucune préférence
   if (preferred) select.value = preferred;
   dot.style.background = "var(--jaune)";
 });
