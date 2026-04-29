@@ -1097,7 +1097,7 @@ function printQR() {
   const win = window.open(
     "",
     "_blank",
-    "width=620,height=820,menubar=no,toolbar=no,location=no,status=no",
+    "popup,width=620,height=820,menubar=no,toolbar=no,location=no,status=no,scrollbars=no,resizable=no",
   );
   if (!win) return;
 
