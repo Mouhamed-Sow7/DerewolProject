@@ -23,12 +23,24 @@ function showActivationModal(subscription) {
     return;
   }
 
+  // Disable transitions for immediate display
+  backdrop.style.transition = "none";
+  modal.style.transition = "none";
+
   backdrop.classList.add("show");
   modal.classList.add("show");
   backdrop.onclick = null;
   backdrop.style.pointerEvents = "auto";
 
-  console.log("[MODAL] ✅ Modal shown (persistent — no auto-close)");
+  // Re-enable transitions after a brief moment
+  setTimeout(() => {
+    backdrop.style.transition = "";
+    modal.style.transition = "";
+  }, 50);
+
+  console.log(
+    "[MODAL] ✅ Modal shown immediately (transitions disabled temporarily)",
+  );
 }
 
 function hideActivationModal() {
@@ -82,7 +94,7 @@ const _modalState = {
 let latestSubscriptionStatus = null;
 let activationModalHoldTimer = null;
 let activationModalPending = null;
-const ACTIVATION_MODAL_WAIT_MS = 200;
+const ACTIVATION_MODAL_WAIT_MS = 0;
 
 function isSubscriptionActive(sub) {
   return sub?.valid === true;
@@ -92,6 +104,38 @@ let activationInitialized = false;
 let acceptanceInitialized = false;
 let isShowingModal = false;
 let isReloading = false;
+
+// ┌─────────────────────────────────────────────────────────────┐
+// │ IMMEDIATE MODAL DISPLAY WITH CACHE — NO DELAYS             │
+// └─────────────────────────────────────────────────────────────┘
+function showModalIfNeeded() {
+  // Check localStorage cache first for immediate display
+  const cachedStatus = localStorage.getItem("derewol_subscription_status");
+  if (cachedStatus) {
+    try {
+      const sub = JSON.parse(cachedStatus);
+      if (!isSubscriptionActive(sub)) {
+        console.log(
+          "[MODAL] Showing modal immediately from cache (inactive subscription)",
+        );
+        isShowingModal = true;
+        window.showActivationModal(sub);
+        isShowingModal = false;
+        return;
+      } else {
+        console.log("[MODAL] Skipping modal from cache (active subscription)");
+        return;
+      }
+    } catch (e) {
+      console.warn("[MODAL] Invalid cached status, ignoring", e);
+    }
+  }
+
+  // No cache or cache shows active - wait for real status, but show modal if triggered
+  console.log(
+    "[MODAL] No valid cache, will show modal when triggered by main process",
+  );
+}
 
 // ┌─────────────────────────────────────────────────────────────┐
 // │ ACTIVATION MODAL BINDING — WITH TABS (TRIAL & SUBSCRIPTION) │
@@ -242,6 +286,11 @@ function bindActivationModal() {
 
 function handleSubscriptionStatus(sub) {
   if (isReloading || _modalState.isActivating) return;
+
+  // Cache the subscription status in localStorage for immediate display
+  if (sub) {
+    localStorage.setItem("derewol_subscription_status", JSON.stringify(sub));
+  }
 
   const backdrop = document.getElementById("activation-backdrop");
   if (!backdrop) return;
@@ -919,122 +968,236 @@ async function initQRView() {
 
 async function generateQR(url) {
   const canvas = document.getElementById("qr-canvas");
-  if (!canvas || !url) {
-    console.warn("[QR] canvas introuvable ou URL vide");
-    return;
-  }
+  if (!canvas) return;
 
   try {
-    // Call main process to generate QR code
     const result = await window.derewol.generateQR(url);
-    if (!result || !result.success || !result.dataURL) {
-      console.warn("[QR] generateQR échoué :", result?.error || "réponse vide");
-      return;
-    }
-    const dataUrl = result.dataURL;
-    const size = 240;
-    canvas.width = size;
-    canvas.height = size;
+    if (!result?.dataURL) return;
+
+    // Stocker le dataURL pour réutilisation dans print/download
+    canvas.dataset.qrDataUrl = result.dataURL;
+
     const img = new Image();
     img.onload = () => {
+      canvas.width = 300;
+      canvas.height = 300;
       const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(img, 0, 0, size, size);
+      ctx.clearRect(0, 0, 300, 300);
+      ctx.drawImage(img, 0, 0, 300, 300);
     };
-    img.src = dataUrl;
+    img.src = result.dataURL;
   } catch (e) {
     console.error("[QR] Erreur génération :", e.message);
   }
 }
 
 function downloadQR(cfg) {
-  const W = 800,
-    H = 1000;
-  const offscreen = document.createElement("canvas");
-  offscreen.width = W;
-  offscreen.height = H;
-  const ctx = offscreen.getContext("2d");
+  const canvas = document.getElementById("qr-canvas");
+  const qrDataUrl = canvas?.dataset.qrDataUrl;
+  if (!qrDataUrl) {
+    console.error("[QR] Pas de QR généré");
+    return;
+  }
 
-  // Fond blanc
+  const W = 600, H = 720;
+  const off = document.createElement("canvas");
+  off.width = W;
+  off.height = H;
+  const ctx = off.getContext("2d");
+
+  // ── Fond blanc ─────────────────────────────────────────────
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
-  // ── Logo haut ─────────────────────────────────────────────
-  const sqSize = 64,
-    sqX = W / 2 - 120,
-    sqY = 80;
-  ctx.fillStyle = "#f5c842";
-  roundRect(ctx, sqX, sqY, sqSize, sqSize, 14);
-  ctx.fill();
-
-  ctx.textBaseline = "middle";
-  ctx.font = "bold 40px serif";
-  ctx.fillStyle = "#111510";
-  const textY = sqY + sqSize / 2;
-  ctx.fillText("Derewol", sqX + sqSize + 16, textY);
+  // ── Fond vert haut ─────────────────────────────────────────
   ctx.fillStyle = "#1e4d2b";
-  ctx.fillText(
-    "Print",
-    sqX + sqSize + 16 + ctx.measureText("Derewol").width,
-    textY,
-  );
-
-  // ── QR centre ─────────────────────────────────────────────
-  const sourceCanvas = document.getElementById("qr-canvas");
-  const qrSize = 500,
-    qrX = (W - qrSize) / 2,
-    qrY = 220;
-
-  ctx.fillStyle = "#ffffff";
-  roundRect(ctx, qrX - 24, qrY - 24, qrSize + 48, qrSize + 48, 20);
+  ctx.beginPath();
+  ctx.roundRect(0, 0, W, 160, [20, 20, 0, 0]);
   ctx.fill();
-  ctx.strokeStyle = "#d4dbd2";
-  ctx.lineWidth = 2;
-  roundRect(ctx, qrX - 24, qrY - 24, qrSize + 48, qrSize + 48, 20);
-  ctx.stroke();
-  ctx.drawImage(sourceCanvas, qrX, qrY, qrSize, qrSize);
 
-  // ── Nom boutique bas ──────────────────────────────────────
+  // ── Logo texte ─────────────────────────────────────────────
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 32px Georgia, serif";
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#111510";
-  ctx.font = "bold 44px sans-serif";
-  ctx.fillText(cfg.name, W / 2, qrY + qrSize + 80);
+  ctx.fillText("Derewol", W / 2 - 28, 80);
 
-  ctx.fillStyle = "#7a8c78";
-  ctx.font = "22px monospace";
-  ctx.fillText(cfg.url, W / 2, qrY + qrSize + 136);
+  ctx.fillStyle = "#f5c842";
+  ctx.font = "bold 32px Georgia, serif";
+  ctx.fillText("Print", W / 2 + 50, 80);
 
-  // ── Télécharge ────────────────────────────────────────────
-  const link = document.createElement("a");
-  link.download = `derewol-qr-${cfg.slug}.png`;
-  link.href = offscreen.toDataURL("image/png", 1.0);
-  link.click();
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.font = "16px Arial, sans-serif";
+  ctx.fillText("Envoyez vos fichiers en un scan", W / 2, 118);
+
+  // ── Carte blanche QR ───────────────────────────────────────
+  const cardX = 60, cardY = 180, cardW = W - 120, cardH = 380;
+  ctx.fillStyle = "#f8faf7";
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 16);
+  ctx.fill();
+
+  ctx.strokeStyle = "#d4dbd2";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 16);
+  ctx.stroke();
+
+  // ── QR Code centré dans la carte ───────────────────────────
+  const qrSize = 260;
+  const qrX = (W - qrSize) / 2;
+  const qrY = cardY + 20;
+
+  const qrImg = new Image();
+  qrImg.onload = () => {
+    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+
+    // ── Nom boutique ──────────────────────────────────────────
+    ctx.fillStyle = "#111510";
+    ctx.font = "bold 22px Georgia, serif";
+    ctx.textAlign = "center";
+    ctx.fillText(cfg.name || "Ma Boutique", W / 2, qrY + qrSize + 36);
+
+    // ── URL ───────────────────────────────────────────────────
+    ctx.fillStyle = "#7a8c78";
+    ctx.font = "13px Arial, sans-serif";
+    ctx.fillText(cfg.url || "", W / 2, qrY + qrSize + 60);
+
+    // ── Footer ────────────────────────────────────────────────
+    ctx.fillStyle = "#7a8c78";
+    ctx.font = "12px Arial, sans-serif";
+    ctx.fillText("derewol.com • Plateforme d'impression sécurisée", W / 2, H - 24);
+
+    // ── Télécharger ───────────────────────────────────────────
+    const link = document.createElement("a");
+    link.download = `qr-${cfg.slug || "boutique"}.png`;
+    link.href = off.toDataURL("image/png", 1.0);
+    link.click();
+  };
+  qrImg.src = qrDataUrl;
 }
 
 function printQR() {
-  const printable = document.getElementById("qr-printable");
-  const win = window.open("", "_blank", "width=600,height=800");
-  win.document.write(`<!DOCTYPE html><html><head>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-      body { margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#fff; font-family:'DM Sans',sans-serif; }
-      .qr-printable { text-align:center; padding:40px; }
-      .qr-logo { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:32px; }
-      .qr-logo-mark { width:42px; height:42px; background:#f5c842; border-radius:10px; }
-      .qr-logo-text { font-family:'Playfair Display',serif; font-size:24px; color:#111510; }
-      .qr-logo-text b { color:#1e4d2b; }
-      .qr-code-wrap { margin:0 auto 28px; display:inline-block; padding:16px; border:2px solid #d4dbd2; border-radius:16px; }
-      canvas { display:block; }
-      .qr-shop-name { font-size:28px; font-weight:700; color:#111510; margin-bottom:8px; }
-      .qr-url { font-size:13px; color:#7a8c78; font-family:monospace; }
-    </style>
-  </head><body>${printable.outerHTML}</body></html>`);
+  const canvas = document.getElementById("qr-canvas");
+  const qrDataUrl = canvas?.dataset.qrDataUrl;
+  const cfg = qrConfig || {};
+
+  if (!qrDataUrl) {
+    console.error("[QR] Pas de QR généré pour impression");
+    return;
+  }
+
+  const win = window.open("", "_blank", "width=620,height=820");
+  if (!win) return;
+
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <title>QR Code — ${cfg.name || "DerewolPrint"}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'DM Sans', sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .card {
+      width: 380px;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+      border: 1px solid #d4dbd2;
+    }
+    .card-header {
+      background: #1e4d2b;
+      padding: 24px 32px;
+      text-align: center;
+    }
+    .card-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px;
+      color: #fff;
+    }
+    .card-logo span { color: #f5c842; }
+    .card-tagline {
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+      margin-top: 4px;
+    }
+    .card-body {
+      background: #f8faf7;
+      padding: 24px;
+      text-align: center;
+    }
+    .qr-wrap {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      display: inline-block;
+      border: 1px solid #d4dbd2;
+      margin-bottom: 16px;
+    }
+    .qr-wrap img {
+      width: 220px;
+      height: 220px;
+      display: block;
+    }
+    .shop-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      color: #111510;
+      margin-bottom: 4px;
+    }
+    .shop-url {
+      font-size: 11px;
+      color: #7a8c78;
+      font-family: monospace;
+      margin-bottom: 16px;
+    }
+    .card-footer {
+      background: #fff;
+      padding: 12px;
+      text-align: center;
+      border-top: 1px solid #d4dbd2;
+      font-size: 11px;
+      color: #7a8c78;
+    }
+    @media print {
+      body { margin: 0; }
+      .card { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-logo">Derewol<span>Print</span></div>
+      <div class="card-tagline">Envoyez vos fichiers en un scan</div>
+    </div>
+    <div class="card-body">
+      <div class="qr-wrap">
+        <img src="${qrDataUrl}" alt="QR Code"/>
+      </div>
+      <div class="shop-name">${cfg.name || "Ma Boutique"}</div>
+      <div class="shop-url">${cfg.url || ""}</div>
+    </div>
+    <div class="card-footer">derewol.com • Plateforme d'impression sécurisée</div>
+  </div>
+</body>
+</html>`);
+
   win.document.close();
   setTimeout(() => {
+    win.focus();
     win.print();
-    win.close();
-  }, 500);
+    setTimeout(() => win.close(), 1000);
+  }, 600);
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1085,6 +1248,9 @@ console.log("[DEREWOL] Modal functions exposed globally:", {
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[DEREWOL] DOM READY — Initializing i18n & modals");
+
+  // Check cache and show modal immediately if needed (no delays)
+  showModalIfNeeded();
 
   // Initialize language system
   initLang();
