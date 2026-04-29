@@ -999,7 +999,8 @@ function downloadQR(cfg) {
     return;
   }
 
-  const W = 600, H = 720;
+  const W = 600,
+    H = 720;
   const off = document.createElement("canvas");
   off.width = W;
   off.height = H;
@@ -1030,7 +1031,10 @@ function downloadQR(cfg) {
   ctx.fillText("Envoyez vos fichiers en un scan", W / 2, 118);
 
   // ── Carte blanche QR ───────────────────────────────────────
-  const cardX = 60, cardY = 180, cardW = W - 120, cardH = 380;
+  const cardX = 60,
+    cardY = 180,
+    cardW = W - 120,
+    cardH = 380;
   ctx.fillStyle = "#f8faf7";
   ctx.beginPath();
   ctx.roundRect(cardX, cardY, cardW, cardH, 16);
@@ -1065,7 +1069,11 @@ function downloadQR(cfg) {
     // ── Footer ────────────────────────────────────────────────
     ctx.fillStyle = "#7a8c78";
     ctx.font = "12px Arial, sans-serif";
-    ctx.fillText("derewol.com • Plateforme d'impression sécurisée", W / 2, H - 24);
+    ctx.fillText(
+      "derewol.com • Plateforme d'impression sécurisée",
+      W / 2,
+      H - 24,
+    );
 
     // ── Télécharger ───────────────────────────────────────────
     const link = document.createElement("a");
@@ -1086,7 +1094,11 @@ function printQR() {
     return;
   }
 
-  const win = window.open("", "_blank", "width=620,height=820");
+  const win = window.open(
+    "",
+    "_blank",
+    "width=620,height=820,menubar=no,toolbar=no,location=no,status=no",
+  );
   if (!win) return;
 
   win.document.write(`<!DOCTYPE html>
