@@ -100,6 +100,11 @@ function StatusBadge({ status }) {
     printing: { label: "Impression en cours", bg: "#1d4ed8", color: "#fff" },
     completed: { label: "Terminé", bg: "#6b7280", color: "#fff" },
     rejected: { label: "Rejeté", bg: "#e53935", color: "#fff" },
+    partial_rejected: {
+      label: "Partiel rejeté",
+      bg: "#fef3c7",
+      color: "#92400e",
+    },
     expired: { label: "Expiré", bg: "#9ca3af", color: "#fff" },
   };
   const s = map[status] || map.waiting;

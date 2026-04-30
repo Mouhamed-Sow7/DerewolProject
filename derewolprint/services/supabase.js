@@ -79,7 +79,94 @@ async function getSignedUrlForOfficeViewer(storagePath, format) {
   return data.signedUrl;
 }
 
+// ══════════════════════════════════════════════════════════════════
+// services/supabase.js — DerewolPrint
+// Ajout : uploadTempPreview + cleanupTempPreview pour viewer Office
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * Upload un fichier Office déchiffré dans derewol-previews (bucket privé)
+ * Génère un signed URL de 195s pour Google Docs Viewer
+ *
+ * @param {Buffer} decryptedBuffer  — Contenu déchiffré du fichier
+ * @param {string} fileName         — Nom original (ex: "contrat.docx")
+ * @returns {Promise<{signedUrl: string, previewPath: string}>}
+ */
+async function uploadTempPreview(decryptedBuffer, fileName) {
+  const ext = require("path").extname(fileName).toLowerCase();
+
+  // Nom unique dans le bucket — jamais de collision
+  const previewPath = `tmp/${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
+
+  const mimeTypes = {
+    ".docx":
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx":
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".doc": "application/msword",
+    ".xls": "application/vnd.ms-excel",
+  };
+  const contentType = mimeTypes[ext] || "application/octet-stream";
+
+  console.log(`[SUPABASE] uploadTempPreview: ${previewPath} (${contentType})`);
+
+  // Upload avec supabaseAdmin (service_role) pour bypasser RLS
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from("derewol-previews")
+    .upload(previewPath, decryptedBuffer, {
+      contentType,
+      upsert: false,
+      duplex: "half",
+    });
+
+  if (uploadError) {
+    throw new Error(`[PREVIEW] Upload échoué: ${uploadError.message}`);
+  }
+
+  // Signed URL 195s — juste le temps que le viewer charge le fichier
+  const { data, error: urlError } = await supabaseAdmin.storage
+    .from("derewol-previews")
+    .createSignedUrl(previewPath, 195);
+
+  if (urlError) {
+    // Nettoyer si la signed URL échoue
+    await supabaseAdmin.storage.from("derewol-previews").remove([previewPath]);
+    throw new Error(`[PREVIEW] Signed URL échouée: ${urlError.message}`);
+  }
+
+  console.log(`[SUPABASE] Preview prête, URL expire dans 195s`);
+  return { signedUrl: data.signedUrl, previewPath };
+}
+
+/**
+ * Supprime le fichier temporaire du bucket derewol-previews
+ * Appelé 8s après l'envoi au viewer (le temps que Google/Microsoft charge)
+ *
+ * @param {string} previewPath — Chemin retourné par uploadTempPreview
+ */
+async function cleanupTempPreview(previewPath) {
+  if (!previewPath) return;
+  try {
+    const { error } = await supabaseAdmin.storage
+      .from("derewol-previews")
+      .remove([previewPath]);
+    if (error) {
+      console.warn(`[SUPABASE] Cleanup preview échoué: ${error.message}`);
+    } else {
+      console.log(`[SUPABASE] Preview supprimée: ${previewPath}`);
+    }
+  } catch (e) {
+    console.warn(`[SUPABASE] Cleanup preview erreur: ${e.message}`);
+  }
+}
+
 // Client service_role (bypass RLS)
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || null;
 const supabaseAdmin = serviceKey ? createClient(url, serviceKey) : null;
-module.exports = { supabase, supabaseAdmin, getSignedUrlForOfficeViewer };
+module.exports = {
+  supabase,
+  supabaseAdmin,
+  getSignedUrlForOfficeViewer,
+  uploadTempPreview,
+  cleanupTempPreview,
+};

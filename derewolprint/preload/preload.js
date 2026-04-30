@@ -68,4 +68,17 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.invoke("security:enable-screenshot", code),
   securityScreenshotStatus: () =>
     ipcRenderer.invoke("security:screenshot-status"),
+
+  // ── Recovery ──────────────────────────────────────────────
+  recovery: {
+    request: (emailOrPhone) =>
+      ipcRenderer.invoke("recovery:request", emailOrPhone),
+    verify: (data) => ipcRenderer.invoke("recovery:verify", data),
+  },
+  app: {
+    relaunch: () => ipcRenderer.invoke("app:relaunch"),
+  },
+  dev: {
+    logout: () => ipcRenderer.invoke("dev:logout"),
+  },
 });

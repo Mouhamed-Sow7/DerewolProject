@@ -82,7 +82,7 @@ export default function renderJobs(
 
       const groupStatus = getStatusConfig(group.groupStatus);
       const statusBadge = `<span class="job-status-badge" style="background:${groupStatus.bg};color:${groupStatus.color}">${groupStatus.label}</span>`;
-      const disableActions = !["waiting", "queued"].includes(group.groupStatus);
+      const disableActions = ["printing", "completed", "failed"].includes(group.groupStatus);
 
       // Calculer statut global du groupe
       const allRejected = group.items.every((i) => i.status === "rejected");
