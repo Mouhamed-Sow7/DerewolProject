@@ -235,6 +235,11 @@ function GroupCard({ group }) {
         {status === "rejected" && (
           <p className="db-msg db-msg--rejected">❌ Rejeté par l'imprimeur</p>
         )}
+        {status === "partial_rejected" && (
+          <p className="db-msg db-msg--rejected">
+            ⚠️ Certains fichiers rejetés — impression partielle terminée
+          </p>
+        )}
         {status === "expired" && (
           <p className="db-msg db-msg--expired">
             ⏰ Délai dépassé — renvoyez vos fichiers pour imprimer

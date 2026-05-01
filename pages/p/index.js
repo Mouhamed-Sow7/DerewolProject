@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import supabase, {
   getPrinterBySlug,
-  getOrCreateActiveFileGroup,
+  createFileGroup,
   uploadFileToGroup,
   fetchGroupsByOwner,
   updateFilesCount,
@@ -356,6 +356,12 @@ function StatusBadge({ status }) {
       color: "#856404",
       border: "#ffc107",
     },
+    partial: {
+      label: "Partiel",
+      bg: "#fff3cd",
+      color: "#856404",
+      border: "#ffc107",
+    },
     expired: {
       label: "Expiré",
       bg: "#f3f4f6",
@@ -400,7 +406,8 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
     if (
       file.status === "completed" ||
       file.status === "rejected" ||
-      file.rejected === true
+      file.rejected === true ||
+      (group.status === "partial_rejected" && !file.rejected)
     ) {
       historyFiles.push(file);
     } else {
@@ -1377,10 +1384,10 @@ export default function PrinterSPA({ showToast }) {
       const isWord = /\.(doc|docx)$/i.test(fileName || "");
       const isExcel = /\.(xls|xlsx)$/i.test(fileName || "");
       const isPowerPoint = /\.(ppt|pptx)$/i.test(fileName || "");
-      const needsOfficeViewer = isWord || isExcel || isPowerPoint;
+      const needsGoogleViewer = isWord || isExcel || isPowerPoint;
 
-      if (isPdf) {
-        // Use Google Viewer for PDFs, which is already working
+      if (needsGoogleViewer) {
+        // For Office docs, use signed URL with Google Viewer
         const { data } = await supabase.storage
           .from("derewol-files")
           .createSignedUrl(storagePath, 120);
@@ -1392,19 +1399,21 @@ export default function PrinterSPA({ showToast }) {
         } else {
           setPreviewUrl(null);
         }
-      } else if (needsOfficeViewer) {
-        // Use Microsoft Office Online viewer for Word/Excel/PowerPoint files
-        const { data } = await supabase.storage
+      } else if (isPdf) {
+        // 🔥 For PDFs: Fetch as blob and create blob URL to prevent browser controls
+        const { data: blob, error: dlError } = await supabase.storage
           .from("derewol-files")
-          .createSignedUrl(storagePath, 120);
+          .download(storagePath);
 
-        if (data?.signedUrl) {
-          const encodedUrl = encodeURIComponent(data.signedUrl);
-          const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
-          setPreviewUrl(viewerUrl);
-        } else {
+        if (dlError || !blob) {
+          console.error("PDF download failed:", dlError);
           setPreviewUrl(null);
+          return;
         }
+
+        // Create blob URL (prevents browser default PDF viewer controls)
+        const blobUrl = URL.createObjectURL(blob);
+        setPreviewUrl(blobUrl);
       } else if (isImage) {
         // For images, use signed URL
         const { data } = await supabase.storage
@@ -1450,7 +1459,7 @@ export default function PrinterSPA({ showToast }) {
     uploadingRef.current = true;
     setUploading(true);
     try {
-      const { groupId, existingFilesCount } = await getOrCreateActiveFileGroup({
+      const groupId = await createFileGroup({
         ownerId: session.owner_id,
         printerId: printer.id,
       });
@@ -1463,7 +1472,7 @@ export default function PrinterSPA({ showToast }) {
           copies: getFileCopy(selected[i], i),
         });
       }
-      await updateFilesCount(groupId, existingFilesCount + selected.length);
+      await updateFilesCount(groupId, selected.length);
       showToast?.(t("sending"));
       setSelected([]);
       setFileCopies({});
@@ -1912,7 +1921,7 @@ export default function PrinterSPA({ showToast }) {
             ) : (
               <>
                 {/* 🔥 SECURITY: Comprehensive download blocking - MULTIPLE LAYERS */}
-                {/* Layer 1: Transparent toolbar blocker overlay */}
+                {/* Layer 1: Full-screen interactive overlay - blocks ALL mouse/touch events to iframe */}
                 <div
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -1948,12 +1957,47 @@ export default function PrinterSPA({ showToast }) {
                     right: 0,
                     height: "150px",
                     zIndex: 9999,
-                    background: "transparent",
+                    background: C.green,
                     pointerEvents: "auto",
                     cursor: "not-allowed",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: 12,
+                    fontWeight: "bold",
+                  }}
+                >
+                  🔒 Download désactivé
+                </div>
+                {/* Layer 2: Full-screen overlay below toolbar - blocks any interaction */}
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onContextMenu={(e) => e.preventDefault()}
+                  onDrop={(e) => e.preventDefault()}
+                  onDragOver={(e) => e.preventDefault()}
+                  style={{
+                    position: "absolute",
+                    top: 150,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 998,
+                    pointerEvents: "auto",
                   }}
                 />
-                {/* Layer 2: iframe with sandbox adjusted for Google Docs Viewer */}
+                {/* Layer 3: iframe with maximum sandbox restrictions */}
                 <iframe
                   src={
                     previewUrl?.includes("#") || previewUrl?.includes("?")
@@ -1968,10 +2012,10 @@ export default function PrinterSPA({ showToast }) {
                     minHeight: "400px",
                     position: "relative",
                     zIndex: 1,
-                    pointerEvents: "auto",
+                    pointerEvents: "none",
                   }}
                   title={previewName}
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals allow-top-navigation allow-top-navigation-by-user-activation"
+                  sandbox="allow-same-origin"
                   referrerPolicy="no-referrer"
                   onError={() => {
                     setPreviewUrl(null);

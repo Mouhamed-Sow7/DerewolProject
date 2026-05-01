@@ -1288,39 +1288,43 @@ ipcMain.handle(
       // ✅ Dériver le statut final du groupe basé sur les résultats réels
       // ── Finaliser le groupe APRÈS tous les fichiers ──────────
       if (fileGroupId) {
-        const { data: jobResults } = await supabase
-          .from("print_jobs")
-          .select("status")
+        const { data: allFiles } = await supabase
+          .from("files")
+          .select("id, rejected, hash_printed")
           .eq("group_id", fileGroupId);
 
-        const statuses = (jobResults || []).map((j) => j.status);
-        if (statuses.length === 0) {
-          // Tous les jobs ont été supprimés (rejetés) sauf celui qu'on vient d'imprimer
-          // Le groupe garde son statut partiel — ne pas écraser partial_rejected
+        const { data: completedJobs } = await supabase
+          .from("print_jobs")
+          .select("file_id")
+          .eq("group_id", fileGroupId)
+          .eq("status", "completed");
+
+        const completedFileIds = new Set(
+          completedJobs?.map((j) => j.file_id) || [],
+        );
+
+        const total = allFiles?.length || 0;
+        const rejectedCount = allFiles?.filter((f) => f.rejected).length || 0;
+        const nonRejected = allFiles?.filter((f) => !f.rejected) || [];
+        const allNonRejectedPrinted = nonRejected.every(
+          (f) => completedFileIds.has(f.id) || f.hash_printed,
+        );
+
+        let groupStatus;
+        if (total === 0 || rejectedCount === total) {
+          groupStatus = "rejected";
+        } else if (rejectedCount > 0) {
+          groupStatus = allNonRejectedPrinted ? "partial_rejected" : "waiting";
         } else {
-          const allDone = statuses.every((s) => s === "completed");
-          const allFailed = statuses.every((s) => s === "failed");
-          const groupStatus = allDone
-            ? "completed"
-            : allFailed
-              ? "failed"
-              : "partial_completed";
-
-          await supabase
-            .from("file_groups")
-            .update({ status: groupStatus })
-            .eq("id", fileGroupId);
-
-          console.log(
-            "[GROUP] " +
-              fileGroupId +
-              " → " +
-              groupStatus +
-              " (" +
-              statuses.join(", ") +
-              ")",
-          );
+          groupStatus = allNonRejectedPrinted ? "completed" : "printing";
         }
+
+        await supabase
+          .from("file_groups")
+          .update({ status: groupStatus })
+          .eq("id", fileGroupId);
+
+        console.log("[GROUP]", fileGroupId, "→", groupStatus);
       }
 
       return errors.length > 0
