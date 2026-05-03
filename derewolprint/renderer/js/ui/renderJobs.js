@@ -82,7 +82,9 @@ export default function renderJobs(
 
       const groupStatus = getStatusConfig(group.groupStatus);
       const statusBadge = `<span class="job-status-badge" style="background:${groupStatus.bg};color:${groupStatus.color}">${groupStatus.label}</span>`;
-      const disableActions = ["printing", "completed", "failed"].includes(group.groupStatus);
+      const disableActions = ["printing", "completed", "failed"].includes(
+        group.groupStatus,
+      );
 
       // Calculer statut global du groupe
       const allRejected = group.items.every((i) => i.status === "rejected");
@@ -139,6 +141,19 @@ export default function renderJobs(
               data-file-name="${item.fileName}"
               title="Prévisualiser"
               ><i class="fa-solid fa-eye"></i></button>
+
+            <button class="btn-print-options"
+              data-job-id="${item.jobId}"
+              data-file-id="${item.fileId}"
+              data-file-name="${item.fileName}"
+              data-file-ext="${item.fileName.split(".").pop().toLowerCase()}"
+              title="Options d'impression"
+              style="background:transparent;border:1px solid var(--border);
+                border-radius:6px;padding:4px 10px;cursor:pointer;
+                color:var(--text-muted);font-size:11px;white-space:nowrap;
+                font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:4px;">
+              <i class="fa-solid fa-sliders" style="font-size:10px"></i> Options
+            </button>
 
             <button class="btn-req-download"
               data-file-id="${item.fileId}"
@@ -313,6 +328,15 @@ export default function renderJobs(
     });
   });
 
+  // ── Options d'impression ──────────────────────────────────
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".btn-print-options");
+    if (btn) {
+      const { jobId, fileId, fileName, fileExt } = btn.dataset;
+      openPrintOptionsModal(jobId, fileId, fileName, fileExt);
+    }
+  });
+
   document.querySelectorAll(".job-checkbox").forEach((cb) => {
     cb.addEventListener("change", window.updateSelectionBar);
   });
@@ -320,6 +344,310 @@ export default function renderJobs(
 
 // Helper accès store
 let jobStore_getGroup = () => null;
+
+// ── MODAL OPTIONS D'IMPRESSION ────────────────────────────────────────
+function openPrintOptionsModal(jobId, fileId, fileName, ext) {
+  const existing = document.getElementById("print-options-modal");
+  if (existing) existing.remove();
+
+  const isPdf = ext === "pdf";
+  const isExcel = ["xlsx", "xls"].includes(ext);
+  const defaultOri = isExcel ? "landscape" : "portrait";
+
+  const modal = document.createElement("div");
+  modal.id = "print-options-modal";
+  modal.style.cssText = `
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.45);
+    display: flex; align-items: center; justify-content: center;
+  `;
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;border:0.5px solid #e0e0e0;
+      padding:1.5rem;width:340px;font-family:'Inter',sans-serif;">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+        <div>
+          <p style="font-size:15px;font-weight:600;margin:0;color:#1a1a1a;">Options d'impression</p>
+          <p style="font-size:12px;color:#666;margin:4px 0 0;max-width:220px;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fileName}</p>
+        </div>
+        <span style="font-size:11px;background:#f0f0f0;color:#555;
+          padding:3px 8px;border-radius:6px;border:0.5px solid #ddd;text-transform:uppercase;">
+          ${ext}
+        </span>
+      </div>
+
+      <div style="border-top:0.5px solid #eee;padding-top:1rem;display:flex;flex-direction:column;gap:1rem;">
+
+        ${
+          !isPdf
+            ? `
+        <div>
+          <p style="font-size:11px;color:#888;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">Orientation</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button id="opt-portrait"
+              style="display:flex;flex-direction:column;align-items:center;gap:6px;
+                padding:12px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:${defaultOri === "portrait" ? "2px solid #1B5E35;background:#E8F5E9;color:#1B5E35;font-weight:600" : "0.5px solid #ddd;background:#fff;color:#555;font-weight:400"};">
+              <svg width="22" height="28" viewBox="0 0 22 28" fill="none">
+                <rect x="1" y="1" width="20" height="26" rx="2" stroke="currentColor" stroke-width="1.5" fill="#f5f5f5"/>
+                <rect x="4" y="6" width="14" height="2" rx="1" fill="currentColor" opacity="0.4"/>
+                <rect x="4" y="11" width="14" height="2" rx="1" fill="currentColor" opacity="0.4"/>
+                <rect x="4" y="16" width="10" height="2" rx="1" fill="currentColor" opacity="0.4"/>
+              </svg>
+              Portrait
+            </button>
+            <button id="opt-landscape"
+              style="display:flex;flex-direction:column;align-items:center;gap:6px;
+                padding:12px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:${defaultOri === "landscape" ? "2px solid #1B5E35;background:#E8F5E9;color:#1B5E35;font-weight:600" : "0.5px solid #ddd;background:#fff;color:#555;font-weight:400"};">
+              <svg width="28" height="22" viewBox="0 0 28 22" fill="none">
+                <rect x="1" y="1" width="26" height="20" rx="2" stroke="currentColor" stroke-width="1.5" fill="#f5f5f5"/>
+                <rect x="4" y="6" width="20" height="2" rx="1" fill="currentColor" opacity="0.4"/>
+                <rect x="4" y="11" width="20" height="2" rx="1" fill="currentColor" opacity="0.4"/>
+                <rect x="4" y="15" width="14" height="2" rx="1" fill="currentColor" opacity="0.4"/>
+              </svg>
+              Paysage
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <p style="font-size:11px;color:#888;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">Ajustement</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button id="opt-fit"
+              style="padding:9px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:2px solid #1B5E35;background:#E8F5E9;color:#1B5E35;font-weight:600;">
+              Ajuster à la page
+            </button>
+            <button id="opt-actual"
+              style="padding:9px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:0.5px solid #ddd;background:#fff;color:#555;font-weight:400;">
+              Taille réelle
+            </button>
+          </div>
+        </div>
+        `
+            : ""
+        }
+
+        <div>
+          <p style="font-size:11px;color:#888;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">Pages</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <button id="opt-pages-all"
+              style="padding:9px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:2px solid #1B5E35;background:#E8F5E9;color:#1B5E35;font-weight:600;">
+              Toutes
+            </button>
+            <button id="opt-pages-range"
+              style="padding:9px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:0.5px solid #ddd;background:#fff;color:#555;font-weight:400;">
+              Intervalle
+            </button>
+          </div>
+          <div id="opt-range-inputs" style="display:none;gap:8px;align-items:center;">
+            <span style="font-size:12px;color:#888;">De</span>
+            <input type="number" id="opt-page-from" min="1" value="1"
+              style="width:60px;padding:6px;border:0.5px solid #ddd;border-radius:6px;
+                font-size:13px;text-align:center;font-family:'Inter',sans-serif;">
+            <span style="font-size:12px;color:#888;">à</span>
+            <input type="number" id="opt-page-to" min="1" value="1"
+              style="width:60px;padding:6px;border:0.5px solid #ddd;border-radius:6px;
+                font-size:13px;text-align:center;font-family:'Inter',sans-serif;">
+          </div>
+        </div>
+
+        <div>
+          <p style="font-size:11px;color:#888;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">Recto / Verso</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <button id="opt-recto"
+              style="padding:9px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:2px solid #1B5E35;background:#E8F5E9;color:#1B5E35;font-weight:600;">
+              Recto
+            </button>
+            <button id="opt-duplex"
+              style="padding:9px 8px;border-radius:8px;cursor:pointer;font-size:12px;
+                border:0.5px solid #ddd;background:#fff;color:#555;font-weight:400;">
+              Recto-verso
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:1.25rem;padding-top:1rem;border-top:0.5px solid #eee;">
+        <button id="opt-btn-cancel"
+          style="flex:1;padding:9px;border-radius:8px;border:0.5px solid #ddd;
+            background:#fff;cursor:pointer;font-size:13px;color:#666;font-family:'Inter',sans-serif;">
+          Annuler
+        </button>
+        <button id="opt-btn-confirm"
+          style="flex:2;padding:9px;border-radius:8px;border:none;
+            background:#D4A017;cursor:pointer;font-size:13px;font-weight:600;
+            color:#fff;font-family:'Inter',sans-serif;">
+          Confirmer
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Fermeture overlay
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closePrintOptionsModal();
+  });
+
+  // Boutons orientation
+  modal
+    .querySelector("#opt-portrait")
+    ?.addEventListener("click", () => setOptOri("portrait"));
+  modal
+    .querySelector("#opt-landscape")
+    ?.addEventListener("click", () => setOptOri("landscape"));
+
+  // Boutons ajustement
+  modal
+    .querySelector("#opt-fit")
+    ?.addEventListener("click", () => setOptFit("fit"));
+  modal
+    .querySelector("#opt-actual")
+    ?.addEventListener("click", () => setOptFit("actual"));
+
+  // Boutons pages
+  modal
+    .querySelector("#opt-pages-all")
+    ?.addEventListener("click", () => setOptPages("all"));
+  modal
+    .querySelector("#opt-pages-range")
+    ?.addEventListener("click", () => setOptPages("range"));
+
+  // Boutons duplex
+  modal
+    .querySelector("#opt-recto")
+    ?.addEventListener("click", () => setOptDuplex("recto"));
+  modal
+    .querySelector("#opt-duplex")
+    ?.addEventListener("click", () => setOptDuplex("duplex"));
+
+  // Annuler / Confirmer
+  modal
+    .querySelector("#opt-btn-cancel")
+    ?.addEventListener("click", () => closePrintOptionsModal());
+  modal
+    .querySelector("#opt-btn-confirm")
+    ?.addEventListener("click", () => confirmPrintOptions(jobId, fileId));
+
+  window._printOptions = {
+    jobId,
+    fileId,
+    orientation: defaultOri,
+    fit: "fit",
+    pages: "all",
+    pageFrom: 1,
+    pageTo: 999,
+    duplex: "recto",
+  };
+}
+
+function setOptOri(val) {
+  window._printOptions.orientation = val;
+  ["portrait", "landscape"].forEach((k) => {
+    const b = document.getElementById("opt-" + k);
+    if (!b) return;
+    if (k === val) {
+      b.style.border = "2px solid #1B5E35";
+      b.style.background = "#E8F5E9";
+      b.style.color = "#1B5E35";
+      b.style.fontWeight = "600";
+    } else {
+      b.style.border = "0.5px solid #ddd";
+      b.style.background = "#fff";
+      b.style.color = "#555";
+      b.style.fontWeight = "400";
+    }
+  });
+}
+
+function setOptFit(val) {
+  window._printOptions.fit = val;
+  ["fit", "actual"].forEach((k) => {
+    const b = document.getElementById("opt-" + k);
+    if (!b) return;
+    if (k === val) {
+      b.style.border = "2px solid #1B5E35";
+      b.style.background = "#E8F5E9";
+      b.style.color = "#1B5E35";
+      b.style.fontWeight = "600";
+    } else {
+      b.style.border = "0.5px solid #ddd";
+      b.style.background = "#fff";
+      b.style.color = "#555";
+      b.style.fontWeight = "400";
+    }
+  });
+}
+
+function setOptPages(val) {
+  window._printOptions.pages = val;
+  ["all", "range"].forEach((k) => {
+    const b = document.getElementById("opt-pages-" + k);
+    if (!b) return;
+    if (k === val) {
+      b.style.border = "2px solid #1B5E35";
+      b.style.background = "#E8F5E9";
+      b.style.color = "#1B5E35";
+      b.style.fontWeight = "600";
+    } else {
+      b.style.border = "0.5px solid #ddd";
+      b.style.background = "#fff";
+      b.style.color = "#555";
+      b.style.fontWeight = "400";
+    }
+  });
+  const rangeDiv = document.getElementById("opt-range-inputs");
+  if (rangeDiv) rangeDiv.style.display = val === "range" ? "flex" : "none";
+}
+
+function setOptDuplex(val) {
+  window._printOptions.duplex = val;
+  ["recto", "duplex"].forEach((k) => {
+    const b = document.getElementById("opt-" + k);
+    if (!b) return;
+    if (k === val) {
+      b.style.border = "2px solid #1B5E35";
+      b.style.background = "#E8F5E9";
+      b.style.color = "#1B5E35";
+      b.style.fontWeight = "600";
+    } else {
+      b.style.border = "0.5px solid #ddd";
+      b.style.background = "#fff";
+      b.style.color = "#555";
+      b.style.fontWeight = "400";
+    }
+  });
+}
+
+function closePrintOptionsModal() {
+  const m = document.getElementById("print-options-modal");
+  if (m) m.remove();
+}
+
+function confirmPrintOptions(jobId, fileId) {
+  const opts = window._printOptions;
+  if (opts.pages === "range") {
+    opts.pageFrom =
+      parseInt(document.getElementById("opt-page-from")?.value) || 1;
+    opts.pageTo =
+      parseInt(document.getElementById("opt-page-to")?.value) || 999;
+  }
+  // Stocker les options par fichier
+  if (!window._filesPrintOptions) window._filesPrintOptions = {};
+  window._filesPrintOptions[jobId + "_" + fileId] = { ...opts };
+  closePrintOptionsModal();
+}
+
 export function setStoreRef(fn) {
   jobStore_getGroup = fn;
 }
