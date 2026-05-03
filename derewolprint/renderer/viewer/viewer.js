@@ -107,20 +107,21 @@ function waitForViewerReady(timeout = 5000) {
 async function initViewerBridge() {
   try {
     await waitForViewerReady();
+    window.viewer.ready();
 
     window.viewer.onData((data) => {
       const bytes = data.bytesArray ? new Uint8Array(data.bytesArray) : null;
-      const signedUrl = data.signedUrl || null;
       Object.assign(state, {
         bytes,
-        signedUrl,
         name: data.name,
+        displayName: data.displayName,
         jobId: data.jobId,
         fileId: data.fileId,
         type: data.type,
+        ttlSeconds: 30 * 60, // TTL fixe 30 minutes pour tous les types
       });
 
-      $("viewer-filename").textContent = data.name;
+      $("viewer-filename").textContent = data.displayName || data.name;
       $("loading-state").classList.add("hidden");
 
       startTTL();
@@ -180,6 +181,10 @@ function startTTL() {
 // ── Close / Print ─────────────────────────────────────────────────────────
 function closeViewer() {
   clearInterval(state.ttlInterval);
+  if (window._currentPdfBlobUrl) {
+    URL.revokeObjectURL(window._currentPdfBlobUrl);
+    window._currentPdfBlobUrl = null;
+  }
   window.viewer.close(state.jobId, state.fileId);
 }
 
@@ -192,7 +197,6 @@ function initActions(type) {
 async function initPDF() {
   showPane("pdf-container");
   showToolbar(null);
-
   const container = $("pdf-container");
   container.innerHTML = "";
 
@@ -200,23 +204,25 @@ async function initPDF() {
     const bytes = state.bytes;
     if (!bytes) throw new Error("Données PDF manquantes");
 
-    const pdfUrl = createPdfBlobUrl(bytes);
-    const iframe = document.createElement("iframe");
-    iframe.src = pdfUrl;
-    iframe.title = "Aperçu PDF";
-    iframe.style.width = "100%";
-    iframe.style.height = "100%";
-    iframe.style.border = "none";
+    const blob    = new Blob([bytes], { type: "application/pdf" });
+    const blobUrl = URL.createObjectURL(blob);
+    window._currentPdfBlobUrl = blobUrl;
 
-    container.appendChild(iframe);
+    const obj       = document.createElement("object");
+    obj.data        = blobUrl;
+    obj.type        = "application/pdf";
+    obj.style.cssText = "width:100%;height:100%;border:none;display:block;";
+    obj.innerHTML   = `<div style="padding:40px;text-align:center;color:#aaa;">
+      <p>Le PDF ne peut pas s'afficher ici.</p></div>`;
+
+    container.appendChild(obj);
   } catch (err) {
     container.innerHTML = `
       <div style="padding:40px;text-align:center;color:#ef5350;">
-        <i class="fa-solid fa-triangle-exclamation" style="font-size:36px"></i>
-        <p style="margin-top:16px;font-weight:700;">Erreur de lecture PDF</p>
-        <p style="font-size:13px;opacity:0.8;">${err.message}</p>
+        <p style="font-size:32px;">⚠</p>
+        <p style="font-weight:700;">Erreur de lecture PDF</p>
+        <p style="font-size:13px;">${err.message}</p>
       </div>`;
-    showToolbar(null);
   }
 }
 
@@ -470,31 +476,14 @@ async function saveImage() {
 }
 
 // ── Excel ─────────────────────────────────────────────────────────────────
+// initExcel — supprimer signedUrl, garder seulement local
 function initExcel() {
   showPane("excel-container");
   showToolbar("tb-excel");
-
-  if (state.signedUrl) {
-    // Use Office Online viewer
-    loadExcelOnline();
-  } else {
-    // Fallback to local conversion (should not happen for .xlsx)
-    loadExcelLocal();
-  }
+  loadExcelWarningThenLocal();
 }
 
-function loadExcelOnline() {
-  const container = $("excel-container");
-  container.innerHTML = `
-    <iframe src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(state.signedUrl)}"
-            style="width:100%;height:100%;border:none;"
-            title="Excel Online Viewer">
-    </iframe>
-  `;
-  console.log("[VIEWER] Loaded Excel in Office Online viewer");
-}
-
-function loadExcelLocal() {
+function loadExcelWarningThenLocal() {
   const warning = $("excel-warning");
   warning.classList.remove("hidden");
 
@@ -520,9 +509,8 @@ function loadExcelLocal() {
 
   proceed.addEventListener("click", () => {
     warning.classList.add("hidden");
-    loadExcelLocal();
+    loadExcelLocal(); // ← correct (pas loadExcelWarningThenLocal)
   });
-}
 }
 
 async function loadExcelLocal() {
@@ -639,28 +627,11 @@ async function saveExcel() {
 }
 
 // ── Word ──────────────────────────────────────────────────────────────────
+// initWord — supprimer signedUrl, garder seulement local
 async function initWord() {
   showPane("word-container");
-  showToolbar(null); // No Word toolbar
-
-  if (state.signedUrl) {
-    // Use Office Online viewer
-    loadWordOnline();
-  } else {
-    // Fallback to local conversion
-    loadWordLocal();
-  }
-}
-
-function loadWordOnline() {
-  const container = $("word-container");
-  container.innerHTML = `
-    <iframe src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(state.signedUrl)}"
-            style="width:100%;height:100%;border:none;"
-            title="Word Online Viewer">
-    </iframe>
-  `;
-  console.log("[VIEWER] Loaded Word in Office Online viewer");
+  showToolbar(null);
+  loadWordLocal();
 }
 
 async function loadWordLocal() {
@@ -685,6 +656,113 @@ async function loadWordLocal() {
   }
 }
 
+// ── NOUVELLE FONCTION : loadOfficeOnline ─────────────────────────
+// Remplace loadExcelOnline() et loadWordOnline()
+// Utilise Google Docs Viewer en priorité (plus fiable que Microsoft pour les signed URLs)
+// Fallback automatique vers Microsoft Office Online si Google échoue
+
+function loadOfficeOnline(signedUrl, containerId, label) {
+  const container = $(containerId);
+
+  // Google Docs Viewer — plus permissif sur les URLs signées
+  const googleUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(signedUrl)}&embedded=true`;
+
+  container.innerHTML = `
+    <div id="office-loading-overlay" style="
+      position:absolute; inset:0; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; background:var(--bg-primary,#1a1a2e);
+      z-index:10; gap:16px;">
+      <div class="spinner"></div>
+      <span style="color:var(--text-secondary,#aaa); font-size:14px;">
+        Chargement de l'aperçu ${label}…
+      </span>
+      <span id="office-countdown" style="
+        font-size:22px; font-weight:700; color:var(--accent,#f59e0b);
+        font-variant-numeric:tabular-nums;">
+        3:15
+      </span>
+      <span style="color:var(--text-muted,#666); font-size:12px;">
+        Temps restant pour visionner
+      </span>
+    </div>
+    <iframe
+      id="office-iframe"
+      src="${googleUrl}"
+      style="width:100%; height:100%; border:none; opacity:0; transition:opacity 0.4s;"
+      title="Aperçu ${label}"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+      onload="window._officeIframeLoaded()"
+    ></iframe>
+  `;
+
+  // Démarrer le countdown affiché dans l'overlay (195s → 0)
+  let remaining = 195;
+  const countdownEl = () => document.getElementById("office-countdown");
+  const overlayEl = () => document.getElementById("office-loading-overlay");
+  const iframeEl = () => document.getElementById("office-iframe");
+
+  const tick = setInterval(() => {
+    remaining = Math.max(0, remaining - 1);
+    const m = String(Math.floor(remaining / 60)).padStart(2, "0");
+    const s = String(remaining % 60).padStart(2, "0");
+    const el = countdownEl();
+    if (el) {
+      el.textContent = `${m}:${s}`;
+      if (remaining <= 30) el.style.color = "#dc2626";
+    }
+    if (remaining <= 0) {
+      clearInterval(tick);
+      // URL expirée — afficher message
+      const overlay = overlayEl();
+      if (overlay) {
+        overlay.innerHTML = `
+          <div style="text-align:center; padding:32px;">
+            <div style="font-size:48px;">⏰</div>
+            <p style="color:#dc2626; font-weight:700; margin-top:16px;">
+              Aperçu expiré
+            </p>
+            <p style="color:#aaa; font-size:13px; margin-top:8px;">
+              Rouvrez le fichier pour générer un nouvel aperçu.
+            </p>
+          </div>`;
+        overlay.style.background = "rgba(26,26,46,0.95)";
+      }
+    }
+  }, 1000);
+
+  // Quand l'iframe charge → masquer l'overlay, révéler l'iframe
+  window._officeIframeLoaded = () => {
+    const overlay = overlayEl();
+    const iframe = iframeEl();
+    if (overlay) overlay.style.opacity = "0";
+    if (iframe) iframe.style.opacity = "1";
+    setTimeout(() => {
+      if (overlay) overlay.style.display = "none";
+    }, 400);
+    console.log(`[VIEWER] ${label} chargé dans Google Docs Viewer`);
+  };
+
+  // Fallback : si Google Docs Viewer ne charge pas en 12s → essayer Microsoft
+  const fallbackTimer = setTimeout(() => {
+    const iframe = iframeEl();
+    if (!iframe) return;
+    const currentSrc = iframe.src;
+    // Si toujours sur Google et toujours opaque → switcher vers Microsoft
+    if (
+      currentSrc.includes("docs.google.com") &&
+      iframe.style.opacity === "0"
+    ) {
+      console.warn(`[VIEWER] Google Docs Viewer timeout — fallback Microsoft`);
+      const msUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(signedUrl)}`;
+      iframe.src = msUrl;
+    }
+  }, 12000);
+
+  // Nettoyer le fallback timer si l'iframe charge normalement
+  const origLoaded = window._officeIframeLoaded;
+  window._officeIframeLoaded = () => {
+    clearTimeout(fallbackTimer);
+    origLoaded();
 // ── Generic ───────────────────────────────────────────────────────────────
 function initGeneric(name) {
   showPane("generic-container");

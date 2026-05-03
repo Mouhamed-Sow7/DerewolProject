@@ -23,7 +23,10 @@ function execShell(command, options = {}) {
 const {
   supabase,
   getSignedUrlForOfficeViewer,
+  uploadTempPreview, // NOUVEAU
+  cleanupTempPreview, // NOUVEAU
 } = require("../services/supabase");
+const { requestRecovery, verifyRecovery } = require("../services/recovery");
 const { startPolling, stopPolling } = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
@@ -290,6 +293,42 @@ function enableScreenshotProtection(adminCode) {
   return true;
 }
 
+// ── Conversion Office → PDF pour viewer ────────────────────────
+async function convertOfficeToPdfForViewer(inputPath, outputPath) {
+  const ext = path.extname(inputPath).toLowerCase();
+  const normalized = inputPath.replace(/\\/g, "\\\\");
+  const outputNormalized = outputPath.replace(/\\/g, "\\\\");
+
+  let cmd;
+  if ([".doc", ".docx"].includes(ext)) {
+    cmd =
+      `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command ` +
+      `"$w = New-Object -ComObject Word.Application; ` +
+      `$w.Visible = $false; ` +
+      `$d = $w.Documents.Open('${normalized}'); ` +
+      `$d.ExportAsFixedFormat('${outputNormalized}', 17); ` +
+      `$d.Close([ref]$false); ` +
+      `$w.Quit()"`;
+  } else if ([".xls", ".xlsx"].includes(ext)) {
+    cmd =
+      `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command ` +
+      `"$x = New-Object -ComObject Excel.Application; ` +
+      `$x.Visible = $false; $x.DisplayAlerts = $false; ` +
+      `$wb = $x.Workbooks.Open('${normalized}'); ` +
+      `$wb.ExportAsFixedFormat(0, '${outputNormalized}'); ` +
+      `$wb.Close($false); ` +
+      `$x.Quit()"`;
+  } else {
+    throw new Error(`Format non supporté pour aperçu: ${ext}`);
+  }
+
+  await execShell(cmd, { windowsHide: true, timeout: 30000 });
+
+  if (!fs.existsSync(outputPath)) {
+    throw new Error("Conversion PDF échouée — fichier non généré");
+  }
+}
+
 // ── IPC : Sécurité / Admin ──────────────────────────────────────
 ipcMain.handle("security:disable-screenshot", (_, code) =>
   disableScreenshotProtection(code),
@@ -347,40 +386,48 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const file = files.find((f) => f.id === fileId) || files[0];
     if (!file) return { success: false, error: "Fichier introuvable" };
 
-    // 2. Check if Office file → use signed URL instead of download
+    // 2. Download + decrypt (PDF, image, ET Office)
     const ext = path.extname(file.file_name).toLowerCase();
-    const isOfficeFile = [".docx", ".xlsx"].includes(ext);
+    const OFFICE_EXTS = [".docx", ".xlsx", ".doc", ".xls"];
+    const isOfficeFile = OFFICE_EXTS.includes(ext);
 
-    let signedUrl = null;
     let decrypted = null;
     let tmpPath = null;
+    let pdfTmpPath = null;
+
+    // Download + decrypt (tous types)
+    const { data: fileData, error: dlError } = await supabase.storage
+      .from("derewol-files")
+      .download(file.storage_path);
+
+    if (dlError) return { success: false, error: dlError.message };
+
+    decrypted = decryptFile(
+      Buffer.from(await fileData.arrayBuffer()),
+      file.encrypted_key,
+    );
+
+    if (!decrypted || decrypted.length < 4)
+      return { success: false, error: "Fichier invalide" };
+
+    const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
+    tmpPath = path.join(os.tmpdir(), tmpName);
+    fs.writeFileSync(tmpPath, decrypted);
 
     if (isOfficeFile) {
-      // Generate signed URL for Office Online viewer
-      signedUrl = await getSignedUrlForOfficeViewer(
-        file.storage_path,
-        ext === ".docx" ? "docx" : "xlsx",
-      );
-    } else {
-      // Download + decrypt for local files (PDF, images)
-      const { data: fileData, error: dlError } = await supabase.storage
-        .from("derewol-files")
-        .download(file.storage_path);
+      const pdfTmpName = tmpName.replace(ext, ".pdf");
+      pdfTmpPath = path.join(os.tmpdir(), pdfTmpName);
 
-      if (dlError) return { success: false, error: dlError.message };
-
-      decrypted = decryptFile(
-        Buffer.from(await fileData.arrayBuffer()),
-        file.encrypted_key,
-      );
-
-      if (!decrypted || decrypted.length < 4)
-        return { success: false, error: "Fichier invalide" };
-
-      // 3. Write tmp file for local files
-      const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
-      tmpPath = path.join(os.tmpdir(), tmpName);
-      fs.writeFileSync(tmpPath, decrypted);
+      try {
+        await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
+        decrypted = fs.readFileSync(pdfTmpPath); // Remplacer bytes par le PDF
+      } catch (convErr) {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+        return {
+          success: false,
+          error: "Aperçu impossible : " + convErr.message,
+        };
+      }
     }
 
     // 4. Open viewer BrowserWindow (CHILD of mainWindow - closes when parent closes)
@@ -440,28 +487,22 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
     win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
 
-    // 5. Once loaded, send file data
-    win.webContents.once("did-finish-load", () => {
-      const data = {
+    // 5. Send file data when the viewer signals it is ready
+    const viewerReadyHandler = (event) => {
+      if (event.sender !== win.webContents) return;
+
+      const viewerData = {
         name: file.file_name,
+        displayName: file.file_name, // nom original affiché dans le header
         jobId,
         fileId,
-        type: getFileType(file.file_name),
+        type: isOfficeFile ? "pdf" : getFileType(file.file_name),
       };
-
-      if (isOfficeFile) {
-        // Send signed URL for Office Online viewer
-        data.signedUrl = signedUrl;
-        console.log(
-          `[VIEWER] Sending signed URL for Office file: ${file.file_name}`,
-        );
-      } else {
-        // Send bytes for local rendering
-        data.bytesArray = Array.from(decrypted);
-      }
-
-      win.webContents.send("viewer:data", data);
-    });
+      viewerData.bytesArray = Array.from(decrypted);
+      event.sender.send("viewer:data", viewerData);
+      ipcMain.removeListener("viewer:ready", viewerReadyHandler);
+    };
+    ipcMain.on("viewer:ready", viewerReadyHandler);
 
     // 6. TTL: auto-close after 30 minutes
     const ttlTimer = setTimeout(
@@ -480,6 +521,7 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     viewerSessions.set(sessionKey, {
       win,
       tmpPath,
+      pdfTmpPath, // ← AJOUTER
       storagePath: file.storage_path,
       timer: ttlTimer,
     });
@@ -489,6 +531,8 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       clearTimeout(ttlTimer);
       const s = viewerSessions.get(sessionKey);
       if (s?.tmpPath && fs.existsSync(s.tmpPath)) secureDelete(s.tmpPath);
+      if (s?.pdfTmpPath && fs.existsSync(s.pdfTmpPath))
+        fs.unlinkSync(s.pdfTmpPath);
       viewerSessions.delete(sessionKey);
     });
 
@@ -679,46 +723,50 @@ ipcMain.handle("setup:check-slug", async (_, slug) => {
   return { available: !data };
 });
 
-ipcMain.handle("setup:register", async (_, { name, slug, ownerPhone }) => {
-  try {
-    const owner_phone = (ownerPhone || "").toString().trim() || null;
-    const { supabaseAdmin } = require("../services/supabase");
-    const { data, error } = await supabaseAdmin
-      .from("printers")
-      .insert({ name, slug, owner_phone })
-      .select()
-      .single();
+ipcMain.handle(
+  "setup:register",
+  async (_, { name, slug, ownerPhone, email }) => {
+    try {
+      const owner_phone = (ownerPhone || "").toString().trim() || null;
+      const user_email = (email || "").toString().trim() || null;
+      const { supabaseAdmin } = require("../services/supabase");
+      const { data, error } = await supabaseAdmin
+        .from("printers")
+        .insert({ name, slug, owner_phone, email: user_email })
+        .select()
+        .single();
 
-    if (error) {
-      // Handle duplicate slug error specifically
-      if (error.code === "23505" || error.message.includes("duplicate key")) {
-        throw new Error(
-          `Le slug "${slug}" est déjà utilisé. Veuillez en choisir un autre.`,
-        );
+      if (error) {
+        // Handle duplicate slug error specifically
+        if (error.code === "23505" || error.message.includes("duplicate key")) {
+          throw new Error(
+            `Le slug "${slug}" est déjà utilisé. Veuillez en choisir un autre.`,
+          );
+        }
+        throw new Error(error.message);
       }
-      throw new Error(error.message);
+
+      const BASE_URL =
+        process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
+      const cfg = {
+        id: data.id,
+        slug: data.slug,
+        name: data.name,
+        url: `${BASE_URL}/p/${data.slug}`,
+        owner_phone: owner_phone,
+      };
+
+      saveConfig(cfg);
+      printerCfg = cfg;
+
+      console.log(`[SETUP] Imprimeur enregistré : ${name} (${slug}) ✅`);
+      return { success: true, config: cfg };
+    } catch (err) {
+      console.error("[SETUP] Erreur :", err.message);
+      return { success: false, error: err.message };
     }
-
-    const BASE_URL =
-      process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
-    const cfg = {
-      id: data.id,
-      slug: data.slug,
-      name: data.name,
-      url: `${BASE_URL}/p/${data.slug}`,
-      owner_phone: owner_phone,
-    };
-
-    saveConfig(cfg);
-    printerCfg = cfg;
-
-    console.log(`[SETUP] Imprimeur enregistré : ${name} (${slug}) ✅`);
-    return { success: true, config: cfg };
-  } catch (err) {
-    console.error("[SETUP] Erreur :", err.message);
-    return { success: false, error: err.message };
-  }
-});
+  },
+);
 
 // ── IPC : Config imprimeur ──────────────────────────────────────
 ipcMain.handle("printer:config", () => printerCfg);
@@ -1074,6 +1122,12 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
     );
   }
 
+  // Marquer le fichier comme imprimé (filet de sécurité pour le calcul de statut groupe)
+  await supabase
+    .from("files")
+    .update({ hash_printed: "printed" })
+    .eq("id", data.file_id);
+
   // ✅ Return cleanup info (cleanup scheduled separately, not here)
   return {
     jobId,
@@ -1237,31 +1291,36 @@ ipcMain.handle(
         const { data: jobResults } = await supabase
           .from("print_jobs")
           .select("status")
-          .eq("file_group_id", fileGroupId);
+          .eq("group_id", fileGroupId);
 
         const statuses = (jobResults || []).map((j) => j.status);
-        const allDone = statuses.every((s) => s === "completed");
-        const allFailed = statuses.every((s) => s === "failed");
-        const groupStatus = allDone
-          ? "completed"
-          : allFailed
-            ? "failed"
-            : "partial_completed";
+        if (statuses.length === 0) {
+          // Tous les jobs ont été supprimés (rejetés) sauf celui qu'on vient d'imprimer
+          // Le groupe garde son statut partiel — ne pas écraser partial_rejected
+        } else {
+          const allDone = statuses.every((s) => s === "completed");
+          const allFailed = statuses.every((s) => s === "failed");
+          const groupStatus = allDone
+            ? "completed"
+            : allFailed
+              ? "failed"
+              : "partial_completed";
 
-        await supabase
-          .from("file_groups")
-          .update({ status: groupStatus })
-          .eq("id", fileGroupId);
+          await supabase
+            .from("file_groups")
+            .update({ status: groupStatus })
+            .eq("id", fileGroupId);
 
-        console.log(
-          "[GROUP] " +
-            fileGroupId +
-            " → " +
-            groupStatus +
-            " (" +
-            statuses.join(", ") +
-            ")",
-        );
+          console.log(
+            "[GROUP] " +
+              fileGroupId +
+              " → " +
+              groupStatus +
+              " (" +
+              statuses.join(", ") +
+              ")",
+          );
+        }
       }
 
       return errors.length > 0
@@ -1444,21 +1503,50 @@ ipcMain.handle("job:reject", async (event, jobId) => {
     // Recharger les fichiers pour avoir l'état à jour
     const { data: updatedFiles } = await supabase
       .from("files")
-      .select("id, rejected")
+      .select("id, rejected, hash_printed")
       .eq("group_id", fileGroupId);
 
+    const { data: completedJobs } = await supabase
+      .from("print_jobs")
+      .select("file_id")
+      .eq("group_id", fileGroupId)
+      .eq("status", "completed");
+
+    const completedFileIds = new Set(
+      completedJobs?.map((j) => j.file_id) || [],
+    );
+    console.log("[DEBUG job:reject] fileGroupId:", fileGroupId);
+    console.log(
+      "[DEBUG job:reject] updatedFiles:",
+      JSON.stringify(updatedFiles),
+    );
+    console.log(
+      "[DEBUG job:reject] completedJobs:",
+      JSON.stringify(completedJobs),
+    );
+    console.log("[DEBUG job:reject] completedFileIds:", [...completedFileIds]);
     const total = updatedFiles?.length || 0;
     const rejectedCount = updatedFiles?.filter((f) => f.rejected).length || 0;
+    const nonRejected = updatedFiles?.filter((f) => !f.rejected) || [];
+    console.log("[DEBUG job:reject] nonRejected:", JSON.stringify(nonRejected));
+    const allNonRejectedPrinted = nonRejected.every(
+      (f) => completedFileIds.has(f.id) || f.hash_printed,
+    );
+    console.log(
+      "[DEBUG job:reject] allNonRejectedPrinted:",
+      allNonRejectedPrinted,
+    );
 
     let newGroupStatus;
     if (total === 0 || rejectedCount === total) {
       // Tous rejetés → groupe rejeté complet
       newGroupStatus = "rejected";
     } else if (rejectedCount > 0) {
-      // Certains rejetés → partiel
-      newGroupStatus = "partial_rejected";
+      // Certains rejetés, certains imprimés → partiel_rejected si tous les non-rejetés sont imprimés
+      newGroupStatus = allNonRejectedPrinted ? "partial_rejected" : "waiting";
     } else {
-      newGroupStatus = "waiting";
+      // Aucun rejeté → vérifier si tous sont imprimés
+      newGroupStatus = allNonRejectedPrinted ? "completed" : "printing";
     }
 
     await supabase
@@ -1653,6 +1741,51 @@ ipcMain.handle(
     }
   },
 );
+
+// ── RECOVERY ──────────────────────────────────────────────
+ipcMain.handle("recovery:request", async (_, emailOrPhone) => {
+  try {
+    const result = await requestRecovery(emailOrPhone);
+    return { success: true, method: result.method };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("recovery:verify", async (_, { emailOrPhone, code }) => {
+  try {
+    const { printer } = await verifyRecovery(emailOrPhone, code);
+    console.log("[RECOVERY] printer reçu:", printer);
+    const { saveConfig } = require("../services/printerConfig");
+    const BASE_URL =
+      process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
+    const cfg = {
+      id: printer.id,
+      slug: printer.slug,
+      name: printer.name,
+      url: `${BASE_URL}/p/${printer.slug}`,
+      owner_phone: printer.owner_phone,
+    };
+    console.log("[RECOVERY] saveConfig appelé avec:", cfg);
+    await saveConfig(cfg);
+    console.log("[RECOVERY] config sauvegardée, relaunch dans 2s...");
+    return { success: true, printer };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("app:relaunch", () => {
+  console.log("[APP] Relancement demandé...");
+  app.relaunch();
+  app.exit(0);
+});
+
+ipcMain.handle("dev:logout", () => {
+  clearConfig();
+  app.relaunch();
+  app.exit(0);
+});
 
 // ── Vérification existence imprimeur (toutes les 30s) ──────────────
 let printerVerificationTimer = null;

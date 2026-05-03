@@ -41,30 +41,33 @@
       }
 
       .card {
-        width: 460px;
-        padding: 44px 40px;
+        max-width: 420px;
+        width: 100%;
+        padding: 32px 36px;
         background: #fff;
         border-radius: 20px;
-        box-shadow: 0 8px 40px #00000012;
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
       }
 
       /* Logo */
       .logo {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 36px;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 32px;
       }
       .logo-mark {
-        width: 38px;
-        height: 38px;
+        width: 36px;
+        height: 36px;
         background: var(--jaune);
         border-radius: 10px;
         flex-shrink: 0;
       }
       .logo-text {
         font-family: "Playfair Display", serif;
-        font-size: 20px;
+        font-size: 18px;
+        font-weight: 700;
         color: var(--noir);
       }
       .logo-text b {
@@ -74,50 +77,58 @@
       h2 {
         font-family: "Playfair Display", serif;
         font-size: 22px;
-        margin-bottom: 8px;
-      }
-      .subtitle {
-        font-size: 14px;
-        color: var(--muted);
-        margin-bottom: 32px;
-        line-height: 1.5;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 4px;
       }
 
-      /* Form */
       .field {
-        margin-bottom: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
       }
       label {
         display: block;
         font-size: 13px;
-        font-weight: 500;
-        margin-bottom: 6px;
-        color: var(--noir);
+        font-weight: 600;
+        margin-bottom: 4px;
+        color: #555;
       }
 
       input {
         width: 100%;
-        padding: 12px 14px;
-        border: 1.5px solid var(--border);
+        padding: 10px 14px;
+        border: 1.5px solid #e0e0e0;
         border-radius: 10px;
         font-family: "DM Sans", sans-serif;
         font-size: 14px;
         color: var(--noir);
         background: #fff;
         outline: none;
-        transition: border-color 0.2s;
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease,
+          background-color 0.2s ease;
       }
       input:focus {
         border-color: var(--vert);
+        box-shadow: 0 0 0 4px rgba(30, 77, 43, 0.08);
+        background: #fff;
       }
       input.error {
         border-color: #e53935;
       }
+      #input-phone {
+        background: #f4f4f4;
+      }
+      #input-phone::placeholder {
+        color: #999;
+      }
 
       .field-hint {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 5px;
+        font-size: 11px;
+        color: #aaa;
+        margin-top: 3px;
       }
       .field-error {
         font-size: 12px;
@@ -126,22 +137,20 @@
         display: none;
       }
 
-      /* Slug preview */
       .slug-preview {
         font-size: 12px;
         color: var(--vert);
-        margin-top: 5px;
+        margin-top: 4px;
         font-family: monospace;
         font-weight: 600;
       }
 
-      /* Availability badge */
       .avail {
         display: inline-flex;
         align-items: center;
         gap: 5px;
         font-size: 12px;
-        margin-top: 5px;
+        margin-top: 4px;
       }
       .avail.ok {
         color: #166534;
@@ -153,37 +162,98 @@
         color: var(--muted);
       }
 
-      /* Bouton */
       .btn-submit {
         width: 100%;
-        padding: 14px;
+        padding: 13px;
         background: var(--vert);
         color: #fff;
         border: none;
-        border-radius: 10px;
+        border-radius: 12px;
         font-family: "DM Sans", sans-serif;
         font-size: 15px;
         font-weight: 600;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: background 0.2s ease;
         margin-top: 8px;
       }
       .btn-submit:hover:not(:disabled) {
-        background: #2e6e3e;
+        background: #225632;
       }
       .btn-submit:disabled {
-        opacity: 0.5;
+        opacity: 0.55;
         cursor: not-allowed;
       }
 
-      .step-indicator {
-        font-size: 12px;
-        color: var(--muted);
+      .switch-link {
+        display: block;
+        margin: 18px auto 0;
         text-align: center;
-        margin-bottom: 28px;
+        font-size: 13px;
+        color: #888;
+        text-decoration: none;
+        cursor: pointer;
+        transition: color 0.2s ease;
+      }
+      .switch-link:hover {
+        color: var(--vert);
       }
 
-      /* Success */
+      #recoveryPanel {
+        display: none;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      #recoveryPanel.active {
+        display: block;
+      }
+
+      .recovery-title {
+        font-size: 20px;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .step-info {
+        font-size: 13px;
+        color: #666;
+        text-align: center;
+        margin-bottom: 12px;
+      }
+      #codeInput {
+        letter-spacing: 8px;
+        font-size: 24px;
+        text-align: center;
+      }
+
+      #step3 {
+        text-align: center;
+      }
+      #step3 .success-emoji {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+      #step3 p {
+        color: var(--noir);
+      }
+
+      .recovery-footer {
+        margin-top: 20px;
+        text-align: center;
+      }
+
+      .btn-secondary-link {
+        display: inline-block;
+        margin-top: 18px;
+        font-size: 13px;
+        color: #888;
+        text-decoration: none;
+        cursor: pointer;
+        transition: color 0.2s ease;
+      }
+      .btn-secondary-link:hover {
+        color: var(--vert);
+      }
+
       .success-screen {
         display: none;
         text-align: center;
@@ -202,16 +272,17 @@
         line-height: 1.5;
       }
       .btn-continue {
-        padding: 14px 32px;
+        width: 100%;
+        padding: 14px 0;
         background: var(--jaune);
         color: var(--noir);
         border: none;
-        border-radius: 10px;
+        border-radius: 12px;
         font-family: "DM Sans", sans-serif;
         font-size: 15px;
         font-weight: 700;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: background 0.2s ease;
       }
       .btn-continue:hover {
         background: #f0be30;
@@ -228,12 +299,7 @@
 
       <!-- Formulaire setup -->
       <div id="form-screen">
-        <div class="step-indicator">Configuration initiale — 1 seule fois</div>
         <h2>Bienvenue</h2>
-        <p class="subtitle">
-          Configurez votre espace d'impression. Ces informations seront liées à
-          votre QR code client.
-        </p>
 
         <div class="field">
           <label>Nom de votre boutique</label>
@@ -269,9 +335,8 @@
           <input
             type="tel"
             id="input-phone"
-            placeholder="Ex: +221781220391"
+            placeholder="+221 70 xxx xx xx"
             maxlength="20"
-            value="+221781220391"
           />
           <div class="field-hint">
             Utilisé pour les relances / envoi de codes d’abonnement depuis
@@ -282,9 +347,25 @@
           </div>
         </div>
 
+        <div class="field">
+          <label>Email (optionnel)</label>
+          <input
+            type="email"
+            id="input-email"
+            placeholder="Email (pour récupérer ton compte)"
+            maxlength="100"
+          />
+          <div class="field-hint">
+            Utilisé pour la récupération d'accès en cas d'oubli
+          </div>
+        </div>
+
         <button class="btn-submit" id="btn-register" disabled>
           Créer mon espace →
         </button>
+        <a id="switchToRecovery" class="switch-link">
+          Déjà un compte ? Récupérer l'accès →
+        </a>
       </div>
 
       <!-- Succès -->
@@ -296,12 +377,72 @@
           Ouvrir DerewolPrint
         </button>
       </div>
+
+      <!-- Recovery panel -->
+      <div id="recoveryPanel">
+        <h3 class="recovery-title">🔑 Récupérer mon compte</h3>
+
+        <div id="step1" class="field">
+          <input
+            id="recoveryInput"
+            type="text"
+            placeholder="Ton email ou téléphone"
+          />
+          <button class="btn-submit" id="sendCodeBtn">Envoyer le code</button>
+          <p id="step1Error" class="field-error"></p>
+        </div>
+
+        <div id="step2" style="display: none">
+          <p id="step2Info" class="step-info"></p>
+          <input
+            id="codeInput"
+            type="text"
+            maxlength="6"
+            placeholder="Code à 6 chiffres"
+          />
+          <button class="btn-submit" id="verifyCodeBtn">Valider le code</button>
+          <p id="step2Error" class="field-error"></p>
+          <button
+            class="btn-secondary-link"
+            id="backBtn"
+            style="
+              background: none;
+              border: none;
+              color: #888;
+              font-size: 13px;
+              cursor: pointer;
+              text-decoration: none;
+              margin-top: 8px;
+              display: block;
+              width: 100%;
+              text-align: center;
+            "
+          >
+            ← Changer d'email/téléphone
+          </button>
+        </div>
+
+        <div id="step3" style="display: none">
+          <div class="success-emoji">✅</div>
+          <p style="font-size: 16px; font-weight: 700; margin-bottom: 8px">
+            Compte restauré !
+          </p>
+          <p style="font-size: 13px; color: #666">L'application redémarre...</p>
+        </div>
+
+        <div class="recovery-footer">
+          <a id="switchToRegister" class="btn-secondary-link">
+            ← Créer un nouvel espace
+          </a>
+        </div>
+      </div>
     </div>
 
     <script>
       const inputName = document.getElementById("input-name");
       const inputSlug = document.getElementById("input-slug");
       const inputPhone = document.getElementById("input-phone");
+      const inputEmail = document.getElementById("input-email");
       const slugPreview = document.getElementById("slug-preview");
       const slugAvail = document.getElementById("slug-avail");
       const btnRegister = document.getElementById("btn-register");
@@ -372,13 +513,24 @@
         }, 600);
       }
 
+      function normalizeSenegalPhone(raw) {
+        const digits = raw.replace(/\D/g, "");
+        if (/^[7][0-9]{8}$/.test(digits)) {
+          return `+221${digits}`;
+        }
+        if (/^221[7][0-9]{8}$/.test(digits)) {
+          return `+${digits}`;
+        }
+        if (/^00221[7][0-9]{8}$/.test(digits)) {
+          return `+${digits.slice(2)}`;
+        }
+        return null;
+      }
+
       function validateForm() {
         const nameOk = inputName.value.trim().length >= 2;
-        const phoneRaw = inputPhone.value.trim();
-        const phoneDigits = phoneRaw.replace(/\D/g, "");
-        const phoneOk =
-          (phoneRaw.startsWith("+") && phoneDigits.length >= 9) ||
-          phoneDigits.length >= 9;
+        const normalizedPhone = normalizeSenegalPhone(inputPhone.value.trim());
+        const phoneOk = Boolean(normalizedPhone);
         btnRegister.disabled = !(nameOk && slugValid && phoneOk);
       }
 
@@ -392,23 +544,27 @@
       btnRegister.addEventListener("click", async () => {
         const name = inputName.value.trim();
         const slug = inputSlug.value.trim();
-        const ownerPhone = inputPhone.value.trim();
+        let ownerPhone = inputPhone.value.trim();
 
         btnRegister.disabled = true;
         btnRegister.textContent = "Création en cours...";
 
-        const phoneDigits = ownerPhone.replace(/\D/g, "");
-        if (phoneDigits.length < 9) {
+        const normalizedPhone = normalizeSenegalPhone(ownerPhone);
+        if (!normalizedPhone) {
           errPhone.style.display = "block";
           btnRegister.disabled = false;
           btnRegister.textContent = "Créer mon espace →";
           return;
         }
+        ownerPhone = normalizedPhone;
+
+        const email = inputEmail.value.trim();
 
         const result = await window.derewol.registerPrinter({
           name,
           slug,
           ownerPhone,
+          email,
         });
 
         if (result.success) {
@@ -441,6 +597,115 @@
             alert("Erreur : " + result.error);
           }
         }
+      });
+    </script>
+
+    <script>
+      const recoveryInput = document.getElementById("recoveryInput");
+      const codeInput = document.getElementById("codeInput");
+      const formScreen = document.getElementById("form-screen");
+      const recoveryPanel = document.getElementById("recoveryPanel");
+      const switchToRecovery = document.getElementById("switchToRecovery");
+      const switchToRegister = document.getElementById("switchToRegister");
+      let currentEmailOrPhone = "";
+
+      formScreen.style.transition = "opacity 0.2s ease";
+      recoveryPanel.style.transition = "opacity 0.2s ease";
+
+      function showRecoveryPanel() {
+        formScreen.style.opacity = "0";
+        setTimeout(() => {
+          formScreen.style.display = "none";
+          recoveryPanel.classList.add("active");
+          recoveryPanel.style.opacity = "0";
+          setTimeout(() => {
+            recoveryPanel.style.opacity = "1";
+          }, 20);
+        }, 200);
+      }
+
+      function showRegisterForm() {
+        recoveryPanel.style.opacity = "0";
+        setTimeout(() => {
+          recoveryPanel.classList.remove("active");
+          formScreen.style.display = "block";
+          formScreen.style.opacity = "0";
+          setTimeout(() => {
+            formScreen.style.opacity = "1";
+          }, 20);
+        }, 200);
+      }
+
+      switchToRecovery.addEventListener("click", showRecoveryPanel);
+      switchToRegister.addEventListener("click", showRegisterForm);
+
+      document
+        .getElementById("sendCodeBtn")
+        .addEventListener("click", async () => {
+          const val = recoveryInput.value.trim();
+          if (!val) return;
+          const btn = document.getElementById("sendCodeBtn");
+          const errEl = document.getElementById("step1Error");
+          btn.disabled = true;
+          btn.textContent = "Envoi...";
+          errEl.style.display = "none";
+
+          const res = await window.derewol.recovery.request(val);
+
+          if (res.success) {
+            currentEmailOrPhone = val;
+            document.getElementById("step2Info").textContent =
+              res.method === "email"
+                ? `Code envoyé à ${val} — vérifie ta boîte mail.`
+                : `Code envoyé par WhatsApp au ${val}.`;
+            document.getElementById("step1").style.display = "none";
+            document.getElementById("step2").style.display = "block";
+          } else {
+            errEl.textContent = res.error;
+            errEl.style.display = "block";
+            btn.disabled = false;
+            btn.textContent = "Envoyer le code";
+          }
+        });
+
+      document
+        .getElementById("verifyCodeBtn")
+        .addEventListener("click", async () => {
+          const code = codeInput.value.trim();
+          if (code.length !== 6) return;
+          const btn = document.getElementById("verifyCodeBtn");
+          const errEl = document.getElementById("step2Error");
+          btn.disabled = true;
+          btn.textContent = "Vérification...";
+          errEl.style.display = "none";
+
+          const res = await window.derewol.recovery.verify({
+            emailOrPhone: currentEmailOrPhone,
+            code,
+          });
+
+          if (res.success) {
+            document.getElementById("step2").style.display = "none";
+            document.getElementById("step3").style.display = "block";
+            // Redémarre automatiquement après 2s
+            setTimeout(() => {
+              window.derewol.app.relaunch(); // ou ipcRenderer.invoke('app:relaunch')
+            }, 2000);
+          } else {
+            errEl.textContent = res.error;
+            errEl.style.display = "block";
+            btn.disabled = false;
+            btn.textContent = "Valider le code";
+          }
+        });
+
+      document.getElementById("backBtn").addEventListener("click", () => {
+        document.getElementById("step2").style.display = "none";
+        document.getElementById("step1").style.display = "block";
+        document.getElementById("sendCodeBtn").disabled = false;
+        document.getElementById("sendCodeBtn").textContent = "Envoyer le code";
+        document.getElementById("step1Error").style.display = "none";
+        codeInput.value = "";
       });
     </script>
   </body>
