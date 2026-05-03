@@ -1,13 +1,8 @@
-// ══════════════════════════════════════════════════════════════════════════
-// viewer.js — DerewolPrint Secure File Viewer
-// ══════════════════════════════════════════════════════════════════════════
+// --------------------------------------------------------------------------
+// viewer.js � DerewolPrint Secure File Viewer (100% local �ph�m�re)
+// --------------------------------------------------------------------------
 
-function createPdfBlobUrl(bytes) {
-  const blob = new Blob([bytes], { type: "application/pdf" });
-  return URL.createObjectURL(blob);
-}
-
-// ── SECURITY: Anti-exfiltration event blocking ────────────────────────────
+// -- SECURITY: Anti-exfiltration event blocking ----------------------------
 document.addEventListener("copy", (e) => e.preventDefault());
 document.addEventListener("cut", (e) => e.preventDefault());
 document.addEventListener("paste", (e) => e.preventDefault());
@@ -24,19 +19,19 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Additional security: block text selection and monitor blur
 document.addEventListener("selectstart", (e) => e.preventDefault());
 window.addEventListener("blur", () => {
-  console.warn("[SECURITY] Viewer lost focus — content protected");
+  console.warn("[SECURITY] Viewer lost focus � content protected");
 });
 
-// ── State ─────────────────────────────────────────────────────────────────
+// -- State -----------------------------------------------------------------
 const state = {
   jobId: null,
   fileId: null,
   type: null,
   bytes: null,
   name: null,
+  displayName: null,
   // Image
   imgRotation: 0,
   imgBrightness: 100,
@@ -45,7 +40,6 @@ const state = {
   imgCropActive: false,
   imgCropStart: null,
   imgCropRect: null,
-  imgOrigSrc: null, // original file:// src (for re-render)
   // Excel
   xlsxWorkbook: null,
   xlsxActiveSheet: null,
@@ -54,8 +48,9 @@ const state = {
   ttlInterval: null,
 };
 
-// ── UI helpers ────────────────────────────────────────────────────────────
+// -- UI helpers -----------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+
 function showPane(id) {
   [
     "pdf-container",
@@ -66,12 +61,14 @@ function showPane(id) {
   ].forEach((p) => $(p).classList.add("hidden"));
   $(id).classList.remove("hidden");
 }
+
 function showToolbar(id) {
   ["tb-pdf", "tb-image", "tb-excel"].forEach((t) =>
-    $(t).classList.add("hidden"),
+    $(t).classList.add("hidden")
   );
   if (id) $(id).classList.remove("hidden");
 }
+
 function setStatus(msg, type = "") {
   const el = $("status-msg");
   el.textContent = msg;
@@ -83,7 +80,7 @@ function setStatus(msg, type = "") {
     }, 3500);
 }
 
-// ── Entry point: wait for file data from main ─────────────────────────────
+// -- Entry point: wait for file data from main -----------------------------
 function waitForViewerReady(timeout = 5000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -114,14 +111,14 @@ async function initViewerBridge() {
       Object.assign(state, {
         bytes,
         name: data.name,
-        displayName: data.displayName,
+        displayName: data.displayName || data.name,
         jobId: data.jobId,
         fileId: data.fileId,
         type: data.type,
-        ttlSeconds: 30 * 60, // TTL fixe 30 minutes pour tous les types
+        ttlSeconds: 30 * 60,
       });
 
-      $("viewer-filename").textContent = data.displayName || data.name;
+      $("viewer-filename").textContent = state.displayName;
       $("loading-state").classList.add("hidden");
 
       startTTL();
@@ -148,21 +145,21 @@ async function initViewerBridge() {
 
     window.viewer.onTTLExpired(() => {
       clearInterval(state.ttlInterval);
-      $("ttl-countdown").textContent = "Expiré";
+      $("ttl-countdown").textContent = "Expir�";
       $("ttl-countdown").style.color = "#dc2626";
-      setStatus("Session expirée — fermeture dans 3s", "error");
+      setStatus("Session expir�e � fermeture dans 3s", "error");
       setTimeout(closeViewer, 3000);
     });
   } catch (err) {
     $("loading-state").classList.add("hidden");
-    setStatus("Erreur viewer interne : " + err.message, "error");
+    setStatus("Erreur viewer interne : " + err.message, "error");
     console.error(err);
   }
 }
 
 initViewerBridge();
 
-// ── TTL countdown ─────────────────────────────────────────────────────────
+// -- TTL countdown ---------------------------------------------------------
 function startTTL() {
   const el = $("ttl-countdown");
   state.ttlInterval = setInterval(() => {
@@ -173,12 +170,12 @@ function startTTL() {
     if (state.ttlSeconds <= 60) el.style.color = "#dc2626";
     if (state.ttlSeconds <= 0) {
       clearInterval(state.ttlInterval);
-      el.textContent = "Expiré";
+      el.textContent = "Expir�";
     }
   }, 1000);
 }
 
-// ── Close / Print ─────────────────────────────────────────────────────────
+// -- Close / Print ---------------------------------------------------------
 function closeViewer() {
   clearInterval(state.ttlInterval);
   if (window._currentPdfBlobUrl) {
@@ -192,8 +189,7 @@ function initActions(type) {
   $("btn-close").addEventListener("click", closeViewer);
 }
 
-// ── PDF ───────────────────────────────────────────────────────────────────
-// Render PDF pages on canvas via PDF.js, never via file:// URLs.
+// -- PDF -------------------------------------------------------------------
 async function initPDF() {
   showPane("pdf-container");
   showToolbar(null);
@@ -202,57 +198,32 @@ async function initPDF() {
 
   try {
     const bytes = state.bytes;
-    if (!bytes) throw new Error("Données PDF manquantes");
+    if (!bytes) throw new Error("Donn�es PDF manquantes");
 
-    const blob    = new Blob([bytes], { type: "application/pdf" });
+    const blob = new Blob([bytes], { type: "application/pdf" });
     const blobUrl = URL.createObjectURL(blob);
     window._currentPdfBlobUrl = blobUrl;
 
-    const obj       = document.createElement("object");
-    obj.data        = blobUrl;
-    obj.type        = "application/pdf";
-    obj.style.cssText = "width:100%;height:100%;border:none;display:block;";
-    obj.innerHTML   = `<div style="padding:40px;text-align:center;color:#aaa;">
+    const obj = document.createElement("object");
+    obj.data = blobUrl;
+    obj.type = "application/pdf";
+    obj.style.cssText =
+      "width:100%;height:100%;border:none;display:block;";
+    obj.innerHTML = `<div style="padding:40px;text-align:center;color:#aaa;">
       <p>Le PDF ne peut pas s'afficher ici.</p></div>`;
 
     container.appendChild(obj);
   } catch (err) {
     container.innerHTML = `
       <div style="padding:40px;text-align:center;color:#ef5350;">
-        <p style="font-size:32px;">⚠</p>
+        <p style="font-size:32px;">?</p>
         <p style="font-weight:700;">Erreur de lecture PDF</p>
         <p style="font-size:13px;">${err.message}</p>
       </div>`;
   }
 }
 
-async function renderPDFPage(pageNumber) {
-  const pagesDiv = $("pdf-pages");
-  pagesDiv.innerHTML = "";
-
-  try {
-    const page = await state.pdfDoc.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: state.pdfScale });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    canvas.style.cssText = `display:block;width:100%;max-width:${viewport.width}px;margin:0 auto 12px;border-radius:8px;background:#fff;`;
-
-    const ctx = canvas.getContext("2d");
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    pagesDiv.appendChild(canvas);
-    $("pdf-page-info").textContent = `${pageNumber} / ${state.pdfTotalPages}`;
-  } catch (err) {
-    pagesDiv.innerHTML = `
-      <div style="padding:40px;text-align:center;color:#ef5350;">
-        <i class="fa-solid fa-triangle-exclamation" style="font-size:36px"></i>
-        <p style="margin-top:16px;font-weight:700;">Erreur rendu PDF</p>
-        <p style="font-size:13px;opacity:0.8;">${err.message}</p>
-      </div>`;
-  }
-}
-
-// ── Image ─────────────────────────────────────────────────────────────────
+// -- Image -----------------------------------------------------------------
 function initImage() {
   showPane("image-container");
   showToolbar("tb-image");
@@ -297,7 +268,6 @@ function renderImage(imgEl) {
   ctx.rotate(rad);
   ctx.drawImage(imgEl, -W / 2, -H / 2);
 
-  // Apply CSS filters (no re-draw needed)
   canvas.style.filter = [
     `brightness(${state.imgBrightness}%)`,
     `contrast(${state.imgContrast}%)`,
@@ -330,7 +300,6 @@ function bindImageControls(imgEl) {
     renderImage(imgEl);
   });
 
-  // Filters
   ["brightness", "contrast", "saturate"].forEach((f) => {
     $(`filter-${f}`).addEventListener("input", (e) => {
       state[`img${f.charAt(0).toUpperCase() + f.slice(1)}`] = parseInt(
@@ -340,7 +309,6 @@ function bindImageControls(imgEl) {
     });
   });
 
-  // Crop
   $("img-crop-toggle").addEventListener("click", () => {
     state.imgCropActive = !state.imgCropActive;
     $("img-crop-toggle").classList.toggle(
@@ -424,7 +392,6 @@ function applyCrop(imgEl) {
   dst.height = h;
   dst.getContext("2d").drawImage(src, x, y, w, h, 0, 0, w, h);
 
-  // Replace canvas content
   const mainCanvas = $("image-canvas");
   mainCanvas.width = w;
   mainCanvas.height = h;
@@ -443,13 +410,13 @@ async function saveImage() {
   const mime = ext === "png" ? "image/png" : "image/jpeg";
   const btn = $("img-save");
   btn.disabled = true;
-  btn.textContent = "⏳ Sauvegarde…";
+  btn.textContent = "? Sauvegarde�";
 
   canvas.toBlob(
     async (blob) => {
       if (!blob) {
         btn.disabled = false;
-        btn.textContent = "💾 Sauvegarder";
+        btn.textContent = "?? Sauvegarder";
         return;
       }
       try {
@@ -457,26 +424,25 @@ async function saveImage() {
         const data = Array.from(new Uint8Array(ab));
         const res = await window.viewer.save(state.jobId, state.fileId, data);
         if (res.success) {
-          setStatus("Sauvegardé ✓", "ok");
-          btn.textContent = "✓ Sauvegardé";
+          setStatus("Sauvegard� ?", "ok");
+          btn.textContent = "? Sauvegard�";
         } else {
           setStatus("Erreur: " + res.error, "error");
-          btn.textContent = "💾 Sauvegarder";
+          btn.textContent = "?? Sauvegarder";
           btn.disabled = false;
         }
       } catch (e) {
         setStatus("Erreur sauvegarde", "error");
-        btn.textContent = "💾 Sauvegarder";
+        btn.textContent = "?? Sauvegarder";
         btn.disabled = false;
       }
     },
     mime,
-    0.92,
+    0.92
   );
 }
 
-// ── Excel ─────────────────────────────────────────────────────────────────
-// initExcel — supprimer signedUrl, garder seulement local
+// -- Excel -----------------------------------------------------------------
 function initExcel() {
   showPane("excel-container");
   showToolbar("tb-excel");
@@ -509,17 +475,14 @@ function loadExcelWarningThenLocal() {
 
   proceed.addEventListener("click", () => {
     warning.classList.add("hidden");
-    loadExcelLocal(); // ← correct (pas loadExcelWarningThenLocal)
+    loadExcelLocal();
   });
 }
 
 async function loadExcelLocal() {
-  showPane("excel-container");
-  showToolbar("tb-excel");
-
   try {
     const bytes = state.bytes;
-    if (!bytes) throw new Error("Données Excel manquantes");
+    if (!bytes) throw new Error("Donn�es Excel manquantes");
     state.xlsxWorkbook = XLSX.read(bytes, { type: "array" });
 
     const sel = $("excel-sheet-select");
@@ -541,8 +504,7 @@ async function loadExcelLocal() {
 
     $("excel-save").addEventListener("click", saveExcel);
   } catch (e) {
-    $("excel-table-wrap").innerHTML =
-      `<p style="color:#dc2626;padding:16px">Erreur: ${e.message}</p>`;
+    $("excel-table-wrap").innerHTML = `<p style="color:#dc2626;padding:16px">Erreur: ${e.message}</p>`;
   }
 }
 
@@ -566,7 +528,6 @@ function renderSheet(sheetName) {
       const el = document.createElement(r === range.s.r ? "th" : "td");
       el.textContent = cell ? XLSX.utils.format_cell(cell) : "";
 
-      // Formulas → read-only
       const isFormula = cell && cell.t === "f";
       el.contentEditable = !isFormula && r !== range.s.r ? "true" : "false";
       if (isFormula) el.title = "Formule (lecture seule)";
@@ -603,7 +564,7 @@ function onCellEdit(e) {
 async function saveExcel() {
   const btn = $("excel-save");
   btn.disabled = true;
-  btn.textContent = "⏳ Sauvegarde…";
+  btn.textContent = "? Sauvegarde�";
   try {
     const out = XLSX.write(state.xlsxWorkbook, {
       bookType: "xlsx",
@@ -612,22 +573,21 @@ async function saveExcel() {
     const data = Array.from(new Uint8Array(out));
     const res = await window.viewer.save(state.jobId, state.fileId, data);
     if (res.success) {
-      setStatus("Sauvegardé ✓", "ok");
-      btn.textContent = "✓ Sauvegardé";
+      setStatus("Sauvegard� ?", "ok");
+      btn.textContent = "? Sauvegard�";
     } else {
       setStatus("Erreur: " + res.error, "error");
-      btn.textContent = "💾 Sauvegarder";
+      btn.textContent = "?? Sauvegarder";
       btn.disabled = false;
     }
   } catch (e) {
     setStatus("Erreur sauvegarde", "error");
-    btn.textContent = "💾 Sauvegarder";
+    btn.textContent = "?? Sauvegarder";
     btn.disabled = false;
   }
 }
 
-// ── Word ──────────────────────────────────────────────────────────────────
-// initWord — supprimer signedUrl, garder seulement local
+// -- Word ------------------------------------------------------------------
 async function initWord() {
   showPane("word-container");
   showToolbar(null);
@@ -637,133 +597,25 @@ async function initWord() {
 async function loadWordLocal() {
   try {
     const bytes = state.bytes;
-    if (!bytes) throw new Error("Données Word manquantes");
+    if (!bytes) throw new Error("Donn�es Word manquantes");
 
     const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
     const content = $("word-content");
     content.innerHTML = result.value;
 
-    // Harden read-only
     content.contentEditable = "false";
     content.style.userSelect = "none";
     content.style.pointerEvents = "none";
 
     if (result.messages && result.messages.length > 0) {
-      setStatus("Conversion approximative (certains styles ignorés)", "");
+      setStatus("Conversion approximative (certains styles ignor�s)", "");
     }
   } catch (e) {
     $("word-content").textContent = "Erreur de conversion : " + e.message;
   }
 }
 
-// ── NOUVELLE FONCTION : loadOfficeOnline ─────────────────────────
-// Remplace loadExcelOnline() et loadWordOnline()
-// Utilise Google Docs Viewer en priorité (plus fiable que Microsoft pour les signed URLs)
-// Fallback automatique vers Microsoft Office Online si Google échoue
-
-function loadOfficeOnline(signedUrl, containerId, label) {
-  const container = $(containerId);
-
-  // Google Docs Viewer — plus permissif sur les URLs signées
-  const googleUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(signedUrl)}&embedded=true`;
-
-  container.innerHTML = `
-    <div id="office-loading-overlay" style="
-      position:absolute; inset:0; display:flex; flex-direction:column;
-      align-items:center; justify-content:center; background:var(--bg-primary,#1a1a2e);
-      z-index:10; gap:16px;">
-      <div class="spinner"></div>
-      <span style="color:var(--text-secondary,#aaa); font-size:14px;">
-        Chargement de l'aperçu ${label}…
-      </span>
-      <span id="office-countdown" style="
-        font-size:22px; font-weight:700; color:var(--accent,#f59e0b);
-        font-variant-numeric:tabular-nums;">
-        3:15
-      </span>
-      <span style="color:var(--text-muted,#666); font-size:12px;">
-        Temps restant pour visionner
-      </span>
-    </div>
-    <iframe
-      id="office-iframe"
-      src="${googleUrl}"
-      style="width:100%; height:100%; border:none; opacity:0; transition:opacity 0.4s;"
-      title="Aperçu ${label}"
-      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-      onload="window._officeIframeLoaded()"
-    ></iframe>
-  `;
-
-  // Démarrer le countdown affiché dans l'overlay (195s → 0)
-  let remaining = 195;
-  const countdownEl = () => document.getElementById("office-countdown");
-  const overlayEl = () => document.getElementById("office-loading-overlay");
-  const iframeEl = () => document.getElementById("office-iframe");
-
-  const tick = setInterval(() => {
-    remaining = Math.max(0, remaining - 1);
-    const m = String(Math.floor(remaining / 60)).padStart(2, "0");
-    const s = String(remaining % 60).padStart(2, "0");
-    const el = countdownEl();
-    if (el) {
-      el.textContent = `${m}:${s}`;
-      if (remaining <= 30) el.style.color = "#dc2626";
-    }
-    if (remaining <= 0) {
-      clearInterval(tick);
-      // URL expirée — afficher message
-      const overlay = overlayEl();
-      if (overlay) {
-        overlay.innerHTML = `
-          <div style="text-align:center; padding:32px;">
-            <div style="font-size:48px;">⏰</div>
-            <p style="color:#dc2626; font-weight:700; margin-top:16px;">
-              Aperçu expiré
-            </p>
-            <p style="color:#aaa; font-size:13px; margin-top:8px;">
-              Rouvrez le fichier pour générer un nouvel aperçu.
-            </p>
-          </div>`;
-        overlay.style.background = "rgba(26,26,46,0.95)";
-      }
-    }
-  }, 1000);
-
-  // Quand l'iframe charge → masquer l'overlay, révéler l'iframe
-  window._officeIframeLoaded = () => {
-    const overlay = overlayEl();
-    const iframe = iframeEl();
-    if (overlay) overlay.style.opacity = "0";
-    if (iframe) iframe.style.opacity = "1";
-    setTimeout(() => {
-      if (overlay) overlay.style.display = "none";
-    }, 400);
-    console.log(`[VIEWER] ${label} chargé dans Google Docs Viewer`);
-  };
-
-  // Fallback : si Google Docs Viewer ne charge pas en 12s → essayer Microsoft
-  const fallbackTimer = setTimeout(() => {
-    const iframe = iframeEl();
-    if (!iframe) return;
-    const currentSrc = iframe.src;
-    // Si toujours sur Google et toujours opaque → switcher vers Microsoft
-    if (
-      currentSrc.includes("docs.google.com") &&
-      iframe.style.opacity === "0"
-    ) {
-      console.warn(`[VIEWER] Google Docs Viewer timeout — fallback Microsoft`);
-      const msUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(signedUrl)}`;
-      iframe.src = msUrl;
-    }
-  }, 12000);
-
-  // Nettoyer le fallback timer si l'iframe charge normalement
-  const origLoaded = window._officeIframeLoaded;
-  window._officeIframeLoaded = () => {
-    clearTimeout(fallbackTimer);
-    origLoaded();
-// ── Generic ───────────────────────────────────────────────────────────────
+// -- Generic ---------------------------------------------------------------
 function initGeneric(name) {
   showPane("generic-container");
   showToolbar(null);
