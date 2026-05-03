@@ -41,6 +41,32 @@ function encryptFile(fileBuffer, keyHex = null) {
  * @returns {Buffer} - fichier déchiffré en mémoire
  */
 function decryptFile(encryptedBuffer, aesKeyHex) {
+  // Mode dev : si clé placeholder, s'assurer que c'est un Buffer valide
+  if (!aesKeyHex || aesKeyHex === "encrypted_key_placeholder") {
+    console.log("[CRYPTO] Mode dev — fichier non chiffré, passage direct");
+
+    // Si c'est un objet Buffer sérialisé {type: 'Buffer', data: [...]}, le reconvertir
+    if (
+      encryptedBuffer &&
+      encryptedBuffer.type === "Buffer" &&
+      Array.isArray(encryptedBuffer.data)
+    ) {
+      console.log("[CRYPTO] Conversion objet Buffer → Buffer Node.js");
+      return Buffer.from(encryptedBuffer.data);
+    }
+
+    // Si c'est déjà un Buffer, le retourner tel quel
+    if (Buffer.isBuffer(encryptedBuffer)) {
+      console.log("[CRYPTO] Buffer valide, passage direct");
+      return encryptedBuffer;
+    }
+
+    // Sinon erreur
+    throw new Error(
+      `decryptFile dev mode: type invalide ${typeof encryptedBuffer}`,
+    );
+  }
+
   // VALIDATION 1: Vérifier les paramètres d'entrée
   if (!Buffer.isBuffer(encryptedBuffer)) {
     throw new Error("decryptFile: encryptedBuffer doit être un Buffer");
@@ -51,18 +77,6 @@ function decryptFile(encryptedBuffer, aesKeyHex) {
     throw new Error(
       `decryptFile: Buffer chiffré trop petit (${encryptedBuffer.length} bytes)`,
     );
-  }
-
-  // Mode dev : si clé placeholder, retourne le buffer tel quel
-  if (!aesKeyHex || aesKeyHex === "encrypted_key_placeholder") {
-    console.log("[CRYPTO] Mode dev — fichier non chiffré, passage direct");
-    console.log(
-      "[CRYPTO] Buffer original - type:",
-      typeof encryptedBuffer,
-      "length:",
-      encryptedBuffer.length,
-    );
-    return encryptedBuffer;
   }
 
   try {

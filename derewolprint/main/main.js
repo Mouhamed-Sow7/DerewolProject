@@ -981,14 +981,18 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
         const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
         await execShell(cmd, { windowsHide: true, timeout: 30000 });
-        console.log(`[PRINT] Word converti en PDF dans Mp-Pdf: ${outputPdfPath}`);
+        console.log(
+          `[PRINT] Word converti en PDF dans Mp-Pdf: ${outputPdfPath}`,
+        );
       } else if ([".xls", ".xlsx"].includes(ext)) {
         // Convertir Excel en PDF
         const normalized = filePath.replace(/\\/g, "\\\\");
         const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
         const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
         await execShell(cmd, { windowsHide: true, timeout: 30000 });
-        console.log(`[PRINT] Excel converti en PDF dans Mp-Pdf: ${outputPdfPath}`);
+        console.log(
+          `[PRINT] Excel converti en PDF dans Mp-Pdf: ${outputPdfPath}`,
+        );
       } else {
         throw new Error(`Format non supporté pour Mp-Pdf: ${ext}`);
       }
@@ -1012,7 +1016,7 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   // Fonction d'impression Office silencieuse
   async function printOfficeFile(filePath, printerName) {
     const ext = path.extname(filePath).toLowerCase();
-    const normalized = filePath.replace(/\\/g, "/");
+    const normalized = filePath.replace(/\//g, "\\\\");
 
     if ([".doc", ".docx"].includes(ext)) {
       const cmd =
@@ -1022,9 +1026,9 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         "$d = $w.Documents.Open('" +
         normalized +
         "'); " +
-        "$d.PrintOut([System.Reflection.Missing]::Value,[System.Reflection.Missing]::Value,0,'" +
+        '$d.PrintOut([System.Reflection.Missing]::Value,[System.Reflection.Missing]::Value,0,"' +
         printerName +
-        "'); " +
+        '"); ' +
         "Start-Sleep -Seconds 5; " +
         "$d.Close([ref]$false); " +
         '$w.Quit()"';
@@ -1039,9 +1043,9 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         "$wb = $x.Workbooks.Open('" +
         normalized +
         "'); " +
-        "$wb.PrintOut(1,1,1,\$false,\$false,\$false,'" +
+        '$wb.PrintOut(1,1,1,$false,$false,$false,"' +
         printerName +
-        "'); " +
+        '"); ' +
         "Start-Sleep -Seconds 5; " +
         "$wb.Close($false); " +
         '$x.Quit()"';

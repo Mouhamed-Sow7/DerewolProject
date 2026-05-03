@@ -431,15 +431,17 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   // ── FIX: Determine displayStatus from actual file state ────────────
   // If ALL files are rejected → show "rejected", not "completed"
   const uiStatus =
-    allFiles.length > 0 && allRejected
-      ? "rejected"
-      : group.remainingCount === 0
-        ? "completed"
-        : haRejectedFile && !allRejected
-          ? "partial"
-          : hasPrintingJob
-            ? "printing"
-            : group.status;
+    group.status === "partial_rejected"
+      ? "partial"
+      : allFiles.length > 0 && allRejected
+        ? "rejected"
+        : group.remainingCount === 0
+          ? "completed"
+          : haRejectedFile && !allRejected
+            ? "partial"
+            : hasPrintingJob
+              ? "printing"
+              : group.status;
   const statusConfig = {
     waiting: {
       label: t("waiting"),
