@@ -1064,43 +1064,65 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   // Fonction d'impression Office silencieuse
   async function printOfficeFile(filePath, printerName) {
     const ext = path.extname(filePath).toLowerCase();
-    const normalized = filePath.replace(/\//g, "\\\\");
+    const normalized = filePath.replace(/\//g, "\\");
+    const fileEscaped = normalized.replace(/'/g, "''");
+    const tmpPdf = filePath.replace(/\.[^.]+$/, "_print_tmp.pdf");
+    const tmpPdfNorm = tmpPdf.replace(/\//g, "\\").replace(/'/g, "''");
 
+    // Étape 1 : convertir en PDF via Word/Excel COM
+    let convertCmd;
     if ([".doc", ".docx"].includes(ext)) {
-      const cmd =
+      convertCmd =
         "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command " +
         '"$w = New-Object -ComObject Word.Application; ' +
         "$w.Visible = $false; " +
         "$d = $w.Documents.Open('" +
-        normalized +
+        fileEscaped +
         "'); " +
-        '$d.PrintOut([System.Reflection.Missing]::Value,[System.Reflection.Missing]::Value,0,"' +
-        printerName +
-        '"); ' +
-        "Start-Sleep -Seconds 5; " +
+        "$d.ExportAsFixedFormat('" +
+        tmpPdfNorm +
+        "', 17); " +
         "$d.Close([ref]$false); " +
         '$w.Quit()"';
-      return execShell(cmd, { windowsHide: true, timeout: 45000 });
-    }
-
-    if ([".xls", ".xlsx"].includes(ext)) {
-      const cmd =
+    } else if ([".xls", ".xlsx"].includes(ext)) {
+      convertCmd =
         "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command " +
         '"$x = New-Object -ComObject Excel.Application; ' +
         "$x.Visible = $false; $x.DisplayAlerts = $false; " +
         "$wb = $x.Workbooks.Open('" +
-        normalized +
+        fileEscaped +
         "'); " +
-        '$wb.PrintOut(1,1,1,$false,$false,$false,"' +
-        printerName +
-        '"); ' +
-        "Start-Sleep -Seconds 5; " +
+        "foreach ($sheet in $wb.Sheets) { " +
+        "  $sheet.PageSetup.Zoom = $false; " +
+        "  $sheet.PageSetup.FitToPagesWide = 1; " +
+        "  $sheet.PageSetup.FitToPagesTall = $false; " +
+        "  $sheet.PageSetup.Orientation = 2; " +
+        "} " +
+        "$wb.ExportAsFixedFormat(0, '" +
+        tmpPdfNorm +
+        "'); " +
         "$wb.Close($false); " +
         '$x.Quit()"';
-      return execShell(cmd, { windowsHide: true, timeout: 45000 });
+    } else {
+      throw new Error("Format non supporté : " + ext);
     }
 
-    throw new Error("Format non supporté pour impression Office : " + ext);
+    await execShell(convertCmd, { windowsHide: true, timeout: 60000 });
+
+    // Vérifier que le PDF a été créé
+    if (!fs.existsSync(tmpPdf)) {
+      throw new Error("Conversion PDF échouée : fichier non créé");
+    }
+
+    // Étape 2 : imprimer le PDF (méthode qui marche déjà)
+    try {
+      await pdfToPrinter.print(tmpPdf, { printer: printerName });
+    } finally {
+      // Nettoyage du PDF temporaire
+      try {
+        fs.unlinkSync(tmpPdf);
+      } catch (_) {}
+    }
   }
 
   for (let i = 0; i < copies; i++) {
@@ -1338,7 +1360,6 @@ ipcMain.handle(
     } finally {
       // Remove from active processing immediately (cleanup still running independently)
       jobIds.forEach((id) => processingJobs.delete(id));
-      setTimeout(() => cleanSpooler(), 2000);
     }
   },
 );
@@ -2093,7 +2114,6 @@ app.whenReady().then(async () => {
   isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
   screenshotProtectionEnabled = !isDev;
   log("APP_START", { version: "1.0.0" });
-  cleanSpooler();
   cleanTmpFiles();
   cleanDerewolFilesDir(); // Nettoyage fichiers téléchargés résiduels
   await testConnection();
