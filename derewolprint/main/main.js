@@ -356,7 +356,7 @@ function viewerSessionKey(jobId, fileId) {
 }
 
 // ── Viewer : IPC handlers ────────────────────────────────────────
-// viewer:open — download + decrypt → tmp file → BrowserWindow
+// viewer:open — download + decrypt → tmp file → BrowserWindow (100% local éphémère)
 ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
   const sessionKey = viewerSessionKey(jobId, fileId);
 
@@ -386,51 +386,55 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const file = files.find((f) => f.id === fileId) || files[0];
     if (!file) return { success: false, error: "Fichier introuvable" };
 
-    // 2. Download + decrypt (PDF, image, ET Office)
-    const ext = path.extname(file.file_name).toLowerCase();
-    const OFFICE_EXTS = [".docx", ".xlsx", ".doc", ".xls"];
-    const isOfficeFile = OFFICE_EXTS.includes(ext);
-
-    let decrypted = null;
-    let tmpPath = null;
-    let pdfTmpPath = null;
-
-    // Download + decrypt (tous types)
+    // 2. Download + decrypt from derewol-files
     const { data: fileData, error: dlError } = await supabase.storage
       .from("derewol-files")
       .download(file.storage_path);
 
     if (dlError) return { success: false, error: dlError.message };
 
-    decrypted = decryptFile(
+    const decrypted = decryptFile(
       Buffer.from(await fileData.arrayBuffer()),
       file.encrypted_key,
     );
 
-    if (!decrypted || decrypted.length < 4)
-      return { success: false, error: "Fichier invalide" };
+    if (!decrypted || decrypted.length < 4) {
+      return { success: false, error: "Fichier invalide ou corrompu" };
+    }
 
+    // 3. Détection type + conversion Office → PDF si nécessaire
+    const ext = path.extname(file.file_name).toLowerCase();
+    const OFFICE_EXTS = [".docx", ".xlsx", ".doc", ".xls"];
+    const isOfficeFile = OFFICE_EXTS.includes(ext);
+
+    let viewerBytes = decrypted; // Par défaut : bytes décryptés
+    let tmpPath = null;
+    let pdfTmpPath = null;
+
+    // Écrire tmp file (toujours, pour Office on en a besoin)
     const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
     tmpPath = path.join(os.tmpdir(), tmpName);
     fs.writeFileSync(tmpPath, decrypted);
 
     if (isOfficeFile) {
+      // Conversion Office → PDF locale
       const pdfTmpName = tmpName.replace(ext, ".pdf");
       pdfTmpPath = path.join(os.tmpdir(), pdfTmpName);
 
       try {
         await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
-        decrypted = fs.readFileSync(pdfTmpPath); // Remplacer bytes par le PDF
+        viewerBytes = fs.readFileSync(pdfTmpPath); // Remplacer par le PDF converti
       } catch (convErr) {
-        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+        // Cleanup en cas d'échec
+        if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
         return {
           success: false,
-          error: "Aperçu impossible : " + convErr.message,
+          error: `Aperçu impossible : ${convErr.message}`,
         };
       }
     }
 
-    // 4. Open viewer BrowserWindow (CHILD of mainWindow - closes when parent closes)
+    // 4. Open viewer BrowserWindow (CHILD of mainWindow)
     const win = new BrowserWindow({
       width: 1020,
       height: 760,
@@ -445,31 +449,30 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
         nodeIntegration: false,
         contextIsolation: true,
         devTools: false, // Disable DevTools in viewer (anti-exfiltration)
-        webSecurity: false, // Required: fetch('file:///…') for xlsx/mammoth
+        webSecurity: false, // Required for local file access
         sandbox: false,
-        // ── BLOQUER téléchargement depuis le viewer ──────────
         webviewTag: false,
         allowRunningInsecureContent: false,
       },
     });
 
-    // Intercepter TOUS les téléchargements dans cette fenêtre
+    // ── Sécurité viewer ──────────────────────────────────────
+    // Bloquer TOUS les téléchargements
     win.webContents.session.on("will-download", (event) => {
-      event.preventDefault(); // Bloquer tout téléchargement
+      event.preventDefault();
       console.log("[VIEWER] Téléchargement bloqué");
     });
 
     // Bloquer navigation externe
     win.webContents.on("will-navigate", (e, url) => {
-      if (!url.startsWith("file://")) {
-        e.preventDefault();
-      }
+      if (!url.startsWith("file://")) e.preventDefault();
     });
 
-    // Content protection (blocks screenshot API) in production
+    // Content protection en production
     if (!isDev) {
       win.setContentProtection(true);
-      // Block DevTools in viewer
+
+      // Block DevTools shortcuts
       win.webContents.on("before-input-event", (ev, input) => {
         const blocked = [
           input.key === "F12",
@@ -478,6 +481,7 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
         ];
         if (blocked.some(Boolean)) ev.preventDefault();
       });
+
       win.webContents.on("devtools-opened", () =>
         win.webContents.closeDevTools(),
       );
@@ -487,21 +491,23 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
     win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
 
-    // 5. Send file data when the viewer signals it is ready
+    // 5. Send file data when viewer signals ready
     const viewerReadyHandler = (event) => {
       if (event.sender !== win.webContents) return;
 
       const viewerData = {
         name: file.file_name,
-        displayName: file.file_name, // nom original affiché dans le header
+        displayName: file.file_name, // nom original affiché dans header
         jobId,
         fileId,
         type: isOfficeFile ? "pdf" : getFileType(file.file_name),
+        bytesArray: Array.from(viewerBytes), // Toujours des bytes (PDF ou original)
       };
-      viewerData.bytesArray = Array.from(decrypted);
+
       event.sender.send("viewer:data", viewerData);
       ipcMain.removeListener("viewer:ready", viewerReadyHandler);
     };
+
     ipcMain.on("viewer:ready", viewerReadyHandler);
 
     // 6. TTL: auto-close after 30 minutes
@@ -517,12 +523,12 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       30 * 60 * 1000,
     );
 
-    // 7. Track session (storagePath cached to avoid extra DB fetch on save)
+    // 7. Track session
     viewerSessions.set(sessionKey, {
       win,
       tmpPath,
-      pdfTmpPath, // ← AJOUTER
-      storagePath: file.storage_path,
+      pdfTmpPath,
+      storagePath: file.storage_path, // Cached pour éviter refetch DB
       timer: ttlTimer,
     });
 
@@ -530,9 +536,12 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     win.on("closed", () => {
       clearTimeout(ttlTimer);
       const s = viewerSessions.get(sessionKey);
+
+      // Secure delete des fichiers temporaires
       if (s?.tmpPath && fs.existsSync(s.tmpPath)) secureDelete(s.tmpPath);
       if (s?.pdfTmpPath && fs.existsSync(s.pdfTmpPath))
-        fs.unlinkSync(s.pdfTmpPath);
+        secureDelete(s.pdfTmpPath);
+
       viewerSessions.delete(sessionKey);
     });
 
