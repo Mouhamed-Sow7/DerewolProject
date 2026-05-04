@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// viewer.js — DerewolPrint Secure File Viewer (100% local éphémère)
+// viewer.js ï¿½ DerewolPrint Secure File Viewer (100% local ï¿½phï¿½mï¿½re)
 // --------------------------------------------------------------------------
 
 // -- SECURITY: Anti-exfiltration event blocking ----------------------------
@@ -21,7 +21,7 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("selectstart", (e) => e.preventDefault());
 window.addEventListener("blur", () => {
-  console.warn("[SECURITY] Viewer lost focus — content protected");
+  console.warn("[SECURITY] Viewer lost focus ï¿½ content protected");
 });
 
 // -- State -----------------------------------------------------------------
@@ -64,7 +64,7 @@ function showPane(id) {
 
 function showToolbar(id) {
   ["tb-pdf", "tb-image", "tb-excel"].forEach((t) =>
-    $(t).classList.add("hidden")
+    $(t).classList.add("hidden"),
   );
   if (id) $(id).classList.remove("hidden");
 }
@@ -145,9 +145,9 @@ async function initViewerBridge() {
 
     window.viewer.onTTLExpired(() => {
       clearInterval(state.ttlInterval);
-      $("ttl-countdown").textContent = "Expiré";
+      $("ttl-countdown").textContent = "Expirï¿½";
       $("ttl-countdown").style.color = "#dc2626";
-      setStatus("Session expirée — fermeture dans 3s", "error");
+      setStatus("Session expirï¿½e ï¿½ fermeture dans 3s", "error");
       setTimeout(closeViewer, 3000);
     });
   } catch (err) {
@@ -170,7 +170,7 @@ function startTTL() {
     if (state.ttlSeconds <= 60) el.style.color = "#dc2626";
     if (state.ttlSeconds <= 0) {
       clearInterval(state.ttlInterval);
-      el.textContent = "Expiré";
+      el.textContent = "Expirï¿½";
     }
   }, 1000);
 }
@@ -198,7 +198,7 @@ async function initPDF() {
 
   try {
     const bytes = state.bytes;
-    if (!bytes) throw new Error("Données PDF manquantes");
+    if (!bytes) throw new Error("DonnÃ©es PDF manquantes");
 
     const blob = new Blob([bytes], { type: "application/pdf" });
     const blobUrl = URL.createObjectURL(blob);
@@ -207,8 +207,7 @@ async function initPDF() {
     const obj = document.createElement("object");
     obj.data = blobUrl;
     obj.type = "application/pdf";
-    obj.style.cssText =
-      "width:100%;height:100%;border:none;display:block;";
+    obj.style.cssText = "width:100%;height:100%;border:none;display:block;";
     obj.innerHTML = `<div style="padding:40px;text-align:center;color:#aaa;">
       <p>Le PDF ne peut pas s'afficher ici.</p></div>`;
 
@@ -216,7 +215,7 @@ async function initPDF() {
   } catch (err) {
     container.innerHTML = `
       <div style="padding:40px;text-align:center;color:#ef5350;">
-        <p style="font-size:32px;">?</p>
+        <p style="font-size:32px;">âš </p>
         <p style="font-weight:700;">Erreur de lecture PDF</p>
         <p style="font-size:13px;">${err.message}</p>
       </div>`;
@@ -410,7 +409,7 @@ async function saveImage() {
   const mime = ext === "png" ? "image/png" : "image/jpeg";
   const btn = $("img-save");
   btn.disabled = true;
-  btn.textContent = "? Sauvegarde…";
+  btn.textContent = "? Sauvegardeï¿½";
 
   canvas.toBlob(
     async (blob) => {
@@ -424,8 +423,8 @@ async function saveImage() {
         const data = Array.from(new Uint8Array(ab));
         const res = await window.viewer.save(state.jobId, state.fileId, data);
         if (res.success) {
-          setStatus("Sauvegardé ?", "ok");
-          btn.textContent = "? Sauvegardé";
+          setStatus("Sauvegardï¿½ ?", "ok");
+          btn.textContent = "? Sauvegardï¿½";
         } else {
           setStatus("Erreur: " + res.error, "error");
           btn.textContent = "?? Sauvegarder";
@@ -438,7 +437,7 @@ async function saveImage() {
       }
     },
     mime,
-    0.92
+    0.92,
   );
 }
 
@@ -482,7 +481,7 @@ function loadExcelWarningThenLocal() {
 async function loadExcelLocal() {
   try {
     const bytes = state.bytes;
-    if (!bytes) throw new Error("Données Excel manquantes");
+    if (!bytes) throw new Error("Donnï¿½es Excel manquantes");
     state.xlsxWorkbook = XLSX.read(bytes, { type: "array" });
 
     const sel = $("excel-sheet-select");
@@ -504,7 +503,8 @@ async function loadExcelLocal() {
 
     $("excel-save").addEventListener("click", saveExcel);
   } catch (e) {
-    $("excel-table-wrap").innerHTML = `<p style="color:#dc2626;padding:16px">Erreur: ${e.message}</p>`;
+    $("excel-table-wrap").innerHTML =
+      `<p style="color:#dc2626;padding:16px">Erreur: ${e.message}</p>`;
   }
 }
 
@@ -564,7 +564,7 @@ function onCellEdit(e) {
 async function saveExcel() {
   const btn = $("excel-save");
   btn.disabled = true;
-  btn.textContent = "? Sauvegarde…";
+  btn.textContent = "? Sauvegardeï¿½";
   try {
     const out = XLSX.write(state.xlsxWorkbook, {
       bookType: "xlsx",
@@ -573,8 +573,8 @@ async function saveExcel() {
     const data = Array.from(new Uint8Array(out));
     const res = await window.viewer.save(state.jobId, state.fileId, data);
     if (res.success) {
-      setStatus("Sauvegardé ?", "ok");
-      btn.textContent = "? Sauvegardé";
+      setStatus("Sauvegardï¿½ ?", "ok");
+      btn.textContent = "? Sauvegardï¿½";
     } else {
       setStatus("Erreur: " + res.error, "error");
       btn.textContent = "?? Sauvegarder";
@@ -597,7 +597,7 @@ async function initWord() {
 async function loadWordLocal() {
   try {
     const bytes = state.bytes;
-    if (!bytes) throw new Error("Données Word manquantes");
+    if (!bytes) throw new Error("Donnï¿½es Word manquantes");
 
     const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
     const content = $("word-content");
@@ -608,7 +608,7 @@ async function loadWordLocal() {
     content.style.pointerEvents = "none";
 
     if (result.messages && result.messages.length > 0) {
-      setStatus("Conversion approximative (certains styles ignorés)", "");
+      setStatus("Conversion approximative (certains styles ignorï¿½s)", "");
     }
   } catch (e) {
     $("word-content").textContent = "Erreur de conversion : " + e.message;

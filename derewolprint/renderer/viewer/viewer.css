@@ -1,21 +1,44 @@
+/* ── Masquer contrôles PDF natifs Chrome (conteneur parent) ────── */
+#pdf-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#pdf-container object {
+  width: 100%;
+  height: calc(100% + 60px); /* Étendre pour cacher toolbar en bas */
+  margin-bottom: -60px; /* Décalage négatif pour masquer contrôles */
+  border: none;
+  display: block;
+}
+
 /* ── Base ───────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 :root {
-  --green:    #1e4d2b;
+  --green: #1e4d2b;
   --green-lt: #2d6a3f;
-  --danger:   #dc2626;
-  --bg:       #f4f6f4;
-  --surface:  #ffffff;
-  --border:   #d4dbd2;
-  --text:     #111510;
-  --muted:    #6b7280;
-  --hdr-h:    48px;
-  --tb-h:     44px;
+  --danger: #dc2626;
+  --bg: #f4f6f4;
+  --surface: #ffffff;
+  --border: #d4dbd2;
+  --text: #111510;
+  --muted: #6b7280;
+  --hdr-h: 48px;
+  --tb-h: 44px;
   --footer-h: 36px;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
@@ -61,17 +84,24 @@ html, body {
 }
 
 .hdr-btn--close {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.15);
   color: #fff;
 }
-.hdr-btn--close:hover { background: rgba(255,255,255,0.25); }
+.hdr-btn--close:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
 
 .hdr-btn--print {
   background: #fff;
   color: var(--green);
 }
-.hdr-btn--print:hover  { background: #e8f5ec; }
-.hdr-btn--print:disabled { opacity: 0.5; cursor: not-allowed; }
+.hdr-btn--print:hover {
+  background: #e8f5ec;
+}
+.hdr-btn--print:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ── Toolbar ─────────────────────────────────────────────────────────── */
 .viewer-toolbar {
@@ -103,16 +133,30 @@ html, body {
   transition: background 0.12s;
   color: var(--text);
 }
-.tb-btn:hover  { background: #e5e9e4; }
-.tb-btn:active { background: #d4dbd2; }
-.tb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.tb-btn:hover {
+  background: #e5e9e4;
+}
+.tb-btn:active {
+  background: #d4dbd2;
+}
+.tb-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .tb-btn--primary {
   background: var(--green);
   color: #fff;
   border-color: var(--green);
 }
-.tb-btn--primary:hover  { background: var(--green-lt); border-color: var(--green-lt); }
-.tb-btn--active { background: #d4f7de; border-color: var(--green); color: var(--green); }
+.tb-btn--primary:hover {
+  background: var(--green-lt);
+  border-color: var(--green-lt);
+}
+.tb-btn--active {
+  background: #d4f7de;
+  border-color: var(--green);
+  color: var(--green);
+}
 
 .tb-sep {
   display: inline-block;
@@ -129,7 +173,10 @@ html, body {
   text-align: center;
 }
 
-.tb-label { font-size: 12px; color: var(--muted); }
+.tb-label {
+  font-size: 12px;
+  color: var(--muted);
+}
 
 .tb-select {
   padding: 4px 8px;
@@ -193,7 +240,11 @@ html, body {
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* ── PDF ─────────────────────────────────────────────────────────────── */
 #pdf-container iframe {
@@ -290,15 +341,23 @@ html, body {
   font-size: 14px;
   line-height: 1.7;
   color: #1a1a1a;
-  pointer-events: none;   /* block all interaction */
+  pointer-events: none; /* block all interaction */
 }
-.word-content h1, .word-content h2, .word-content h3 {
+.word-content h1,
+.word-content h2,
+.word-content h3 {
   margin: 1em 0 0.4em;
   color: #111;
 }
-.word-content p { margin-bottom: 0.7em; }
-.word-content table { border-collapse: collapse; margin: 1em 0; }
-.word-content td, .word-content th {
+.word-content p {
+  margin-bottom: 0.7em;
+}
+.word-content table {
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+.word-content td,
+.word-content th {
   border: 1px solid #ccc;
   padding: 4px 8px;
 }
@@ -318,8 +377,14 @@ html, body {
   text-align: center;
   color: var(--muted);
 }
-.placeholder-icon { font-size: 56px; }
-.generic-placeholder p { font-size: 15px; color: var(--text); font-weight: 500; }
+.placeholder-icon {
+  font-size: 56px;
+}
+.generic-placeholder p {
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 500;
+}
 
 /* ── Footer ──────────────────────────────────────────────────────────── */
 #viewer-footer {
@@ -335,21 +400,27 @@ html, body {
   flex-shrink: 0;
 }
 
-.ttl-label strong { color: var(--text); }
+.ttl-label strong {
+  color: var(--text);
+}
 
 .status-msg {
   font-size: 11px;
   font-weight: 500;
   transition: color 0.3s;
 }
-.status-msg.ok    { color: #166534; }
-.status-msg.error { color: var(--danger); }
+.status-msg.ok {
+  color: #166534;
+}
+.status-msg.error {
+  color: var(--danger);
+}
 
 /* ── Excel warning overlay ───────────────────────────────────────────── */
 .excel-warning {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -363,15 +434,24 @@ html, body {
   max-width: 420px;
   width: 90%;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
 }
-.excel-warning-icon { font-size: 44px; }
-.excel-warning-box h2 { font-size: 20px; font-weight: 700; }
-.excel-warning-box p  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.excel-warning-icon {
+  font-size: 44px;
+}
+.excel-warning-box h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.excel-warning-box p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
 
 .excel-timer {
   font-size: 36px;
@@ -387,7 +467,10 @@ html, body {
   font-size: 13px;
   cursor: pointer;
 }
-.excel-checkbox-label input { cursor: pointer; accent-color: var(--green); }
+.excel-checkbox-label input {
+  cursor: pointer;
+  accent-color: var(--green);
+}
 
 .btn-proceed {
   width: 100%;
@@ -401,8 +484,15 @@ html, body {
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-proceed:hover:not(:disabled) { background: var(--green-lt); }
-.btn-proceed:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-proceed:hover:not(:disabled) {
+  background: var(--green-lt);
+}
+.btn-proceed:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* ── Utility ─────────────────────────────────────────────────────────── */
-.hidden { display: none !important; }
+.hidden {
+  display: none !important;
+}

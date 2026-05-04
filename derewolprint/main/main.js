@@ -314,15 +314,19 @@ async function convertOfficeToPdfForViewer(inputPath, outputPath) {
       `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command ` +
       `"$x = New-Object -ComObject Excel.Application; ` +
       `$x.Visible = $false; $x.DisplayAlerts = $false; ` +
-      `$wb = $x.Workbooks.Open('${normalized}'); ` +
-      `$wb.ExportAsFixedFormat(0, '${outputNormalized}'); ` +
-      `$wb.Close($false); ` +
-      `$x.Quit()"`;
+      `try { ` +
+      `  $wb = $x.Workbooks.Open('${normalized}'); ` +
+      `  foreach ($ws in $wb.Worksheets) { $ws.PageSetup.Orientation = 2 }; ` +
+      `  $wb.ExportAsFixedFormat(0, '${outputNormalized}'); ` +
+      `  $wb.Close($false); ` +
+      `} catch { Write-Error $_.Exception.Message } finally { $x.Quit() }"`;
   } else {
     throw new Error(`Format non supporté pour aperçu: ${ext}`);
   }
 
+  console.log(`[OFFICE→PDF] Conversion ${ext} → PDF...`);
   await execShell(cmd, { windowsHide: true, timeout: 30000 });
+  console.log(`[OFFICE→PDF] Conversion terminée — vérification fichier...`);
 
   if (!fs.existsSync(outputPath)) {
     throw new Error("Conversion PDF échouée — fichier non généré");
@@ -445,6 +449,7 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       parent: mainWindow,
       modal: false,
       webPreferences: {
+        plugins: false, // Désactive plugins PDF Chrome
         preload: path.join(__dirname, "../preload/viewerPreload.js"),
         nodeIntegration: false,
         contextIsolation: true,
