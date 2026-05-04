@@ -411,34 +411,12 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const OFFICE_EXTS = [".docx", ".xlsx", ".doc", ".xls"];
     const isOfficeFile = OFFICE_EXTS.includes(ext);
 
-    let viewerBytes = decrypted; // Par défaut : bytes décryptés
-    let tmpPath = null;
     let pdfTmpPath = null;
-
-    // Écrire tmp file (toujours, pour Office on en a besoin)
     const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
-    tmpPath = path.join(os.tmpdir(), tmpName);
+    const tmpPath = path.join(os.tmpdir(), tmpName);
     fs.writeFileSync(tmpPath, decrypted);
 
-    if (isOfficeFile) {
-      // Conversion Office → PDF locale
-      const pdfTmpName = tmpName.replace(ext, ".pdf");
-      pdfTmpPath = path.join(os.tmpdir(), pdfTmpName);
-
-      try {
-        await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
-        viewerBytes = fs.readFileSync(pdfTmpPath); // Remplacer par le PDF converti
-      } catch (convErr) {
-        // Cleanup en cas d'échec
-        if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
-        return {
-          success: false,
-          error: `Aperçu impossible : ${convErr.message}`,
-        };
-      }
-    }
-
-    // 4. Open viewer BrowserWindow (CHILD of mainWindow)
+    // 4. Ouvrir la fenêtre IMMÉDIATEMENT
     const win = new BrowserWindow({
       width: 1020,
       height: 760,
@@ -449,12 +427,12 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       parent: mainWindow,
       modal: false,
       webPreferences: {
-        plugins: false, // Désactive plugins PDF Chrome
+        plugins: false,
         preload: path.join(__dirname, "../preload/viewerPreload.js"),
         nodeIntegration: false,
         contextIsolation: true,
-        devTools: false, // Disable DevTools in viewer (anti-exfiltration)
-        webSecurity: false, // Required for local file access
+        devTools: false,
+        webSecurity: false,
         sandbox: false,
         webviewTag: false,
         allowRunningInsecureContent: false,
@@ -462,22 +440,17 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     });
 
     // ── Sécurité viewer ──────────────────────────────────────
-    // Bloquer TOUS les téléchargements
     win.webContents.session.on("will-download", (event) => {
       event.preventDefault();
       console.log("[VIEWER] Téléchargement bloqué");
     });
 
-    // Bloquer navigation externe
     win.webContents.on("will-navigate", (e, url) => {
       if (!url.startsWith("file://")) e.preventDefault();
     });
 
-    // Content protection en production
     if (!isDev) {
       win.setContentProtection(true);
-
-      // Block DevTools shortcuts
       win.webContents.on("before-input-event", (ev, input) => {
         const blocked = [
           input.key === "F12",
@@ -486,7 +459,6 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
         ];
         if (blocked.some(Boolean)) ev.preventDefault();
       });
-
       win.webContents.on("devtools-opened", () =>
         win.webContents.closeDevTools(),
       );
@@ -496,26 +468,8 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
     win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
 
-    // 5. Send file data when viewer signals ready
-    const viewerReadyHandler = (event) => {
-      if (event.sender !== win.webContents) return;
-
-      const viewerData = {
-        name: file.file_name,
-        displayName: file.file_name, // nom original affiché dans header
-        jobId,
-        fileId,
-        type: isOfficeFile ? "pdf" : getFileType(file.file_name),
-        bytesArray: Array.from(viewerBytes), // Toujours des bytes (PDF ou original)
-      };
-
-      event.sender.send("viewer:data", viewerData);
-      ipcMain.removeListener("viewer:ready", viewerReadyHandler);
-    };
-
-    ipcMain.on("viewer:ready", viewerReadyHandler);
-
-    // 6. TTL: auto-close after 30 minutes
+    // Track session AVANT la conversion (pour cleanup si fermeture rapide)
+    const sessionKey = viewerSessionKey(jobId, fileId);
     const ttlTimer = setTimeout(
       () => {
         if (!win.isDestroyed()) {
@@ -528,27 +482,60 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       30 * 60 * 1000,
     );
 
-    // 7. Track session
     viewerSessions.set(sessionKey, {
       win,
       tmpPath,
-      pdfTmpPath,
-      storagePath: file.storage_path, // Cached pour éviter refetch DB
+      pdfTmpPath: null,
       timer: ttlTimer,
     });
 
-    // 8. Cleanup on window close
     win.on("closed", () => {
       clearTimeout(ttlTimer);
       const s = viewerSessions.get(sessionKey);
-
-      // Secure delete des fichiers temporaires
       if (s?.tmpPath && fs.existsSync(s.tmpPath)) secureDelete(s.tmpPath);
       if (s?.pdfTmpPath && fs.existsSync(s.pdfTmpPath))
         secureDelete(s.pdfTmpPath);
-
       viewerSessions.delete(sessionKey);
     });
+
+    // 5. Envoi données quand viewer prêt — conversion en arrière-plan si Office
+    const viewerReadyHandler = async (event) => {
+      if (event.sender !== win.webContents) return;
+      ipcMain.removeListener("viewer:ready", viewerReadyHandler);
+
+      try {
+        let viewerBytes = decrypted;
+        let finalType = getFileType(file.file_name);
+
+        if (isOfficeFile) {
+          event.sender.send("viewer:converting");
+          const pdfTmpName = tmpName.replace(ext, ".pdf");
+          pdfTmpPath = path.join(os.tmpdir(), pdfTmpName);
+
+          await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
+
+          if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
+          const s = viewerSessions.get(sessionKey);
+          if (s) s.pdfTmpPath = pdfTmpPath;
+
+          viewerBytes = fs.readFileSync(pdfTmpPath);
+          finalType = "pdf";
+        }
+
+        event.sender.send("viewer:data", {
+          name: file.file_name,
+          displayName: file.file_name,
+          jobId,
+          fileId,
+          type: finalType,
+          bytesArray: Array.from(viewerBytes),
+        });
+      } catch (err) {
+        event.sender.send("viewer:error", err.message);
+      }
+    };
+
+    ipcMain.on("viewer:ready", viewerReadyHandler);
 
     return { success: true };
   } catch (err) {

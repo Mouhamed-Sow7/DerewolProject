@@ -758,14 +758,22 @@ function closeModal() {
 
 function updateSelectionBar() {
   const checked = document.querySelectorAll(".job-checkbox:checked");
+  const all = document.querySelectorAll(".job-checkbox");
   const bar = document.getElementById("selection-bar");
   const countEl = document.getElementById("selection-count");
+  const btnSelectAll = document.getElementById("btn-select-all");
+
   if (checked.length > 0) {
     bar.style.display = "flex";
     countEl.textContent =
       checked.length + " sélectionné" + (checked.length > 1 ? "s" : "");
+    btnSelectAll.textContent =
+      checked.length === all.length
+        ? "Tout désélectionner"
+        : "Tout sélectionner";
   } else {
     bar.style.display = "none";
+    btnSelectAll.textContent = "Tout sélectionner";
   }
 }
 window.updateSelectionBar = updateSelectionBar;
@@ -1441,6 +1449,9 @@ document.getElementById("btn-select-all").addEventListener("click", () => {
   const cbs = document.querySelectorAll(".job-checkbox");
   const all = [...cbs].every((cb) => cb.checked);
   cbs.forEach((cb) => (cb.checked = !all));
+  document.getElementById("btn-select-all").textContent = all
+    ? "Tout sélectionner"
+    : "Tout désélectionner";
   updateSelectionBar();
 });
 

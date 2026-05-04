@@ -19,4 +19,8 @@ contextBridge.exposeInMainWorld("viewer", {
 
   // viewer → Main: close and delete tmp (fire-and-forget)
   close: (jobId, fileId) => ipcRenderer.send("viewer:close", jobId, fileId),
+
+  // Main → viewer: conversion status and errors
+  onConverting: (cb) => ipcRenderer.on("viewer:converting", () => cb()),
+  onError: (cb) => ipcRenderer.on("viewer:error", (_e, msg) => cb(msg)),
 });

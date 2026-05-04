@@ -135,8 +135,10 @@
         <span>Chargement…</span>
       </div>
 
-      <!-- PDF: native Chromium renderer via iframe -->
-      <div id="pdf-container" class="viewer-pane hidden"></div>
+      <!-- PDF: custom PDF.js renderer -->
+      <div id="pdf-container" class="viewer-pane hidden">
+        <canvas id="pdf-canvas"></canvas>
+      </div>
 
       <!-- Image: canvas -->
       <div id="image-container" class="viewer-pane image-container hidden">
@@ -179,6 +181,10 @@
     </footer>
 
     <!-- Local libs from node_modules (relative to renderer/viewer/) -->
+    <script
+      src="../../node_modules/pdfjs-dist/build/pdf.min.mjs"
+      type="module"
+    ></script>
     <script src="../../node_modules/xlsx/dist/xlsx.full.min.js"></script>
     <script src="../../node_modules/mammoth/mammoth.browser.min.js"></script>
     <script>

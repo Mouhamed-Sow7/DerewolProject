@@ -43,6 +43,9 @@ const state = {
   // Excel
   xlsxWorkbook: null,
   xlsxActiveSheet: null,
+  pdfDoc: null,
+  pdfPage: 1,
+  pdfZoom: 1.2,
   // TTL
   ttlSeconds: 30 * 60,
   ttlInterval: null,
@@ -105,6 +108,17 @@ async function initViewerBridge() {
   try {
     await waitForViewerReady();
     window.viewer.ready();
+
+    window.viewer.onConverting(() => {
+      $("loading-state").classList.remove("hidden");
+      $("loading-state").querySelector("span").textContent =
+        "Conversion en cours…";
+    });
+
+    window.viewer.onError((msg) => {
+      $("loading-state").classList.add("hidden");
+      setStatus("Erreur : " + msg, "error");
+    });
 
     window.viewer.onData((data) => {
       const bytes = data.bytesArray ? new Uint8Array(data.bytesArray) : null;
@@ -192,34 +206,75 @@ function initActions(type) {
 // -- PDF -------------------------------------------------------------------
 async function initPDF() {
   showPane("pdf-container");
-  showToolbar(null);
-  const container = $("pdf-container");
-  container.innerHTML = "";
+  showToolbar("tb-pdf");
+  const canvas = $("pdf-canvas");
+  $("loading-state").classList.add("hidden");
 
   try {
     const bytes = state.bytes;
     if (!bytes) throw new Error("Données PDF manquantes");
 
-    const blob = new Blob([bytes], { type: "application/pdf" });
-    const blobUrl = URL.createObjectURL(blob);
-    window._currentPdfBlobUrl = blobUrl;
+    const pdfjsLib = await import("../../node_modules/pdfjs-dist/build/pdf.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+      "../../node_modules/pdfjs-dist/build/pdf.worker.mjs",
+      import.meta.url
+    ).href;
 
-    const obj = document.createElement("object");
-    obj.data = blobUrl;
-    obj.type = "application/pdf";
-    obj.style.cssText = "width:100%;height:100%;border:none;display:block;";
-    obj.innerHTML = `<div style="padding:40px;text-align:center;color:#aaa;">
-      <p>Le PDF ne peut pas s'afficher ici.</p></div>`;
+    const loadingTask = pdfjsLib.getDocument({ data: bytes });
+    const pdfDoc = await loadingTask.promise;
+    state.pdfDoc = pdfDoc;
+    state.pdfPage = 1;
+    state.pdfZoom = 1.2;
 
-    container.appendChild(obj);
+    $("pdf-page-info").textContent = `1 / ${pdfDoc.numPages}`;
+    $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
+
+    await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+
+    $("pdf-prev").onclick = async () => {
+      if (state.pdfPage <= 1) return;
+      state.pdfPage--;
+      $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+    };
+
+    $("pdf-next").onclick = async () => {
+      if (state.pdfPage >= pdfDoc.numPages) return;
+      state.pdfPage++;
+      $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+    };
+
+    $("pdf-zoom-in").onclick = async () => {
+      state.pdfZoom = Math.min(state.pdfZoom + 0.2, 3.0);
+      $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+    };
+
+    $("pdf-zoom-out").onclick = async () => {
+      state.pdfZoom = Math.max(state.pdfZoom - 0.2, 0.5);
+      $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+    };
   } catch (err) {
-    container.innerHTML = `
+    $("pdf-container").innerHTML = `
       <div style="padding:40px;text-align:center;color:#ef5350;">
         <p style="font-size:32px;">⚠</p>
-        <p style="font-weight:700;">Erreur de lecture PDF</p>
+        <p style="font-weight:700;">Erreur PDF</p>
         <p style="font-size:13px;">${err.message}</p>
       </div>`;
   }
+}
+
+async function renderPDFPage(pdfDoc, pageNum, canvas, zoom) {
+  const page = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: zoom });
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({
+    canvasContext: canvas.getContext("2d"),
+    viewport,
+  }).promise;
 }
 
 // -- Image -----------------------------------------------------------------
