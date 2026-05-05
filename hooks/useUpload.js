@@ -43,6 +43,9 @@ export default function useUpload() {
 
       const ownerId = session.display_id;
 
+      console.log('[ANON SESSION] ownerId:', ownerId);
+      console.log('[ANON SESSION] session complet:', JSON.stringify(session))
+
       // Crée UN file_group pour tous les fichiers
       const { data: group, error: groupError } = await supabase
         .from("file_groups")
@@ -55,6 +58,30 @@ export default function useUpload() {
         .single();
 
       if (groupError) throw groupError;
+
+      // Track session anonyme
+      const { data: existingSession } = await supabase
+        .from('anon_sessions')
+        .select('id')
+        .eq('owner_id', ownerId)
+        .single();
+
+      if (existingSession) {
+        await supabase.from('anon_sessions')
+          .update({ 
+            last_seen_at: new Date().toISOString(),
+            upload_count: (existingSession.upload_count || 0) + 1
+          })
+          .eq('owner_id', ownerId);
+      } else {
+        await supabase.from('anon_sessions').insert({
+          owner_id: ownerId,
+          printer_slug: session.printer_slug || null,
+          first_seen_at: new Date().toISOString(),
+          last_seen_at: new Date().toISOString(),
+          upload_count: 1
+        });
+      }
 
       // Upload chaque fichier
       for (const file of files) {
