@@ -296,8 +296,9 @@ function enableScreenshotProtection(adminCode) {
 // ── Conversion Office → PDF pour viewer ────────────────────────
 async function convertOfficeToPdfForViewer(inputPath, outputPath) {
   const ext = path.extname(inputPath).toLowerCase();
-  const normalized = inputPath.replace(/\\/g, "\\\\");
-  const outputNormalized = outputPath.replace(/\\/g, "\\\\");
+  // Utiliser des slashes simples pour PowerShell
+  const normalized = inputPath.replace(/\\/g, "/");
+  const outputNormalized = outputPath.replace(/\\/g, "/");
 
   let cmd;
   if ([".doc", ".docx"].includes(ext)) {
@@ -314,22 +315,30 @@ async function convertOfficeToPdfForViewer(inputPath, outputPath) {
       `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command ` +
       `"$x = New-Object -ComObject Excel.Application; ` +
       `$x.Visible = $false; $x.DisplayAlerts = $false; ` +
-      `try { ` +
-      `  $wb = $x.Workbooks.Open('${normalized}'); ` +
-      `  foreach ($ws in $wb.Worksheets) { $ws.PageSetup.Orientation = 2 }; ` +
-      `  $wb.ExportAsFixedFormat(0, '${outputNormalized}'); ` +
-      `  $wb.Close($false); ` +
-      `} catch { Write-Error $_.Exception.Message } finally { $x.Quit() }"`;
+      `$wb = $x.Workbooks.Open('${normalized}'); ` +
+      `foreach ($ws in $wb.Worksheets) { $ws.PageSetup.Orientation = 2 }; ` +
+      `$wb.ExportAsFixedFormat(0, '${outputNormalized}'); ` +
+      `$wb.Close($false); ` +
+      `$x.Quit()"`;
   } else {
     throw new Error(`Format non supporté pour aperçu: ${ext}`);
   }
 
   console.log(`[OFFICE→PDF] Conversion ${ext} → PDF...`);
-  await execShell(cmd, { windowsHide: true, timeout: 30000 });
-  console.log(`[OFFICE→PDF] Conversion terminée — vérification fichier...`);
+  await execShell(cmd, { windowsHide: true, timeout: 60000 });
 
+  // Vérifier que le fichier existe et n'est pas vide
   if (!fs.existsSync(outputPath)) {
     throw new Error("Conversion PDF échouée — fichier non généré");
+  }
+
+  const size = fs.statSync(outputPath).size;
+  console.log(`[OFFICE→PDF] ✅ PDF généré — taille: ${size} bytes`);
+
+  if (size < 1000) {
+    throw new Error(
+      `PDF converti trop petit (${size} bytes) — conversion échouée`,
+    );
   }
 }
 
@@ -466,9 +475,76 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
       Menu.setApplicationMenu(null);
     }
 
-    win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
+    // 1. DÉCLARER la fonction en premier
+    const viewerReadyHandler = async (event) => {
+      if (event.sender !== win.webContents) return;
+      ipcMain.removeListener("viewer:ready", viewerReadyHandler);
 
-    // Track session AVANT la conversion (pour cleanup si fermeture rapide)
+      try {
+        let viewerBytes = decrypted;
+        let finalType = getFileType(file.file_name);
+
+        if (isOfficeFile) {
+          // ✅ Vérifier que la fenêtre est encore vivante avant d'envoyer
+          if (win.isDestroyed()) return;
+          event.sender.send("viewer:converting");
+
+          const pdfTmpName = tmpName.replace(ext, ".pdf");
+          pdfTmpPath = path.join(os.tmpdir(), pdfTmpName);
+
+          await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
+
+          // ✅ Re-vérifier après l'await long
+          if (win.isDestroyed()) return;
+
+          await new Promise((r) => setTimeout(r, 3000));
+
+          // ✅ Re-vérifier encore après le délai
+          if (win.isDestroyed()) return;
+
+          try {
+            if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
+          } catch (_) {}
+
+          const s = viewerSessions.get(sessionKey);
+          if (s) s.pdfTmpPath = pdfTmpPath;
+
+          viewerBytes = fs.readFileSync(pdfTmpPath);
+          finalType = "pdf";
+        }
+
+        console.log(
+          "[VIEWER] Envoi données - type:",
+          finalType,
+          "bytes:",
+          viewerBytes.length,
+        );
+
+        // ✅ Vérification finale avant send
+        if (win.isDestroyed()) return;
+
+        event.sender.send("viewer:data", {
+          name: file.file_name,
+          displayName: file.file_name,
+          jobId,
+          fileId,
+          type: finalType,
+          bytesArray: Array.from(viewerBytes),
+        });
+      } catch (err) {
+        if (!win.isDestroyed()) {
+          event.sender.send("viewer:error", err.message);
+        }
+      }
+    };
+
+    // 2. ENREGISTRER le handler
+    ipcMain.on("viewer:ready", viewerReadyHandler);
+
+    // 3. CHARGER la page en dernier
+    win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
+    win.webContents.openDevTools();
+
     const sessionKey = viewerSessionKey(jobId, fileId);
     const ttlTimer = setTimeout(
       () => {
@@ -497,45 +573,6 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
         secureDelete(s.pdfTmpPath);
       viewerSessions.delete(sessionKey);
     });
-
-    // 5. Envoi données quand viewer prêt — conversion en arrière-plan si Office
-    const viewerReadyHandler = async (event) => {
-      if (event.sender !== win.webContents) return;
-      ipcMain.removeListener("viewer:ready", viewerReadyHandler);
-
-      try {
-        let viewerBytes = decrypted;
-        let finalType = getFileType(file.file_name);
-
-        if (isOfficeFile) {
-          event.sender.send("viewer:converting");
-          const pdfTmpName = tmpName.replace(ext, ".pdf");
-          pdfTmpPath = path.join(os.tmpdir(), pdfTmpName);
-
-          await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
-
-          if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
-          const s = viewerSessions.get(sessionKey);
-          if (s) s.pdfTmpPath = pdfTmpPath;
-
-          viewerBytes = fs.readFileSync(pdfTmpPath);
-          finalType = "pdf";
-        }
-
-        event.sender.send("viewer:data", {
-          name: file.file_name,
-          displayName: file.file_name,
-          jobId,
-          fileId,
-          type: finalType,
-          bytesArray: Array.from(viewerBytes),
-        });
-      } catch (err) {
-        event.sender.send("viewer:error", err.message);
-      }
-    };
-
-    ipcMain.on("viewer:ready", viewerReadyHandler);
 
     return { success: true };
   } catch (err) {

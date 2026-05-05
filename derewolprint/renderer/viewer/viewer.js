@@ -214,14 +214,19 @@ async function initPDF() {
     const bytes = state.bytes;
     if (!bytes) throw new Error("Données PDF manquantes");
 
-    const pdfjsLib = await import("../../node_modules/pdfjs-dist/build/pdf.mjs");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-      "../../node_modules/pdfjs-dist/build/pdf.worker.mjs",
-      import.meta.url
-    ).href;
+    // ✅ Récupération propre — pas de conflit avec variable locale
+    const lib = window.pdfjsLib;
+    if (!lib)
+      throw new Error("pdfjsLib non chargé — vérifier viewerPreload.js");
 
-    const loadingTask = pdfjsLib.getDocument({ data: bytes });
+    console.log("[PDFJS] version:", lib.version);
+
+    lib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const loadingTask = lib.getDocument({ data: bytes });
     const pdfDoc = await loadingTask.promise;
+
     state.pdfDoc = pdfDoc;
     state.pdfPage = 1;
     state.pdfZoom = 1.2;
@@ -237,26 +242,24 @@ async function initPDF() {
       $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
       await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
     };
-
     $("pdf-next").onclick = async () => {
       if (state.pdfPage >= pdfDoc.numPages) return;
       state.pdfPage++;
       $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
       await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
     };
-
     $("pdf-zoom-in").onclick = async () => {
       state.pdfZoom = Math.min(state.pdfZoom + 0.2, 3.0);
       $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
       await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
     };
-
     $("pdf-zoom-out").onclick = async () => {
       state.pdfZoom = Math.max(state.pdfZoom - 0.2, 0.5);
       $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
       await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
     };
   } catch (err) {
+    console.error("[PDF ERROR]", err);
     $("pdf-container").innerHTML = `
       <div style="padding:40px;text-align:center;color:#ef5350;">
         <p style="font-size:32px;">⚠</p>
@@ -267,14 +270,30 @@ async function initPDF() {
 }
 
 async function renderPDFPage(pdfDoc, pageNum, canvas, zoom) {
+  console.log("[PDF RENDER] Starting render for page", pageNum, "zoom", zoom);
   const page = await pdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: zoom });
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-  await page.render({
-    canvasContext: canvas.getContext("2d"),
-    viewport,
-  }).promise;
+
+  console.log(
+    "[PDF RENDER] Canvas dimensions set to:",
+    canvas.width,
+    "x",
+    canvas.height,
+  );
+  console.log("[PDF RENDER] Canvas style:", getComputedStyle(canvas));
+  console.log(
+    "[PDF RENDER] Canvas parent style:",
+    getComputedStyle(canvas.parentElement),
+  );
+
+  const ctx = canvas.getContext("2d");
+  console.log("[PDF RENDER] Canvas context:", ctx);
+
+  const renderTask = page.render({ canvasContext: ctx, viewport });
+  await renderTask.promise;
+  console.log("[PDF RENDER] Render task completed");
 }
 
 // -- Image -----------------------------------------------------------------
