@@ -56,7 +56,11 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.invoke("file:check-download-approval", id),
   downloadApprovedFile: (data) =>
     ipcRenderer.invoke("file:download-approved", data),
-
+  manualUpload: (payload) => ipcRenderer.invoke("file:manual-upload", payload),
+  onUploadSuccess: (cb) =>
+    ipcRenderer.on("file:upload-success", (_, d) => cb(d)),
+  onUploadFallback: (cb) =>
+    ipcRenderer.on("file:upload-fallback", (_, d) => cb(d)),
   // ── Viewer sécurisé ────────────────────────────────────────
   viewerOpen: (jobId, fileId) =>
     ipcRenderer.invoke("viewer:open", jobId, fileId),

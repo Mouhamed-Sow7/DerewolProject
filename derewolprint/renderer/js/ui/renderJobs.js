@@ -10,6 +10,56 @@ function setFileCopies(jobId, fileId, val) {
   copiesPerFile[`${jobId}_${fileId}`] = val;
 }
 
+let uploadListenersInitialized = false;
+
+function showUploadToast(message, type = "info") {
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  toast.style.position = "fixed";
+  toast.style.bottom = "18px";
+  toast.style.right = "18px";
+  toast.style.zIndex = "9999";
+  toast.style.padding = "12px 16px";
+  toast.style.borderRadius = "10px";
+  toast.style.boxShadow = "0 4px 18px rgba(0,0,0,0.16)";
+  toast.style.color = "#ffffff";
+  toast.style.fontSize = "13px";
+  toast.style.maxWidth = "320px";
+  toast.style.whiteSpace = "normal";
+  toast.style.lineHeight = "1.4";
+  toast.style.background =
+    type === "success" ? "#16a34a" : type === "error" ? "#dc2626" : "#334155";
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, 4200);
+}
+
+function initUploadListeners() {
+  if (uploadListenersInitialized || !window.derewol) return;
+  uploadListenersInitialized = true;
+
+  window.derewol.onUploadSuccess(({ fileId }) => {
+    showUploadToast("✅ Fichier mis à jour automatiquement", "success");
+    const btn = document.querySelector(
+      `.btn-upload-fallback[data-file-id="${fileId}"]`,
+    );
+    if (btn) btn.style.display = "none";
+  });
+
+  window.derewol.onUploadFallback(({ fileId, error }) => {
+    showUploadToast(
+      "❌ Upload automatique échoué — mise à jour manuelle requise",
+      "error",
+    );
+    const btn = document.querySelector(
+      `.btn-upload-fallback[data-file-id="${fileId}"]`,
+    );
+    if (btn) btn.style.display = "inline-flex";
+  });
+}
+
 function formatClientId(id) {
   if (!id) return "Client";
   if (id.startsWith("DW-anon-")) return id.toUpperCase();
@@ -166,6 +216,17 @@ export default function renderJobs(
                 font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:4px;">
               <i class="fa-solid fa-download" style="font-size:10px"></i> Télécharger
             </button>
+            <button class="btn-upload-fallback"
+              data-file-id="${item.fileId}"
+              data-group-id="${item.fileGroupId}"
+              data-storage-path="${item.storagePath || ""}"
+              title="Téléversement manuel"
+              style="display:none;background:transparent;border:1px solid var(--border);
+                border-radius:6px;padding:4px 10px;cursor:pointer;
+                color:var(--text-muted);font-size:11px;white-space:nowrap;
+                font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:4px;">
+              <i class="fa-solid fa-cloud-arrow-up" style="font-size:10px"></i> Re-upload
+            </button>
 
             <button class="btn-reject-file"
               data-job-id="${item.jobId}"
@@ -237,6 +298,8 @@ export default function renderJobs(
     });
   });
 
+  initUploadListeners();
+
   // ── Demande téléchargement ────────────────────────────────
   document.querySelectorAll(".btn-req-download").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -300,6 +363,33 @@ export default function renderJobs(
           }, 3000);
         }
       }, 3000);
+    });
+  });
+
+  document.querySelectorAll(".btn-upload-fallback").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const { fileId, groupId, storagePath } = btn.dataset;
+      const origHTML = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Upload…';
+
+      const res = await window.derewol.manualUpload({
+        fileId,
+        storagePath,
+        groupId,
+      });
+
+      if (res.success) {
+        showUploadToast("✅ Fichier mis à jour manuellement", "success");
+        btn.style.display = "none";
+      } else if (res.cancelled) {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+      } else {
+        showUploadToast(`❌ Erreur : ${res.error}`, "error");
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+      }
     });
   });
 

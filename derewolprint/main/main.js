@@ -95,6 +95,7 @@ function cleanDerewolFilesDir() {
     for (const f of files) {
       const fp = path.join(dir, f);
       try {
+        stopFileWatcher(fp);
         fs.unlinkSync(fp);
         count++;
       } catch (e) {
@@ -166,8 +167,133 @@ const processingJobs = new Set();
 // ── Viewer sessions ─────────────────────────────────────────────
 // key = "${jobId}_${fileId}", value = { win, tmpPath, timer }
 const viewerSessions = new Map();
+// ── File watchers for automatic re-upload ───────────────────────
+// key = filePath, value = { watcher, debounceTimer, fileId, storagePath, groupId }
+const fileWatchers = new Map();
 let subscriptionTimer = null;
 let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
+
+function stopFileWatcher(filePath) {
+  const entry = fileWatchers.get(filePath);
+  if (!entry) return;
+
+  if (entry.debounceTimer) {
+    clearTimeout(entry.debounceTimer);
+  }
+  try {
+    entry.watcher.close();
+  } catch (_) {}
+  fileWatchers.delete(filePath);
+  console.log(`[WATCHER] Stopped for ${filePath}`);
+}
+
+function startFileWatcher(filePath, fileId, storagePath, groupId, mainWindow) {
+  if (fileWatchers.has(filePath)) {
+    stopFileWatcher(filePath);
+  }
+
+  const watcher = fs.watch(filePath, { persistent: false }, (eventType) => {
+    if (eventType !== "change") return;
+
+    const existing = fileWatchers.get(filePath);
+    if (!existing) return;
+
+    if (existing.debounceTimer) {
+      clearTimeout(existing.debounceTimer);
+    }
+
+    existing.debounceTimer = setTimeout(() => {
+      autoUpload(filePath, fileId, storagePath, groupId, mainWindow).catch(
+        (err) => {
+          console.error("[WATCHER] autoUpload error:", err.message);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("file:upload-fallback", {
+              fileId,
+              error: err.message,
+            });
+          }
+        },
+      );
+    }, 2000);
+  });
+
+  watcher.on("error", (err) => {
+    stopFileWatcher(filePath);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("file:upload-fallback", {
+        fileId,
+        error: err.message,
+      });
+    }
+  });
+
+  fileWatchers.set(filePath, {
+    watcher,
+    debounceTimer: null,
+    fileId,
+    storagePath,
+    groupId,
+  });
+}
+
+async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const { encrypted, key } = encryptFile(buffer);
+
+    const { error: uploadError } = await supabase.storage
+      .from("derewol-files")
+      .update(storagePath, encrypted, {
+        upsert: true,
+        contentType: "application/octet-stream",
+      });
+
+    if (uploadError) {
+      console.error("[WATCHER] Upload failed:", uploadError.message);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("file:upload-fallback", {
+          fileId,
+          error: uploadError.message,
+        });
+      }
+      return;
+    }
+
+    await supabase
+      .from("files")
+      .update({
+        encrypted_key: key,
+        modified_at: new Date().toISOString(),
+      })
+      .eq("id", fileId);
+
+    try {
+      await supabase.from("notifications").insert({
+        type: "file_updated",
+        file_id: fileId,
+        group_id: groupId,
+        message: "Votre fichier a été mis à jour par l'imprimeur",
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+    } catch (notifyErr) {
+      console.warn("[WATCHER] Notification insert failed:", notifyErr.message);
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("file:upload-success", { fileId });
+    }
+    console.log(`[WATCHER] ✅ Auto-upload success for ${fileId}`);
+  } catch (err) {
+    console.error("[WATCHER] Auto-upload error:", err.message);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("file:upload-fallback", {
+        fileId,
+        error: err.message,
+      });
+    }
+  }
+}
 
 // ── Spooler cleanup ─────────────────────────────────────────────
 async function cleanSpooler() {
@@ -1727,7 +1853,7 @@ ipcMain.handle(
 
       const { data: fileRow } = await supabase
         .from("files")
-        .select("storage_path, encrypted_key")
+        .select("storage_path, encrypted_key, group_id")
         .eq("id", fileId)
         .single();
 
@@ -1777,12 +1903,20 @@ ipcMain.handle(
 
       console.log(`[DOWNLOAD] ✅ Fichier téléchargé: ${savePath}`);
       shell.openPath(savePath);
+      startFileWatcher(
+        savePath,
+        fileId,
+        fileRow.storage_path,
+        fileRow.group_id,
+        mainWindow,
+      );
 
       // Suppression automatique après 30 minutes
       setTimeout(() => {
         try {
           if (fs.existsSync(savePath)) {
-            fs.unlinkSync(savePath);
+            stopFileWatcher(savePath);
+            secureDelete(savePath);
             console.log(`[DEREWOL FILES] Supprimé après 30min: ${safeName}`);
           }
         } catch (e) {
@@ -1801,7 +1935,79 @@ ipcMain.handle(
   },
 );
 
-// ── RECOVERY ──────────────────────────────────────────────
+// ── Manuel upload fallback après échec automatique ───────────
+ipcMain.handle(
+  "file:manual-upload",
+  async (_, { fileId, storagePath, groupId }) => {
+    try {
+      const { dialog } = require("electron");
+      const selected = dialog.showOpenDialogSync({
+        properties: ["openFile"],
+      });
+
+      if (!selected || selected.length === 0) {
+        return { success: false, cancelled: true };
+      }
+
+      const localPath = selected[0];
+      const fileBuffer = fs.readFileSync(localPath);
+      const { encrypted, key } = encryptFile(fileBuffer);
+
+      let targetStoragePath = storagePath;
+      if (!targetStoragePath) {
+        const { data: fileRow } = await supabase
+          .from("files")
+          .select("storage_path, group_id")
+          .eq("id", fileId)
+          .single();
+        if (!fileRow) return { success: false, error: "Fichier introuvable" };
+        targetStoragePath = fileRow.storage_path;
+        if (!groupId) groupId = fileRow.group_id;
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("derewol-files")
+        .update(targetStoragePath, encrypted, {
+          upsert: true,
+          contentType: "application/octet-stream",
+        });
+
+      if (uploadError) {
+        return { success: false, error: uploadError.message };
+      }
+
+      await supabase
+        .from("files")
+        .update({
+          encrypted_key: key,
+          modified_at: new Date().toISOString(),
+        })
+        .eq("id", fileId);
+
+      try {
+        await supabase.from("notifications").insert({
+          type: "file_updated",
+          file_id: fileId,
+          group_id: groupId,
+          message: "Votre fichier a été mis à jour par l'imprimeur",
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+      } catch (notifyErr) {
+        console.warn(
+          "[MANUAL UPLOAD] Notification insert failed:",
+          notifyErr.message,
+        );
+      }
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+);
+
+// ── RECOVERY ────────────────────────────────────────────────
 ipcMain.handle("recovery:request", async (_, emailOrPhone) => {
   try {
     const result = await requestRecovery(emailOrPhone);
