@@ -267,6 +267,11 @@ async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
       })
       .eq("id", fileId);
 
+    await supabase
+      .from("file_groups")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", groupId);
+
     try {
       await supabase.from("notifications").insert({
         type: "file_updated",

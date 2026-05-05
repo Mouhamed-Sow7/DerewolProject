@@ -119,9 +119,10 @@ function extractSlug() {
   return parts[1] || null;
 }
 
-function usePrintStatus(ownerId) {
+function usePrintStatus(ownerId, showToast) {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
+  const lastModifiedRef = useRef(new Map());
 
   useEffect(() => {
     if (!ownerId) {
@@ -137,6 +138,35 @@ function usePrintStatus(ownerId) {
       try {
         const data = await fetchGroupsByOwner(ownerId);
         if (!cancelled) {
+          // Check for recent modifications and show toasts
+          if (showToast && data) {
+            data.forEach((group) => {
+              if (group.files) {
+                group.files.forEach((file) => {
+                  if (file.modified_at) {
+                    const lastSeen = lastModifiedRef.current.get(file.id);
+                    const modifiedAt = new Date(file.modified_at);
+                    const now = new Date();
+                    const timeDiff = now - modifiedAt;
+
+                    // If this is a new file or modified within last 10 seconds
+                    if (
+                      !lastSeen ||
+                      (lastSeen.getTime() !== modifiedAt.getTime() &&
+                        timeDiff < 10000)
+                    ) {
+                      showToast(
+                        `Fichier mis à jour: ${file.file_name}`,
+                        "info",
+                      );
+                      lastModifiedRef.current.set(file.id, modifiedAt);
+                    }
+                  }
+                });
+              }
+            });
+          }
+
           setGroups(data || []);
           setLoading(false);
         }
@@ -153,7 +183,7 @@ function usePrintStatus(ownerId) {
       cancelled = true;
       clearInterval(iv);
     };
-  }, [ownerId]);
+  }, [ownerId, showToast]);
 
   return { groups, loading };
 }
@@ -1054,7 +1084,7 @@ export default function PrinterSPA({ showToast }) {
   const uploadingRef = useRef(false);
   const t = useTranslation(lang);
   const ownerId = session?.owner_id || null;
-  const { groups, loading: groupsLoading } = usePrintStatus(ownerId);
+  const { groups, loading: groupsLoading } = usePrintStatus(ownerId, showToast);
   const { pending: dlRequests, setPending: setDlRequests } =
     useDownloadRequests(session?.owner_id);
   const notifiedExpiredRef = useRef(new Set());
