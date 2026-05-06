@@ -87,7 +87,30 @@ function getDerewolFilesDir() {
   return dir;
 }
 
-function cleanDerewolFilesDir() {
+async function forceDeleteWhenReleased(
+  filePath,
+  maxRetries = 24,
+  intervalMs = 5000,
+) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      fs.writeFileSync(filePath, Buffer.alloc(fs.statSync(filePath).size)); // overwrite with zeros
+      fs.unlinkSync(filePath);
+      console.log("[SECURE DELETE] ✅ Deleted:", filePath);
+      return true;
+    } catch (err) {
+      console.log(
+        `[SECURE DELETE] Retry ${i + 1}/${maxRetries} — file locked:`,
+        path.basename(filePath),
+      );
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+  console.error("[SECURE DELETE] ❌ FAILED after max retries:", filePath);
+  return false;
+}
+
+async function cleanDerewolFilesDir() {
   try {
     const dir = getDerewolFilesDir();
     const files = fs.readdirSync(dir);
@@ -96,14 +119,32 @@ function cleanDerewolFilesDir() {
       const fp = path.join(dir, f);
       try {
         stopFileWatcher(fp);
-        fs.unlinkSync(fp);
-        count++;
+
+        // Delete Excel lock file if it exists
+        const lockFile = path.join(path.dirname(fp), "~$" + path.basename(fp));
+        if (fs.existsSync(lockFile)) {
+          try {
+            fs.unlinkSync(lockFile);
+            console.log("[SECURE DELETE] Deleted Excel lock file:", lockFile);
+          } catch (lockErr) {
+            console.warn(
+              "[SECURE DELETE] Could not delete lock file:",
+              lockFile,
+            );
+          }
+        }
+
+        // Use secure deletion with retries
+        const deleted = await forceDeleteWhenReleased(fp);
+        if (deleted) count++;
       } catch (e) {
         console.warn("[DEREWOL FILES] Impossible de supprimer:", fp);
       }
     }
     if (count > 0)
-      console.log(`[DEREWOL FILES] ${count} fichier(s) supprimé(s)`);
+      console.log(
+        `[DEREWOL FILES] ${count} fichier(s) supprimé(s) de manière sécurisée`,
+      );
   } catch (e) {
     console.warn("[DEREWOL FILES] Erreur nettoyage:", e.message);
   }
@@ -2289,8 +2330,8 @@ function launchApp(isFreshRegistration = false) {
     viewerSessions.clear();
   });
 
-  app.on("before-quit", () => {
-    cleanDerewolFilesDir();
+  app.on("before-quit", async () => {
+    await cleanDerewolFilesDir();
   });
 
   // ── Abonnement : check + push renderer + LIVE expiration detection ───────────
@@ -2364,7 +2405,7 @@ app.whenReady().then(async () => {
   screenshotProtectionEnabled = !isDev;
   log("APP_START", { version: "1.0.0" });
   cleanTmpFiles();
-  cleanDerewolFilesDir(); // Nettoyage fichiers téléchargés résiduels
+  await cleanDerewolFilesDir(); // Nettoyage fichiers téléchargés résiduels
   await testConnection();
 
   printerCfg = loadConfig();
@@ -2414,9 +2455,9 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("window-all-closed", () => {
+app.on("window-all-closed", async () => {
   stopPolling();
-  cleanDerewolFilesDir(); // Nettoyage dossiers téléchargés à la fermeture
+  await cleanDerewolFilesDir(); // Nettoyage dossiers téléchargés à la fermeture
   if (subscriptionTimer) {
     clearInterval(subscriptionTimer);
     subscriptionTimer = null;
