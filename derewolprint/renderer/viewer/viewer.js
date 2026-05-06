@@ -229,7 +229,14 @@ async function initPDF() {
 
     state.pdfDoc = pdfDoc;
     state.pdfPage = 1;
-    state.pdfZoom = 1.2;
+
+    // ✅ Zoom auto-fit à la largeur du conteneur
+    const firstPage = await pdfDoc.getPage(1);
+    const rawViewport = firstPage.getViewport({ scale: 1.0 });
+    const container = canvas.parentElement;
+    const containerWidth = container.clientWidth || window.innerWidth - 40;
+    state.pdfZoom = Math.min((containerWidth - 32) / rawViewport.width, 2.5);
+    state.pdfZoom = Math.max(state.pdfZoom, 0.5);
 
     $("pdf-page-info").textContent = `1 / ${pdfDoc.numPages}`;
     $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";

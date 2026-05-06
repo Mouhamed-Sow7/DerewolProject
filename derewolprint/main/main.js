@@ -686,11 +686,6 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
           // ✅ Re-vérifier après l'await long
           if (win.isDestroyed()) return;
 
-          await new Promise((r) => setTimeout(r, 3000));
-
-          // ✅ Re-vérifier encore après le délai
-          if (win.isDestroyed()) return;
-
           try {
             if (fs.existsSync(tmpPath)) secureDelete(tmpPath);
           } catch (_) {}
