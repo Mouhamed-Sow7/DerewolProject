@@ -465,7 +465,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       ? "partial"
       : allFiles.length > 0 && allRejected
         ? "rejected"
-        : group.remainingCount === 0
+        : group.remainingCount === 0 || group.status === "completed"
           ? "completed"
           : haRejectedFile && !allRejected
             ? "partial"
@@ -755,7 +755,7 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
           remainingFiles.length === 0 &&
           !allRejected && (
             <p style={{ color: "#166534", fontSize: 13, fontWeight: 500 }}>
-              <i className="fa-solid fa-check" /> {t("completedMsg")}
+              <i className="fa-solid fa-check" /> Terminé — fichiers supprimés
             </p>
           )}
         {uiStatus === "rejected" && allRejected && (

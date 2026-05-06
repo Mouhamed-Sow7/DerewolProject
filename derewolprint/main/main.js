@@ -505,7 +505,7 @@ async function convertOfficeToPdfForViewer(inputPath, outputPath) {
       `"$x = New-Object -ComObject Excel.Application; ` +
       `$x.Visible = $false; $x.DisplayAlerts = $false; ` +
       `$wb = $x.Workbooks.Open('${normalized}'); ` +
-      `foreach ($ws in $wb.Worksheets) { $ws.PageSetup.Orientation = 2 }; ` +
+      `foreach ($ws in $wb.Worksheets) { $ws.PageSetup.Orientation = 2; $ws.PageSetup.Zoom = $false; $ws.PageSetup.FitToPagesWide = 1; $ws.PageSetup.FitToPagesTall = 0 }; ` +
       `$wb.ExportAsFixedFormat(0, '${outputNormalized}'); ` +
       `$wb.Close($false); ` +
       `$x.Quit()"`;
