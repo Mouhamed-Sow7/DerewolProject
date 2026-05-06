@@ -95,8 +95,6 @@ function getStatusConfig(status) {
   );
 }
 
-export { getFileCopies };
-
 export default function renderJobs(
   groups,
   { onPrint, onReject, onRejectFile } = {},
@@ -197,6 +195,7 @@ export default function renderJobs(
               data-file-id="${item.fileId}"
               data-file-name="${item.fileName}"
               data-file-ext="${item.fileName.split(".").pop().toLowerCase()}"
+              data-num-pages="${item.numPages || item.total_pages || ""}"
               title="Options d'impression"
               style="background:transparent;border:1px solid var(--border);
                 border-radius:6px;padding:4px 10px;cursor:pointer;
@@ -422,13 +421,13 @@ export default function renderJobs(
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".btn-print-options");
     if (btn) {
-      const { jobId, fileId, fileName, fileExt } = btn.dataset;
-      openPrintOptionsModal(jobId, fileId, fileName, fileExt);
+      const { jobId, fileId, fileName, fileExt, numPages } = btn.dataset;
+      const numPagesFinal =
+        fileExt === "pdf"
+          ? window._currentPdfNumPages || parseInt(numPages) || null
+          : parseInt(numPages) || null;
+      openPrintOptionsModal(jobId, fileId, fileName, fileExt, numPagesFinal);
     }
-  });
-
-  document.querySelectorAll(".job-checkbox").forEach((cb) => {
-    cb.addEventListener("change", window.updateSelectionBar);
   });
 }
 
@@ -436,7 +435,7 @@ export default function renderJobs(
 let jobStore_getGroup = () => null;
 
 // ── MODAL OPTIONS D'IMPRESSION ────────────────────────────────────────
-function openPrintOptionsModal(jobId, fileId, fileName, ext) {
+function openPrintOptionsModal(jobId, fileId, fileName, ext, numPages = null) {
   const existing = document.getElementById("print-options-modal");
   if (existing) existing.remove();
 
@@ -546,6 +545,7 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext) {
               style="width:60px;padding:6px;border:0.5px solid #ddd;border-radius:6px;
                 font-size:13px;text-align:center;font-family:'Inter',sans-serif;">
           </div>
+          <span id="opt-page-count" style="font-size:11px;color:#888;"></span>
         </div>
 
         <div>
@@ -629,16 +629,100 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext) {
     .querySelector("#opt-btn-confirm")
     ?.addEventListener("click", () => confirmPrintOptions(jobId, fileId));
 
+  // Restaurer les options sauvegardées si elles existent
+  const optKey = `${jobId}_${fileId}`;
+  const savedOpts = window._filesPrintOptions?.[optKey];
+
   window._printOptions = {
     jobId,
     fileId,
-    orientation: defaultOri,
-    fit: "fit",
-    pages: "all",
-    pageFrom: 1,
-    pageTo: 999,
-    duplex: "recto",
+    orientation: savedOpts?.orientation || defaultOri,
+    fit: savedOpts?.fit || "fit",
+    pages: savedOpts?.pages || "all",
+    pageFrom: savedOpts?.pageFrom || 1,
+    pageTo: savedOpts?.pageTo || 999,
+    duplex: savedOpts?.duplex || "recto",
   };
+
+  // Limiter le champ "à" au nombre de pages réel
+  const pageToInput = document.getElementById("opt-page-to");
+  if (pageToInput && numPages) {
+    pageToInput.max = numPages;
+    pageToInput.value = Math.min(
+      parseInt(pageToInput.value) || numPages,
+      numPages,
+    );
+    // Afficher info pages
+    const pageInfo = document.getElementById("opt-page-count");
+    if (pageInfo) pageInfo.textContent = `sur ${numPages} pages`;
+  }
+
+  // Synchroniser l'UI avec les options restaurées
+  const updateUIFromOptions = () => {
+    const opts = window._printOptions;
+
+    // Orientation
+    ["portrait", "landscape"].forEach((k) => {
+      const b = document.getElementById("opt-" + k);
+      if (b) {
+        b.style.border =
+          k === opts.orientation ? "2px solid #1B5E35" : "0.5px solid #ddd";
+        b.style.background = k === opts.orientation ? "#E8F5E9" : "#fff";
+        b.style.color = k === opts.orientation ? "#1B5E35" : "#555";
+        b.style.fontWeight = k === opts.orientation ? "600" : "400";
+      }
+    });
+
+    // Ajustement (fit)
+    ["fit", "actual"].forEach((k) => {
+      const b = document.getElementById("opt-" + k);
+      if (b) {
+        b.style.border =
+          k === opts.fit ? "2px solid #1B5E35" : "0.5px solid #ddd";
+        b.style.background = k === opts.fit ? "#E8F5E9" : "#fff";
+        b.style.color = k === opts.fit ? "#1B5E35" : "#555";
+        b.style.fontWeight = k === opts.fit ? "600" : "400";
+      }
+    });
+
+    // Pages
+    const rangeInput = document.getElementById("opt-range-inputs");
+    const isRange = opts.pages === "range";
+    if (rangeInput) rangeInput.style.display = isRange ? "flex" : "none";
+
+    ["all", "range"].forEach((k) => {
+      const b = document.getElementById("opt-pages-" + k);
+      if (b) {
+        b.style.border =
+          k === opts.pages ? "2px solid #1B5E35" : "0.5px solid #ddd";
+        b.style.background = k === opts.pages ? "#E8F5E9" : "#fff";
+        b.style.color = k === opts.pages ? "#1B5E35" : "#555";
+        b.style.fontWeight = k === opts.pages ? "600" : "400";
+      }
+    });
+
+    // Pages from/to
+    const pageFrom = document.getElementById("opt-page-from");
+    const pageTo = document.getElementById("opt-page-to");
+    if (pageFrom) pageFrom.value = opts.pageFrom || 1;
+    if (pageTo) pageTo.value = opts.pageTo || 999;
+
+    // Duplex
+    ["recto", "duplex"].forEach((k) => {
+      const b = document.getElementById("opt-" + k);
+      const isSelected =
+        (k === "recto" && opts.duplex === "recto") ||
+        (k === "duplex" && opts.duplex === "duplex");
+      if (b) {
+        b.style.border = isSelected ? "2px solid #1B5E35" : "0.5px solid #ddd";
+        b.style.background = isSelected ? "#E8F5E9" : "#fff";
+        b.style.color = isSelected ? "#1B5E35" : "#555";
+        b.style.fontWeight = isSelected ? "600" : "400";
+      }
+    });
+  };
+
+  updateUIFromOptions();
 }
 
 function setOptOri(val) {
@@ -738,6 +822,8 @@ function confirmPrintOptions(jobId, fileId) {
   closePrintOptionsModal();
 }
 
-export function setStoreRef(fn) {
+function setStoreRef(fn) {
   jobStore_getGroup = fn;
 }
+
+export { setStoreRef, getFileCopies };

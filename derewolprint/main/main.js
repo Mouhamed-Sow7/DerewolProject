@@ -542,6 +542,10 @@ ipcMain.handle("security:screenshot-status", () => ({
   enabled: screenshotProtectionEnabled,
 }));
 
+ipcMain.handle("print:set-options", (_event, opts) => {
+  global._filesPrintOptions = opts;
+});
+
 // ── Viewer : helpers ────────────────────────────────────────────
 function getFileType(fileName) {
   const ext = path.extname(fileName).toLowerCase();
@@ -1211,6 +1215,16 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
   console.log(`[PRINT] ${file.file_name} — ${copies} copies → ${printerName}`);
 
+  // Lire les options d'impression stockées par le modal
+  const optKey = `${jobId}_${data.file_id}`;
+  const printOpts = global._filesPrintOptions?.[optKey] || {};
+  const orientation = printOpts.orientation || null;   // "portrait" | "landscape" | null
+  const duplex     = printOpts.duplex || false;
+  const pageRange  = printOpts.pages === "range"
+    ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 999 }
+    : null;
+  console.log(`[PRINT] Options:`, { orientation, duplex, pageRange });
+
   const { data: fileData, error: dlError } = await supabase.storage
     .from("derewol-files")
     .download(file.storage_path);
@@ -1228,7 +1242,7 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   fs.writeFileSync(tmpPath, decryptedBuffer);
 
   // 🔥 Helper pour imprimer fichiers multi-formats
-  async function printFile(filePath, printerName) {
+  async function printFile(filePath, printerName, printOpts = {}) {
     const ext = path.extname(filePath).toLowerCase();
 
     // 🔥 Gestion spéciale pour imprimante virtuelle Mp-Pdf
@@ -1242,8 +1256,26 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       const outputPdfPath = path.join(mpPdfFolder, `${fileName}.pdf`);
 
       if (ext === ".pdf") {
-        // Copier directement le PDF
-        fs.copyFileSync(filePath, outputPdfPath);
+        const pageRange = printOpts.pages === "range"
+          ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 9999 }
+          : null;
+        if (pageRange) {
+          // Extraire les pages via PowerShell + Word (méthode compatible sans dépendance)
+          const normalized = filePath.replace(/\\/g, "\\\\");
+          const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
+          const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command `+
+            `"Add-Type -AssemblyName System.Drawing; `+
+            `$pdf = New-Object -ComObject AcroPDF.PDF; `+
+            `if (-not $pdf) { Copy-Item '${normalized}' '${outputNormalized}' } "`;
+          // Fallback simple : utiliser pdf-to-printer avec pages
+          await pdfToPrinter.print(filePath, {
+            printer: "Microsoft Print to PDF",
+            pages: `${pageRange.from}-${pageRange.to}`,
+            outputFileName: outputPdfPath,
+          });
+        } else {
+          fs.copyFileSync(filePath, outputPdfPath);
+        }
         console.log(`[PRINT] PDF copié dans Mp-Pdf: ${outputPdfPath}`);
       } else if ([".doc", ".docx"].includes(ext)) {
         // Convertir Word en PDF silencieusement
@@ -1272,28 +1304,43 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
     if (ext === ".pdf") {
       // PDF: utiliser pdf-to-printer
-      await pdfToPrinter.print(filePath, { printer: printerName });
+      const pageRange = printOpts.pages === "range"
+        ? `${printOpts.pageFrom || 1}-${printOpts.pageTo || 9999}`
+        : undefined;
+      await pdfToPrinter.print(filePath, { 
+        printer: printerName,
+        ...(pageRange && { pages: pageRange })
+      });
     } else if (
       [".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".rtf"].includes(ext)
     ) {
       // Office: impression silencieuse sans fenêtre
-      await printOfficeFile(filePath, printerName);
+      await printOfficeFile(filePath, printerName, printOpts);
     } else {
       throw new Error(`Format non supporté: ${ext}`);
     }
   }
 
   // Fonction d'impression Office silencieuse
-  async function printOfficeFile(filePath, printerName) {
+  async function printOfficeFile(filePath, printerName, printOpts = {}) {
     const ext = path.extname(filePath).toLowerCase();
     const normalized = filePath.replace(/\//g, "\\");
     const fileEscaped = normalized.replace(/'/g, "''");
     const tmpPdf = filePath.replace(/\.[^.]+$/, "_print_tmp.pdf");
     const tmpPdfNorm = tmpPdf.replace(/\//g, "\\").replace(/'/g, "''");
 
-    // Étape 1 : convertir en PDF via Word/Excel COM
+    // Options d'impression
+    const orientation = printOpts.orientation === "portrait" ? 1 : 2; // 1=portrait, 2=landscape
+    const duplex = printOpts.duplex || false;
+    const pageRange = printOpts.pages === "range"
+      ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 999 }
+      : null;
+
+    console.log(`[PRINT] Options appliquées:`, { orientation, duplex, pageRange });
+
     let convertCmd;
     if ([".doc", ".docx"].includes(ext)) {
+      const wordOrientation = printOpts.orientation === "landscape" ? 1 : 0;
       convertCmd =
         "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command " +
         '"$w = New-Object -ComObject Word.Application; ' +
@@ -1301,12 +1348,14 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         "$d = $w.Documents.Open('" +
         fileEscaped +
         "'); " +
-        "$d.ExportAsFixedFormat('" +
-        tmpPdfNorm +
-        "', 17); " +
+        `$d.PageSetup.Orientation = ${wordOrientation}; ` +
+        (pageRange
+          ? `$d.ExportAsFixedFormat('${tmpPdfNorm}', 17, $false, $false, 0, '', '', $false, $false, 1, $false, ${pageRange.from}, ${pageRange.to}); `
+          : `$d.ExportAsFixedFormat('${tmpPdfNorm}', 17); `) +
         "$d.Close([ref]$false); " +
         '$w.Quit()"';
     } else if ([".xls", ".xlsx"].includes(ext)) {
+      const excelOrientation = orientation; // 1=portrait, 2=landscape
       convertCmd =
         "powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command " +
         '"$x = New-Object -ComObject Excel.Application; ' +
@@ -1318,7 +1367,8 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         "  $sheet.PageSetup.Zoom = $false; " +
         "  $sheet.PageSetup.FitToPagesWide = 1; " +
         "  $sheet.PageSetup.FitToPagesTall = $false; " +
-        "  $sheet.PageSetup.Orientation = 2; " +
+        `  $sheet.PageSetup.Orientation = ${excelOrientation}; ` +
+        (duplex ? "  $sheet.PageSetup.OddAndEvenPagesHeaderFooter = $true; " : "") +
         "} " +
         "$wb.ExportAsFixedFormat(0, '" +
         tmpPdfNorm +
@@ -1331,16 +1381,18 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
     await execShell(convertCmd, { windowsHide: true, timeout: 60000 });
 
-    // Vérifier que le PDF a été créé
     if (!fs.existsSync(tmpPdf)) {
       throw new Error("Conversion PDF échouée : fichier non créé");
     }
 
-    // Étape 2 : imprimer le PDF (méthode qui marche déjà)
+    const pdfPrintOpts = { printer: printerName };
+    if (duplex) {
+      pdfPrintOpts.duplex = "long-edge";
+    }
+
     try {
-      await pdfToPrinter.print(tmpPdf, { printer: printerName });
+      await pdfToPrinter.print(tmpPdf, pdfPrintOpts);
     } finally {
-      // Nettoyage du PDF temporaire
       try {
         fs.unlinkSync(tmpPdf);
       } catch (_) {}
@@ -1348,7 +1400,7 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   }
 
   for (let i = 0; i < copies; i++) {
-    await printFile(tmpPath, printerName);
+    await printFile(tmpPath, printerName, printOpts);
     console.log(`[PRINT] ${file.file_name} copie ${i + 1}/${copies} ✅`);
     await supabase
       .from("print_jobs")

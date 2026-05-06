@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("derewol", {
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
   getHistory: () => ipcRenderer.invoke("history:get"),
+  setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
 
   // ── Abonnement ─────────────────────────────────────────────
   subscriptionCheck: () => ipcRenderer.invoke("subscription:check"),

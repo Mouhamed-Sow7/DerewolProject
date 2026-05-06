@@ -864,7 +864,7 @@ function animateRemove(id) {
 }
 
 // ── Impression ────────────────────────────────────────────────
-function confirmJob(groupId, group) {
+async function confirmJob(groupId, group) {
   if (printingGroups.has(groupId)) return;
 
   const printerName = document.getElementById("printer-select").value;
@@ -922,6 +922,11 @@ function confirmJob(groupId, group) {
     btnCancel.remove();
   });
   card.querySelector(".job-actions").appendChild(btnCancel);
+
+  // Synchroniser les options vers main process avant impression
+  if (window._filesPrintOptions) {
+    await window.derewol.setPrintOptions(window._filesPrintOptions);
+  }
 
   window.derewol?.confirmPrint?.(groupId, printerName, 1, jobCopies);
 }

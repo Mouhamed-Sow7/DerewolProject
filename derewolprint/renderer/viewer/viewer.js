@@ -228,6 +228,9 @@ async function initPDF() {
     const pdfDoc = await loadingTask.promise;
 
     state.pdfDoc = pdfDoc;
+
+    // Exposer numPages pour le modal options
+    window._currentPdfNumPages = pdfDoc.numPages;
     state.pdfPage = 1;
 
     // ✅ Zoom auto-fit à la largeur du conteneur
@@ -243,27 +246,32 @@ async function initPDF() {
 
     await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
 
+    let pdfRotation = 0;
     $("pdf-prev").onclick = async () => {
       if (state.pdfPage <= 1) return;
       state.pdfPage--;
       $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
     };
     $("pdf-next").onclick = async () => {
       if (state.pdfPage >= pdfDoc.numPages) return;
       state.pdfPage++;
       $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
     };
     $("pdf-zoom-in").onclick = async () => {
       state.pdfZoom = Math.min(state.pdfZoom + 0.2, 3.0);
       $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
     };
     $("pdf-zoom-out").onclick = async () => {
       state.pdfZoom = Math.max(state.pdfZoom - 0.2, 0.5);
       $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
+    };
+    $("pdf-rotate").onclick = async () => {
+      pdfRotation = (pdfRotation + 90) % 360;
+      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
     };
   } catch (err) {
     console.error("[PDF ERROR]", err);
@@ -276,31 +284,13 @@ async function initPDF() {
   }
 }
 
-async function renderPDFPage(pdfDoc, pageNum, canvas, zoom) {
-  console.log("[PDF RENDER] Starting render for page", pageNum, "zoom", zoom);
+async function renderPDFPage(pdfDoc, pageNum, canvas, zoom, rotation = 0) {
   const page = await pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale: zoom });
+  const viewport = page.getViewport({ scale: zoom, rotation });
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-
-  console.log(
-    "[PDF RENDER] Canvas dimensions set to:",
-    canvas.width,
-    "x",
-    canvas.height,
-  );
-  console.log("[PDF RENDER] Canvas style:", getComputedStyle(canvas));
-  console.log(
-    "[PDF RENDER] Canvas parent style:",
-    getComputedStyle(canvas.parentElement),
-  );
-
   const ctx = canvas.getContext("2d");
-  console.log("[PDF RENDER] Canvas context:", ctx);
-
-  const renderTask = page.render({ canvasContext: ctx, viewport });
-  await renderTask.promise;
-  console.log("[PDF RENDER] Render task completed");
+  await page.render({ canvasContext: ctx, viewport }).promise;
 }
 
 // -- Image -----------------------------------------------------------------
