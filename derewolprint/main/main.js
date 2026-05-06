@@ -300,13 +300,30 @@ async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
       return;
     }
 
-    await supabase
+    // ✅ FIX : vérifier l'erreur du update DB + logger la clé
+    const { error: dbError } = await supabase
       .from("files")
       .update({
         encrypted_key: key,
         modified_at: new Date().toISOString(),
       })
       .eq("id", fileId);
+
+    if (dbError) {
+      console.error("[WATCHER] ❌ DB update failed:", dbError.message);
+      // Le fichier est uploadé mais la clé n'est pas sauvée → incohérence !
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("file:upload-fallback", {
+          fileId,
+          error: "DB sync failed",
+        });
+      }
+      return; // ← on arrête, pas de success
+    }
+
+    console.log(
+      `[WATCHER] ✅ DB updated — key saved for ${fileId}: ${key?.substring(0, 8)}...`,
+    );
 
     await supabase
       .from("file_groups")
