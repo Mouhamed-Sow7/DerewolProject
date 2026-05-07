@@ -118,12 +118,7 @@ async function checkSubscription(printerId) {
       return { valid: false, expired: true, daysLeft: 0 };
     }
 
-    console.log("[SUB] Found subscription:", {
-      plan: data.plan,
-      status: data.status,
-      expires_at: data.expires_at,
-      createdAt: data.created_at,
-    });
+    // [SUB] subscription found
 
     // Check if subscription is expired
     const now = new Date();
@@ -131,15 +126,10 @@ async function checkSubscription(printerId) {
     const end = new Date(expiresAt);
     const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 
-    console.log("[SUB] Date check:", {
-      now: now.toISOString(),
-      expiresAt: expiresAt,
-      daysLeft: diff,
-      isExpired: diff <= 0,
-    });
+    // [SUB] date check
 
     if (diff <= 0) {
-      console.log("[SUB] ❌ Subscription expired");
+      // console.log("[SUB] ❌ Subscription expired");
       return { valid: false, expired: true, daysLeft: 0 };
     }
 

@@ -1442,6 +1442,7 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   // ✅ Return cleanup info (cleanup scheduled separately, not here)
   return {
     jobId,
+    fileId: data.file_id,
     fileName: file.file_name,
     copies,
     fileGroupId,
@@ -1544,28 +1545,20 @@ ipcMain.handle(
             groupId: result.fileGroupId,
           });
 
-          // 🔥 SCHEDULE CLEANUP INDEPENDENTLY (30s delay per file)
-          // This allows next file to start printing immediately
-          // NOTE: Keep local files as buffer until app close (no secureDelete)
-          const storageToClear = result.storagePath;
-          const jobIdToClear = item.jobId;
-
-          setTimeout(async () => {
-            try {
+          // Cleanup direct storage
+          try {
+            if (result.storagePath) {
               await supabase.storage
                 .from("derewol-files")
-                .remove([storageToClear]);
-              console.log(`[PRINT] ${result.fileName} → Storage nettoyé ✅`);
-              // Removed: secureDelete(pathToClear) - keep as buffer until app close
-              await supabase.from("print_jobs").delete().eq("id", jobIdToClear);
-              console.log(`[PRINT] ${result.fileName} → DB supprimé ✅`);
-            } catch (e) {
-              console.warn(
-                `[PRINT] Erreur nettoyage ${result.fileName}:`,
-                e.message,
-              );
+                .remove([result.storagePath]);
+              console.log(`[PRINT] ${result.fileName} → Storage supprimé ✅`);
             }
-          }, PRINT_DELAY_MS); // 30s timer per file (independent from loop)
+          } catch (e) {
+            console.warn(
+              `[PRINT] Erreur nettoyage ${result.fileName}:`,
+              e.message,
+            );
+          }
         } catch (err) {
           console.error(`[PRINT] ❌ ${item.fileName} :`, err.message);
 
@@ -1605,12 +1598,19 @@ ipcMain.handle(
           .eq("group_id", fileGroupId);
 
         const statuses = (jobResults || []).map((j) => j.status);
-        if (statuses.length === 0) {
-          // Tous les jobs ont été supprimés (rejetés) sauf celui qu'on vient d'imprimer
-          // Le groupe garde son statut partiel — ne pas écraser partial_rejected
+        const relevantStatuses = statuses.filter((s) => s !== "queued");
+        if (relevantStatuses.length === 0) {
+          // Tous les jobs traités — marquer completed
+          await supabase
+            .from("file_groups")
+            .update({ status: "completed" })
+            .eq("id", fileGroupId);
+          console.log(
+            "[GROUP] " + fileGroupId + " → completed (all jobs done)",
+          );
         } else {
-          const allDone = statuses.every((s) => s === "completed");
-          const allFailed = statuses.every((s) => s === "failed");
+          const allDone = relevantStatuses.every((s) => s === "completed");
+          const allFailed = relevantStatuses.every((s) => s === "failed");
           const groupStatus = allDone
             ? "completed"
             : allFailed

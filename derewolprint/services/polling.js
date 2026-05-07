@@ -156,7 +156,13 @@ async function fetchPendingJobs(printerId) {
       if (j.status === "queued" && j.expires_at < now) return false; // Exclure les expirés
       return true;
     })
-    .filter((job) => !printerId || job.file_groups?.printer_id === printerId);
+    .filter((job) => !printerId || job.file_groups?.printer_id === printerId)
+    .filter((job) => {
+      const groupStatus = job.file_groups?.status;
+      return !["completed", "failed", "expired", "partial_completed"].includes(
+        groupStatus,
+      );
+    });
 
   if (filtered.length > 0)
     console.log("[POLLING] Jobs actifs :", filtered.length);
