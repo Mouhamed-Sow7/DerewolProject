@@ -8,6 +8,9 @@ module.exports = {
     console.log(`[CACHE] Set ${fileId} -> ${pages} pages`);
   },
   getAll: () => cache,
+  delete: (fileId) => {
+    delete cache[fileId];
+  },
   clear: () => {
     Object.keys(cache).forEach((key) => delete cache[key]);
     console.log(`[CACHE] Cleared`);

@@ -294,14 +294,56 @@ function startFileWatcher(filePath, fileId, storagePath, groupId, mainWindow) {
 async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
   try {
     const buffer = fs.readFileSync(filePath);
-    const { encrypted, key } = encryptFile(buffer);
 
-    const { error: uploadError } = await supabase.storage
+    const { data: fileData } = await supabase
+      .from("files")
+      .select("encrypted_key")
+      .eq("id", fileId)
+      .single();
+
+    const existingKey = fileData?.encrypted_key;
+    const isPlaceholder =
+      !existingKey || existingKey === "encrypted_key_placeholder";
+
+    let encrypted, keyToSave;
+
+    if (isPlaceholder) {
+      // Pas de clé valide → générer une nouvelle clé et la sauvegarder
+      const result = encryptFile(buffer);
+      encrypted = result.encrypted;
+      keyToSave = result.key;
+      console.log("[WATCHER] Nouvelle clé AES générée pour fileId:", fileId);
+    } else {
+      // Clé existante → chiffrer avec la même clé (cohérence)
+      const result = encryptFile(buffer, existingKey);
+      encrypted = result.encrypted;
+      keyToSave = null; // pas besoin de mettre à jour la clé
+    }
+
+    console.log(
+      "[WATCHER] Chiffrement effectué — buffer original:",
+      buffer.length,
+      "bytes, encrypted:",
+      encrypted.length,
+      "bytes (overhead attendu: +28)",
+    );
+
+    console.log("[WATCHER] storagePath:", storagePath);
+    console.log(
+      "[WATCHER] Upload buffer size:",
+      encrypted.length,
+      "— original:",
+      buffer.length,
+    );
+
+    const { error: uploadError, data: uploadData } = await supabase.storage
       .from("derewol-files")
-      .update(storagePath, encrypted, {
+      .upload(storagePath, encrypted, {
         upsert: true,
         contentType: "application/octet-stream",
       });
+
+    console.log("[WATCHER] Upload result:", uploadData, uploadError?.message);
 
     if (uploadError) {
       console.error("[WATCHER] Upload failed:", uploadError.message);
@@ -314,29 +356,49 @@ async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
       return;
     }
 
-    // ✅ FIX : vérifier l'erreur du update DB + logger la clé
+    if (keyToSave) {
+      const { error: keyUpdateError } = await supabase
+        .from("files")
+        .update({
+          encrypted_key: keyToSave,
+          modified_at: new Date().toISOString(),
+        })
+        .eq("id", fileId);
+
+      if (keyUpdateError) {
+        console.warn(
+          "[WATCHER] ⚠️ encrypted_key update échoué:",
+          keyUpdateError.message,
+        );
+      } else {
+        console.log(
+          "[WATCHER] ✅ encrypted_key sauvegardée pour fileId:",
+          fileId,
+        );
+      }
+    }
+
+    // ✅ FIX : Plus besoin de mettre à jour encrypted_key, elle reste la même
     const { error: dbError } = await supabase
       .from("files")
       .update({
-        encrypted_key: key,
         modified_at: new Date().toISOString(),
       })
       .eq("id", fileId);
 
     if (dbError) {
       console.error("[WATCHER] ❌ DB update failed:", dbError.message);
-      // Le fichier est uploadé mais la clé n'est pas sauvée → incohérence !
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("file:upload-fallback", {
           fileId,
           error: "DB sync failed",
         });
       }
-      return; // ← on arrête, pas de success
+      return;
     }
 
     console.log(
-      `[WATCHER] ✅ DB updated — key saved for ${fileId}: ${key?.substring(0, 8)}...`,
+      `[WATCHER] ✅ DB updated — same key preserved for ${fileId}: ${fileData.encrypted_key?.substring(0, 8)}...`,
     );
 
     await supabase
@@ -1197,18 +1259,47 @@ async function cleanupJobDB(jobId, fileGroupId, fileIdOnly = null) {
 
 // ── Impression d'un seul fichier (avec nettoyage immédiat) ──────
 async function printSingleJobNoDelay(jobId, printerName, copies) {
-  const { data, error } = await supabase
+  let data, error;
+
+  // Tentative 1 : jointure directe via la FK de print_jobs.file_id
+  ({ data, error } = await supabase
     .from("print_jobs")
     .select(
-      ` id, print_token, file_id, file_groups ( id, owner_id, files ( id, storage_path, encrypted_key, file_name ) ) `,
+      `id, print_token, file_id, file_groups ( id, owner_id ), files!print_jobs_file_id_fkey ( id, storage_path, encrypted_key, file_name )`,
     )
     .eq("id", jobId)
-    .single();
+    .single());
 
-  if (error || !data) throw new Error(`Job ${jobId} introuvable`);
+  if (error || !data) {
+    // Option B : fallback fiable avec deux requêtes séparées
+    const result = await supabase
+      .from("print_jobs")
+      .select(`id, print_token, file_id, file_groups ( id, owner_id )`)
+      .eq("id", jobId)
+      .single();
 
-  const files = data.file_groups?.files || [];
-  const file = files.find((f) => f.id === data.file_id) || files[0];
+    if (result.error || !result.data) {
+      throw new Error(`Job ${jobId} introuvable`);
+    }
+
+    data = result.data;
+
+    const fileResult = await supabase
+      .from("files")
+      .select("id, storage_path, encrypted_key, file_name")
+      .eq("id", data.file_id)
+      .single();
+
+    if (fileResult.error || !fileResult.data) {
+      throw new Error(`Fichier introuvable pour job ${jobId}`);
+    }
+
+    data.files = fileResult.data;
+  }
+
+  if (!data) throw new Error(`Job ${jobId} introuvable`);
+
+  const file = Array.isArray(data.files) ? data.files[0] : data.files || null;
   if (!file) throw new Error(`Fichier introuvable pour job ${jobId}`);
 
   const fileGroupId = data.file_groups.id;
@@ -1240,11 +1331,25 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       : null;
   console.log(`[PRINT] Options:`, { orientation, duplex, pageRange });
 
-  const { data: fileData, error: dlError } = await supabase.storage
+  const { data: signedData, error: signedError } = await supabase.storage
     .from("derewol-files")
-    .download(file.storage_path);
+    .createSignedUrl(file.storage_path, 60, {
+      download: true,
+      transform: { quality: 100 },
+    });
 
-  if (dlError) throw new Error(`Téléchargement échoué : ${dlError.message}`);
+  if (signedError)
+    throw new Error(`URL signée échouée : ${signedError.message}`);
+
+  const cacheBustedUrl = `${signedData.signedUrl}&cb=${Date.now()}`;
+  const fetchResponse = await fetch(cacheBustedUrl);
+  if (!fetchResponse.ok)
+    throw new Error(`Téléchargement échoué : ${fetchResponse.status}`);
+  const fileData = await fetchResponse.blob();
+
+  console.log(
+    `[DOWNLOAD] Fresh fetch — ${file.storage_path} — ${fileData.size} bytes`,
+  );
 
   const decryptedBuffer = decryptFile(
     Buffer.from(await fileData.arrayBuffer()),
@@ -1552,6 +1657,7 @@ ipcMain.handle(
                 .from("derewol-files")
                 .remove([result.storagePath]);
               console.log(`[PRINT] ${result.fileName} → Storage supprimé ✅`);
+              pdfCache.delete(item.jobId);
             }
           } catch (e) {
             console.warn(
@@ -2067,6 +2173,134 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  "fusion:generate",
+  async (event, { pngData, fileName, sourceFiles }) => {
+    try {
+      log("FUSION_START", {
+        fileName,
+        sources: sourceFiles.map((f) => f.fileId),
+      });
+
+      const tmpDir = os.tmpdir();
+      const pngPath = path.join(tmpDir, `fusion_${Date.now()}.png`);
+      const pdfPath = path.join(tmpDir, `fusion_${Date.now()}.pdf`);
+
+      fs.writeFileSync(pngPath, Buffer.from(pngData));
+      await _pngToPdf(pngPath, pdfPath);
+
+      const pdfBuffer = fs.readFileSync(pdfPath);
+
+      const firstFile = sourceFiles[0];
+      const storagePrefix = firstFile.storagePath
+        ? firstFile.storagePath.substring(
+            0,
+            firstFile.storagePath.lastIndexOf("/") + 1,
+          )
+        : "";
+      const newStoragePath = `${storagePrefix}${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("derewol-files")
+        .upload(newStoragePath, pdfBuffer, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+      if (uploadError) throw new Error(`Upload échoué: ${uploadError.message}`);
+
+      const { data: firstJob, error: firstJobError } = await supabase
+        .from("print_jobs")
+        .select("group_id, file_groups(owner_id)")
+        .eq("id", firstFile.jobId)
+        .single();
+
+      if (firstJobError)
+        throw new Error(
+          `Impossible de récupérer le job source: ${firstJobError.message}`,
+        );
+
+      const groupId = firstJob?.group_id;
+      const ownerId = firstJob?.file_groups?.owner_id;
+
+      const { data: newFile, error: insertError } = await supabase
+        .from("files")
+        .insert({
+          name: fileName,
+          storage_path: newStoragePath,
+          group_id: groupId,
+          owner_id: ownerId,
+          status: "queued",
+          file_type: "pdf",
+          size: pdfBuffer.length,
+        })
+        .select()
+        .single();
+
+      if (insertError)
+        throw new Error(`Insert fichier échoué: ${insertError.message}`);
+
+      const { error: jobError } = await supabase.from("print_jobs").insert({
+        file_id: newFile.id,
+        group_id: groupId,
+        status: "queued",
+        storage_path: newStoragePath,
+      });
+
+      if (jobError) throw new Error(`Insert job échoué: ${jobError.message}`);
+
+      for (const src of sourceFiles) {
+        if (src.storagePath) {
+          await supabase.storage
+            .from("derewol-files")
+            .remove([src.storagePath]);
+        }
+        await supabase
+          .from("print_jobs")
+          .update({ status: "completed", error_message: "Remplacé par fusion" })
+          .eq("id", src.jobId);
+        await supabase.from("files").delete().eq("id", src.fileId);
+        pdfCache.delete(src.fileId);
+      }
+
+      try {
+        fs.unlinkSync(pngPath);
+      } catch (_) {}
+      try {
+        fs.unlinkSync(pdfPath);
+      } catch (_) {}
+
+      log("FUSION_SUCCESS", { fileName, newFileId: newFile.id });
+      return { success: true, newFileId: newFile.id };
+    } catch (err) {
+      console.error("[FUSION] Erreur:", err.message);
+      return { success: false, error: err.message };
+    }
+  },
+);
+
+ipcMain.handle("file:get-signed-url", async (event, fileId) => {
+  try {
+    const { data: file, error } = await supabase
+      .from("files")
+      .select("storage_path")
+      .eq("id", fileId)
+      .single();
+
+    if (error) throw error;
+    if (!file?.storage_path) throw new Error("Fichier introuvable");
+
+    const { data: signed, error: signedError } = await supabase.storage
+      .from("derewol-files")
+      .createSignedUrl(file.storage_path, 300);
+
+    if (signedError) throw signedError;
+    return { success: true, url: signed.signedUrl };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // ── Manuel upload fallback après échec automatique ───────────
 ipcMain.handle(
   "file:manual-upload",
@@ -2108,13 +2342,30 @@ ipcMain.handle(
         return { success: false, error: uploadError.message };
       }
 
-      await supabase
+      const { error: updateKeyError } = await supabase
         .from("files")
         .update({
           encrypted_key: key,
           modified_at: new Date().toISOString(),
         })
         .eq("id", fileId);
+
+      if (updateKeyError) {
+        console.error(
+          "[MANUAL UPLOAD] ❌ encrypted_key update échoué:",
+          updateKeyError.message,
+        );
+        return {
+          success: false,
+          error:
+            "Clé de chiffrement non sauvegardée: " + updateKeyError.message,
+        };
+      }
+
+      console.log(
+        "[MANUAL UPLOAD] ✅ encrypted_key mis à jour pour fileId:",
+        fileId,
+      );
 
       try {
         await supabase.from("notifications").insert({
@@ -2183,6 +2434,55 @@ ipcMain.handle("dev:logout", () => {
   app.relaunch();
   app.exit(0);
 });
+
+async function _pngToPdf(pngPath, pdfPath) {
+  return new Promise((resolve, reject) => {
+    const psScript = `
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+$doc = $word.Documents.Add()
+$doc.PageSetup.PaperSize = 9
+$doc.PageSetup.TopMargin = 28
+$doc.PageSetup.BottomMargin = 28
+$doc.PageSetup.LeftMargin = 28
+$doc.PageSetup.RightMargin = 28
+$range = $doc.Range()
+$shape = $doc.InlineShapes.AddPicture("${pngPath.replace(/'/g, "''")}", $false, $true, $range)
+$pageW = $doc.PageSetup.PageWidth - 56
+$pageH = $doc.PageSetup.PageHeight - 56
+$ratio = $shape.Width / $shape.Height
+if (($pageW / $ratio) -le $pageH) {
+  $shape.Width = $pageW
+  $shape.Height = $pageW / $ratio
+} else {
+  $shape.Height = $pageH
+  $shape.Width = $pageH * $ratio
+}
+$doc.ExportAsFixedFormat("${pdfPath.replace(/'/g, "''")}", 17)
+$doc.Close([Microsoft.Office.Interop.Word.WdSaveOptions]::wdDoNotSaveChanges)
+$word.Quit()
+[System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
+`;
+
+    const tmpPs = path.join(os.tmpdir(), `fusion_${Date.now()}.ps1`);
+    fs.writeFileSync(tmpPs, psScript, "utf8");
+
+    exec(
+      `powershell -ExecutionPolicy Bypass -File "${tmpPs}"`,
+      { timeout: 30000 },
+      (err, stdout, stderr) => {
+        try {
+          fs.unlinkSync(tmpPs);
+        } catch (_) {}
+        if (err) {
+          reject(new Error(`PowerShell échoué: ${stderr || err.message}`));
+        } else {
+          resolve();
+        }
+      },
+    );
+  });
+}
 
 // ── Vérification existence imprimeur (toutes les 30s) ──────────────
 let printerVerificationTimer = null;

@@ -1,5 +1,7 @@
 // renderer/js/ui/renderJobs.js
 
+import { openFusionModal } from "./fusionModal.js";
+
 // Store copies par fichier
 const copiesPerFile = {};
 
@@ -161,6 +163,14 @@ export default function renderJobs(
           style="${rejected ? "opacity:0.5;" : ""}">
 
           <div class="file-row-name-wrap">
+            <input type="checkbox" class="file-select-checkbox"
+              data-job-id="${item.jobId}"
+              data-file-id="${item.fileId}"
+              data-group-id="${group.id}"
+              data-file-name="${item.fileName}"
+              data-storage-path="${item.storagePath || ""}"
+              style="width:15px;height:15px;cursor:pointer;accent-color:#1B5E35;flex-shrink:0;margin-right:8px;"
+            />
             <span class="file-row-icon">
               ${rejected ? '<i class="fa-solid fa-xmark" style="color:var(--danger)"></i>' : '<i class="fa-solid ' + getFileIconClass(item.fileName) + '"></i>'}
             </span>
@@ -271,6 +281,26 @@ export default function renderJobs(
     })
     .join("");
 
+  _renderFusionBar();
+
+  // ── Sélection groupe (job-checkbox) ──────────────────────────────────
+  document.querySelectorAll(".job-checkbox").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      e.stopPropagation();
+      const groupId = cb.dataset.id;
+      const card = document.getElementById(groupId);
+      if (!card) return;
+
+      // Cocher/décocher tous les file-select-checkbox du groupe
+      const fileCheckboxes = card.querySelectorAll(".file-select-checkbox");
+      fileCheckboxes.forEach((fcb) => {
+        fcb.checked = cb.checked;
+        // Déclencher manuellement pour mettre à jour _state fusion
+        fcb.dispatchEvent(new Event("change", { bubbles: false }));
+      });
+    });
+  });
+
   // ── Events copies ─────────────────────────────────────────
   document.querySelectorAll(".copies-btn.minus").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -288,6 +318,10 @@ export default function renderJobs(
       setFileCopies(jobId, fileId, val);
       document.getElementById(`fc-${jobId}-${fileId}`).textContent = val;
     });
+  });
+
+  document.querySelectorAll(".file-select-checkbox").forEach((cb) => {
+    cb.addEventListener("change", _onFileCheckboxChange);
   });
 
   // ── Vue fichier ──────────────────────────────────────────
@@ -818,6 +852,157 @@ function confirmPrintOptions(jobId, fileId) {
   if (!window._filesPrintOptions) window._filesPrintOptions = {};
   window._filesPrintOptions[jobId + "_" + fileId] = { ...opts };
   closePrintOptionsModal();
+}
+
+function _renderFusionBar() {
+  let bar = document.getElementById("fusion-action-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "fusion-action-bar";
+    bar.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      z-index: 9998;
+      background: #1B5E35;
+      color: #fff;
+      border-radius: 12px;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+    `;
+    bar.innerHTML = `
+      <i class="fa-solid fa-layer-group"></i>
+      <span id="fusion-bar-label">2 fichiers sélectionnés</span>
+      <button id="fusion-bar-btn" style="
+        background: #fff;
+        color: #1B5E35;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 14px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: 'Inter', sans-serif;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      ">
+        <i class="fa-solid fa-object-group"></i> Fusionner
+      </button>
+      <button id="fusion-bar-cancel" style="
+        background: rgba(255,255,255,0.15);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: 'Inter', sans-serif;
+      ">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    `;
+    document.body.appendChild(bar);
+    document
+      .getElementById("fusion-bar-btn")
+      .addEventListener("click", _openFusionFromSelection);
+    document
+      .getElementById("fusion-bar-cancel")
+      .addEventListener("click", _clearFileSelection);
+  }
+  _updateFusionBar();
+}
+
+function _updateFusionBar() {
+  const checked = document.querySelectorAll(".file-select-checkbox:checked");
+  const bar = document.getElementById("fusion-action-bar");
+  if (!bar) return;
+
+  const count = checked.length;
+  const label = document.getElementById("fusion-bar-label");
+
+  if (count === 2) {
+    if (label) label.textContent = "2 fichiers sélectionnés";
+    bar.style.transform = "translateX(-50%) translateY(0)";
+    bar.style.opacity = "1";
+    bar.style.pointerEvents = "auto";
+    const btn = document.getElementById("fusion-bar-btn");
+    if (btn) {
+      btn.style.opacity = "1";
+      btn.style.pointerEvents = "auto";
+    }
+  } else if (count === 1) {
+    if (label) label.textContent = "Sélectionnez 1 fichier de plus";
+    bar.style.transform = "translateX(-50%) translateY(0)";
+    bar.style.opacity = "1";
+    bar.style.pointerEvents = "auto";
+    const btn = document.getElementById("fusion-bar-btn");
+    if (btn) {
+      btn.style.opacity = "0.4";
+      btn.style.pointerEvents = "none";
+    }
+  } else {
+    bar.style.transform = "translateX(-50%) translateY(80px)";
+    bar.style.opacity = "0";
+    bar.style.pointerEvents = "none";
+  }
+}
+
+function _clearFileSelection() {
+  document.querySelectorAll(".file-select-checkbox:checked").forEach((cb) => {
+    cb.checked = false;
+  });
+  _updateFusionBar();
+}
+
+function _getSelectedFiles() {
+  return Array.from(
+    document.querySelectorAll(".file-select-checkbox:checked"),
+  ).map((cb) => ({
+    jobId: cb.dataset.jobId,
+    fileId: cb.dataset.fileId,
+    fileName: cb.dataset.fileName,
+    storagePath: cb.dataset.storagePath,
+    groupId: cb.dataset.groupId,
+  }));
+}
+
+function _onFileCheckboxChange() {
+  _updateFusionBar();
+}
+
+async function _openFusionFromSelection() {
+  const selectedFiles = _getSelectedFiles();
+  if (selectedFiles.length !== 2) return;
+  _clearFileSelection();
+
+  openFusionModal(selectedFiles, ({ success, fileName }) => {
+    if (success) {
+      const toast = document.createElement("div");
+      toast.textContent = `✅ ${fileName} créé — fichiers remplacés`;
+      toast.style.cssText = `
+        position:fixed;bottom:18px;right:18px;z-index:9999;
+        padding:12px 16px;border-radius:10px;color:#fff;font-size:13px;
+        background:#16a34a;box-shadow:0 4px 18px rgba(0,0,0,.16);
+        font-family:'Inter',sans-serif;
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+  });
 }
 
 function setStoreRef(fn) {

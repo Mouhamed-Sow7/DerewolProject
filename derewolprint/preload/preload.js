@@ -59,6 +59,12 @@ contextBridge.exposeInMainWorld("derewol", {
   downloadApprovedFile: (data) =>
     ipcRenderer.invoke("file:download-approved", data),
   manualUpload: (payload) => ipcRenderer.invoke("file:manual-upload", payload),
+  getSignedUrl: (fileId) =>
+    ipcRenderer.invoke("file:get-signed-url", fileId).then((r) => {
+      if (!r.success) throw new Error(r.error);
+      return r.url;
+    }),
+  fusionGenerate: (payload) => ipcRenderer.invoke("fusion:generate", payload),
   onUploadSuccess: (cb) =>
     ipcRenderer.on("file:upload-success", (_, d) => cb(d)),
   onUploadFallback: (cb) =>
