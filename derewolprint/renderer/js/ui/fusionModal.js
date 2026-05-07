@@ -634,6 +634,12 @@ function _renderCanvas() {
     const cellW = (A4W - MARGIN * 3) / 2;
     const cellH = A4H - MARGIN * 2;
 
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.04)";
+    ctx.fillRect(MARGIN, MARGIN, cellW, cellH);
+    ctx.fillRect(MARGIN * 2 + cellW, MARGIN, cellW, cellH);
+    ctx.restore();
+
     if (img0)
       _drawImageFit(
         ctx,
@@ -665,13 +671,15 @@ function _renderCanvas() {
         ])[1],
       );
 
-    // Ligne séparation
-    ctx.strokeStyle = "#e0e0e0";
-    ctx.lineWidth = 0.5;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120,120,120,0.35)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(MARGIN + cellW + MARGIN / 2, MARGIN);
     ctx.lineTo(MARGIN + cellW + MARGIN / 2, A4H - MARGIN);
     ctx.stroke();
+    ctx.restore();
   } else {
     // Vertical
     canvas.width = A4W;
@@ -682,6 +690,12 @@ function _renderCanvas() {
 
     const cellW = A4W - MARGIN * 2;
     const cellH = (A4H - MARGIN * 3) / 2;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.04)";
+    ctx.fillRect(MARGIN, MARGIN, cellW, cellH);
+    ctx.fillRect(MARGIN, MARGIN * 2 + cellH, cellW, cellH);
+    ctx.restore();
 
     if (img0)
       _drawImageFit(
@@ -714,13 +728,15 @@ function _renderCanvas() {
         ])[1],
       );
 
-    // Ligne séparation
-    ctx.strokeStyle = "#e0e0e0";
-    ctx.lineWidth = 0.5;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120,120,120,0.35)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(MARGIN, MARGIN + cellH + MARGIN / 2);
     ctx.lineTo(A4W - MARGIN, MARGIN + cellH + MARGIN / 2);
     ctx.stroke();
+    ctx.restore();
   }
 
   // Appliquer filtres CSS sur le canvas via filter (preview only — pour PDF on applique pixel par pixel)
@@ -730,27 +746,46 @@ function _renderCanvas() {
 function _drawImageFit(
   ctx,
   img,
-  x,
-  y,
-  maxW,
-  maxH,
+  zoneX,
+  zoneY,
+  zoneW,
+  zoneH,
   rotation = 0,
   scale = 1,
   offset = { x: 0, y: 0 },
 ) {
-  const rad = (rotation * Math.PI) / 180;
-  const fW = rotation % 180 !== 0 ? maxH : maxW;
-  const fH = rotation % 180 !== 0 ? maxW : maxH;
-  const baseScale = Math.min(fW / img.width, fH / img.height);
-  const finalScale = baseScale * scale;
-  const w = img.width * finalScale;
-  const h = img.height * finalScale;
-  const cx = x + maxW / 2 + offset.x;
-  const cy = y + maxH / 2 + offset.y;
   ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(rad);
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.beginPath();
+  ctx.rect(zoneX, zoneY, zoneW, zoneH);
+  ctx.clip();
+
+  const cx = zoneX + zoneW / 2;
+  const cy = zoneY + zoneH / 2;
+  const PADDING = 16;
+  const maxW = zoneW - PADDING * 2;
+  const maxH = zoneH - PADDING * 2;
+
+  let imgW, imgH;
+  if (rotation % 180 !== 0) {
+    const ratio = Math.min(
+      maxW / (img.naturalHeight || img.height),
+      maxH / (img.naturalWidth || img.width),
+    );
+    imgW = (img.naturalHeight || img.height) * ratio;
+    imgH = (img.naturalWidth || img.width) * ratio;
+  } else {
+    const ratio = Math.min(
+      maxW / (img.naturalWidth || img.width),
+      maxH / (img.naturalHeight || img.height),
+    );
+    imgW = (img.naturalWidth || img.width) * ratio;
+    imgH = (img.naturalHeight || img.height) * ratio;
+  }
+
+  ctx.translate(cx + offset.x, cy + offset.y);
+  ctx.scale(scale, scale);
+  ctx.rotate((rotation * Math.PI) / 180);
+  ctx.drawImage(img, -imgW / 2, -imgH / 2, imgW, imgH);
   ctx.restore();
 }
 
