@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld("derewol", {
   setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
   getPdfPages: (fileId) => ipcRenderer.invoke("pdf:get-pages", fileId),
 
+  // ── Fusion modal ────────────────────────────────────────────
+  getFusionPreview: (fileId) => ipcRenderer.invoke("fusion:get-preview", fileId),
+
   // ── Abonnement ─────────────────────────────────────────────
   subscriptionCheck: () => ipcRenderer.invoke("subscription:check"),
   subscriptionActivate: (code) =>

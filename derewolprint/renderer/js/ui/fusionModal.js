@@ -100,6 +100,7 @@ export async function openFusionModal(selectedFiles, onComplete) {
     layout: "horizontal",
     preset: "original",
     filters: { ...FUSION_PRESETS[0].filters },
+    rotations: [0, 0],
     canvas: null,
     ctx: null,
     onComplete,
@@ -183,10 +184,15 @@ function _buildModal() {
                   <p style="margin:0;font-size:10px;font-weight:600;color:#1B5E35;">${f.label}</p>
                   <p style="margin:0;font-size:10px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;" title="${f.fileName}">${f.fileName}</p>
                 </div>
+                <button class="fusion-rotate-btn" data-idx="${i}" style="
+                  background:none;border:1px solid #e5e7eb;border-radius:5px;
+                  cursor:pointer;padding:2px 5px;color:#1B5E35;font-size:10px;
+                  margin-left:auto;flex-shrink:0;
+                " title="Rotation 90°"><i class="fa-solid fa-rotate-right"></i></button>
                 <button class="fusion-swap-label" data-idx="${i}" style="
                   background:none;border:1px solid #e5e7eb;border-radius:5px;
                   cursor:pointer;padding:2px 5px;color:#999;font-size:10px;
-                  margin-left:auto;flex-shrink:0;
+                  flex-shrink:0;
                 " title="Inverser recto/verso"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
               </div>
             `,
@@ -379,6 +385,17 @@ function _buildModal() {
       _updateThumbs();
     });
   });
+
+  // Rotation buttons
+  document.querySelectorAll(".fusion-rotate-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      if (!_state.rotations) _state.rotations = [0, 0];
+      _state.rotations[idx] = (_state.rotations[idx] + 90) % 360;
+      if (_state.files[idx]?.img) _updateThumb(idx, _state.files[idx].img);
+      _renderCanvas();
+    });
+  });
 }
 
 function _buildSlider(key, label, min, max) {
@@ -398,21 +415,29 @@ function _buildSlider(key, label, min, max) {
 
 // ── Chargement images ────────────────────────────────────────────────
 async function _loadImages() {
-  // Worker pdfjs — désactiver le worker (fake worker en mode Electron)
-  const pdfjsLib = require("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+  // Réutilise le pdfjsLib déjà chargé par viewerPreload.js (même instance v3.11 que le viewer)
+  const pdfjsLib = window.pdfjsLib;
+  if (!pdfjsLib) {
+    console.error("[FUSION] pdfjsLib non disponible sur window");
+    return;
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
   const promises = _state.files.map(async (file, i) => {
     try {
-      const signed = await window.derewol.getSignedUrl(file.fileId);
-      file.url = signed;
-
-      const isPdf = file.fileName?.toLowerCase().endsWith(".pdf") ||
-                    file.mimeType === "application/pdf";
+      const isPdf =
+        file.fileName?.toLowerCase().endsWith(".pdf") ||
+        file.mimeType === "application/pdf";
 
       if (isPdf) {
-        // PDF → canvas via pdfjs
-        const loadingTask = pdfjsLib.getDocument({ url: signed });
+        // PDF → canvas via pdfjs + IPC (évite CSP)
+        // Main process télécharge + déchiffre, renderer reçoit le buffer
+        const { buffer, fileName } = await window.derewol.getFusionPreview(
+          file.fileId,
+        );
+        const uint8 = new Uint8Array(buffer);
+        const loadingTask = pdfjsLib.getDocument({ data: uint8 });
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1); // première page
 
@@ -427,17 +452,22 @@ async function _loadImages() {
         // Convertir canvas en Image
         const img = new Image();
         img.src = offscreen.toDataURL("image/png");
-        await new Promise((resolve) => { img.onload = resolve; });
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
 
         file.img = img;
         file.pageCount = pdf.numPages; // utile pour recto/verso
         _updateThumb(i, img);
-
       } else {
-        // Image normale (PNG, JPG)
+        // Image normale (PNG, JPG) — passer par IPC aussi pour cohérence CSP
+        const { buffer, fileName } = await window.derewol.getFusionPreview(
+          file.fileId,
+        );
+        const blob = new Blob([new Uint8Array(buffer)]);
+        const url = URL.createObjectURL(blob);
         const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = signed;
+        img.src = url;
         await new Promise((resolve, reject) => {
           img.onload = resolve;
           img.onerror = reject;
@@ -445,7 +475,6 @@ async function _loadImages() {
         file.img = img;
         _updateThumb(i, img);
       }
-
     } catch (err) {
       console.error("[FUSION] Erreur chargement fichier", file.fileName, err);
     }
@@ -459,14 +488,19 @@ async function _loadImages() {
 function _updateThumb(idx, img) {
   const el = document.getElementById(`fusion-thumb-${idx}`);
   if (!el || !img) return;
+  const rot = (_state.rotations && _state.rotations[idx]) || 0;
   const thumbCanvas = document.createElement("canvas");
   thumbCanvas.width = 56;
   thumbCanvas.height = 40;
   const tc = thumbCanvas.getContext("2d");
+  tc.save();
+  tc.translate(28, 20);
+  tc.rotate((rot * Math.PI) / 180);
   const scale = Math.min(56 / img.width, 40 / img.height);
   const w = img.width * scale;
   const h = img.height * scale;
-  tc.drawImage(img, (56 - w) / 2, (40 - h) / 2, w, h);
+  tc.drawImage(img, -w / 2, -h / 2, w, h);
+  tc.restore();
   el.innerHTML = "";
   thumbCanvas.style.cssText = "width:100%;height:100%;object-fit:contain;";
   el.appendChild(thumbCanvas);
@@ -503,9 +537,26 @@ function _renderCanvas() {
     const cellW = (A4W - MARGIN * 3) / 2;
     const cellH = A4H - MARGIN * 2;
 
-    if (img0) _drawImageFit(ctx, img0, MARGIN, MARGIN, cellW, cellH);
+    if (img0)
+      _drawImageFit(
+        ctx,
+        img0,
+        MARGIN,
+        MARGIN,
+        cellW,
+        cellH,
+        (_state.rotations || [0, 0])[0],
+      );
     if (img1)
-      _drawImageFit(ctx, img1, MARGIN * 2 + cellW, MARGIN, cellW, cellH);
+      _drawImageFit(
+        ctx,
+        img1,
+        MARGIN * 2 + cellW,
+        MARGIN,
+        cellW,
+        cellH,
+        (_state.rotations || [0, 0])[1],
+      );
 
     // Ligne séparation
     ctx.strokeStyle = "#e0e0e0";
@@ -525,9 +576,26 @@ function _renderCanvas() {
     const cellW = A4W - MARGIN * 2;
     const cellH = (A4H - MARGIN * 3) / 2;
 
-    if (img0) _drawImageFit(ctx, img0, MARGIN, MARGIN, cellW, cellH);
+    if (img0)
+      _drawImageFit(
+        ctx,
+        img0,
+        MARGIN,
+        MARGIN,
+        cellW,
+        cellH,
+        (_state.rotations || [0, 0])[0],
+      );
     if (img1)
-      _drawImageFit(ctx, img1, MARGIN, MARGIN * 2 + cellH, cellW, cellH);
+      _drawImageFit(
+        ctx,
+        img1,
+        MARGIN,
+        MARGIN * 2 + cellH,
+        cellW,
+        cellH,
+        (_state.rotations || [0, 0])[1],
+      );
 
     // Ligne séparation
     ctx.strokeStyle = "#e0e0e0";
@@ -542,13 +610,21 @@ function _renderCanvas() {
   _applyCanvasFilter(canvas);
 }
 
-function _drawImageFit(ctx, img, x, y, maxW, maxH) {
-  const scale = Math.min(maxW / img.width, maxH / img.height);
+function _drawImageFit(ctx, img, x, y, maxW, maxH, rotation = 0) {
+  const rad = (rotation * Math.PI) / 180;
+  // Si rotation 90/270, swap dimensions pour le fit
+  const fW = rotation % 180 !== 0 ? maxH : maxW;
+  const fH = rotation % 180 !== 0 ? maxW : maxH;
+  const scale = Math.min(fW / img.width, fH / img.height);
   const w = img.width * scale;
   const h = img.height * scale;
-  const dx = x + (maxW - w) / 2;
-  const dy = y + (maxH - h) / 2;
-  ctx.drawImage(img, dx, dy, w, h);
+  const cx = x + maxW / 2;
+  const cy = y + maxH / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rad);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
 }
 
 function _applyCanvasFilter(canvas) {
@@ -622,15 +698,49 @@ async function _generatePDF() {
     if (_state.layout === "horizontal") {
       const cellW = (A4W_HQ - MARGIN * 3) / 2;
       const cellH = A4H_HQ - MARGIN * 2;
-      if (f0?.img) _drawImageFit(ctx, f0.img, MARGIN, MARGIN, cellW, cellH);
+      if (f0?.img)
+        _drawImageFit(
+          ctx,
+          f0.img,
+          MARGIN,
+          MARGIN,
+          cellW,
+          cellH,
+          _state.rotations[0],
+        );
       if (f1?.img)
-        _drawImageFit(ctx, f1.img, MARGIN * 2 + cellW, MARGIN, cellW, cellH);
+        _drawImageFit(
+          ctx,
+          f1.img,
+          MARGIN * 2 + cellW,
+          MARGIN,
+          cellW,
+          cellH,
+          _state.rotations[1],
+        );
     } else {
       const cellW = A4W_HQ - MARGIN * 2;
       const cellH = (A4H_HQ - MARGIN * 3) / 2;
-      if (f0?.img) _drawImageFit(ctx, f0.img, MARGIN, MARGIN, cellW, cellH);
+      if (f0?.img)
+        _drawImageFit(
+          ctx,
+          f0.img,
+          MARGIN,
+          MARGIN,
+          cellW,
+          cellH,
+          _state.rotations[0],
+        );
       if (f1?.img)
-        _drawImageFit(ctx, f1.img, MARGIN, MARGIN * 2 + cellH, cellW, cellH);
+        _drawImageFit(
+          ctx,
+          f1.img,
+          MARGIN,
+          MARGIN * 2 + cellH,
+          cellW,
+          cellH,
+          _state.rotations[1],
+        );
     }
 
     // Appliquer filtres pixel par pixel sur le canvas HQ

@@ -1993,6 +1993,55 @@ ipcMain.handle("pdf:get-pages", (_event, fileId) => {
   console.log(`[IPC] returning: ${result} for fileId: ${fileId}`);
   return result;
 });
+
+// ── IPC : Fusion Preview - télécharge + déchiffre le fichier ────────────────────────────────────
+ipcMain.handle("fusion:get-preview", async (event, fileId) => {
+  try {
+    // Récupérer le fichier depuis DB
+    const { data: file, error: selectErr } = await supabase
+      .from("files")
+      .select("storage_path, encrypted_key, file_name")
+      .eq("id", fileId)
+      .single();
+
+    if (selectErr || !file) {
+      throw new Error(`Fichier ${fileId} introuvable: ${selectErr?.message || "pas de données"}`);
+    }
+
+    // Créer une URL signée et ajouter cache-buster (même logique que printSingleJobNoDelay)
+    const { data: signedData, error: signedErr } = await supabase.storage
+      .from("derewol-files")
+      .createSignedUrl(file.storage_path, 60, { download: true });
+
+    if (signedErr || !signedData) {
+      throw new Error(`Impossible créer signed URL pour ${file.storage_path}: ${signedErr?.message || "pas de données"}`);
+    }
+
+    const cacheBustedUrl = `${signedData.signedUrl}&cb=${Date.now()}`;
+    console.log(`[FUSION] Télécharger ${file.file_name} depuis ${file.storage_path}`);
+
+    const fetchResponse = await fetch(cacheBustedUrl);
+    if (!fetchResponse.ok) throw new Error(`Fetch failed: ${fetchResponse.statusText}`);
+    const arrayBuffer = await fetchResponse.arrayBuffer();
+
+    // Déchiffrer
+    const decrypted = decryptFile(Buffer.from(arrayBuffer), file.encrypted_key);
+    if (!decrypted) {
+      throw new Error("Déchiffrement échoué pour " + file.file_name);
+    }
+
+    // Retourner le buffer comme array pour sérialisation IPC
+    console.log(`[FUSION] ✓ Fichier déchiffré: ${file.file_name} (${decrypted.length} bytes)`);
+    return {
+      buffer: Array.from(decrypted),
+      fileName: file.file_name,
+    };
+  } catch (err) {
+    console.error("[FUSION] Erreur fusion:get-preview:", err.message);
+    throw err;
+  }
+});
+
 ipcMain.handle("log:write", async (_, message) => {
   console.log("[LOG]", message);
   return { success: true };
