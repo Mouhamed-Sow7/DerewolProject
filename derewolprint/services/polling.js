@@ -1,4 +1,21 @@
 const { supabase } = require("./supabase");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const pdfCache = require("./pdfCache");
+
+function getPdfPageCount(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    const str = buf.toString("binary");
+    const matches = str.match(/\/Count\s+(\d+)/g);
+    if (!matches) return null;
+    const counts = matches.map((m) => parseInt(m.match(/\d+/)[0]));
+    return Math.max(...counts);
+  } catch {
+    return null;
+  }
+}
 
 let pollingInterval = null;
 let currentCallback = null;
@@ -41,7 +58,7 @@ async function expireStaleGroups(printerId) {
       if (files?.length) {
         const paths = files.map((f) => f.storage_path).filter(Boolean);
         if (paths.length)
-          await supabase.storage.from("derewol-files").remove(paths);
+          await supabase.from("files").delete().in("storage_path", paths);
       }
     }
 
@@ -194,6 +211,57 @@ function startPolling(onJobsReceived, printerId, intervalMs = 1000) {
     try {
       await expireStaleGroups(printerId);
       const jobs = await fetchPendingJobs(printerId);
+
+      // 🔥 Lecture silencieuse des pages PDF pour tous les jobs reçus
+      for (const job of jobs || []) {
+        const files = job.file_groups?.files || [];
+        for (const file of files) {
+          if (
+            path.extname(file.file_name).toLowerCase() === ".pdf" &&
+            file.storage_path
+          ) {
+            try {
+              // Télécharger temporairement pour lire les métadonnées
+              const { data: fileData, error: dlError } = await supabase.storage
+                .from("derewol-files")
+                .download(file.storage_path);
+
+              if (dlError) continue;
+
+              const tempPath = path.join(
+                os.tmpdir(),
+                `poll-${file.id}-${Date.now()}.pdf`,
+              );
+              fs.writeFileSync(
+                tempPath,
+                Buffer.from(await fileData.arrayBuffer()),
+              );
+
+              const numPages = getPdfPageCount(tempPath);
+              if (numPages) {
+                pdfCache.set(file.id, numPages);
+                console.log(
+                  `[PAGES] ${file.file_name} → ${numPages} pages (polling) - stored in cache for fileId: ${file.id}`,
+                );
+                console.log(
+                  `[PAGES] Cache keys:`,
+                  Object.keys(pdfCache.getAll()),
+                );
+              }
+
+              // Nettoyer le fichier temporaire
+              try {
+                fs.unlinkSync(tempPath);
+              } catch {}
+            } catch (e) {
+              console.warn(
+                `[PAGES] Erreur lecture ${file.file_name}:`,
+                e.message,
+              );
+            }
+          }
+        }
+      }
 
       // ═══════════════════════════════════════════════════════════
       // DIFF STRATEGY: Only notify if jobs changed

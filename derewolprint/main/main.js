@@ -31,6 +31,7 @@ const { startPolling, stopPolling } = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
 const QRCode = require("qrcode");
+const pdfCache = require("../services/pdfCache");
 const {
   getAvailablePrinters,
   getDefaultPrinter,
@@ -40,6 +41,19 @@ const {
   saveConfig,
   clearConfig,
 } = require("../services/printerConfig");
+
+function getPdfPageCount(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    const str = buf.toString("binary");
+    const matches = str.match(/\/Count\s+(\d+)/g);
+    if (!matches) return null;
+    const counts = matches.map((m) => parseInt(m.match(/\d+/)[0]));
+    return Math.max(...counts);
+  } catch {
+    return null;
+  }
+}
 
 function parseVirtualPrinterArg(argv) {
   if (!Array.isArray(argv)) return null;
@@ -543,7 +557,7 @@ ipcMain.handle("security:screenshot-status", () => ({
 }));
 
 ipcMain.handle("print:set-options", (_event, opts) => {
-  global._filesPrintOptions = opts;
+  global._filesPrintOptions = { ...global._filesPrintOptions, ...opts };
 });
 
 // ── Viewer : helpers ────────────────────────────────────────────
@@ -1218,11 +1232,12 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
   // Lire les options d'impression stockées par le modal
   const optKey = `${jobId}_${data.file_id}`;
   const printOpts = global._filesPrintOptions?.[optKey] || {};
-  const orientation = printOpts.orientation || null;   // "portrait" | "landscape" | null
-  const duplex     = printOpts.duplex || false;
-  const pageRange  = printOpts.pages === "range"
-    ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 999 }
-    : null;
+  const orientation = printOpts.orientation || null; // "portrait" | "landscape" | null
+  const duplex = printOpts.duplex || false;
+  const pageRange =
+    printOpts.pages === "range"
+      ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 999 }
+      : null;
   console.log(`[PRINT] Options:`, { orientation, duplex, pageRange });
 
   const { data: fileData, error: dlError } = await supabase.storage
@@ -1256,22 +1271,14 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       const outputPdfPath = path.join(mpPdfFolder, `${fileName}.pdf`);
 
       if (ext === ".pdf") {
-        const pageRange = printOpts.pages === "range"
-          ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 9999 }
-          : null;
+        const pageRange =
+          printOpts.pages === "range"
+            ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 9999 }
+            : null;
         if (pageRange) {
-          // Extraire les pages via PowerShell + Word (méthode compatible sans dépendance)
-          const normalized = filePath.replace(/\\/g, "\\\\");
-          const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
-          const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command `+
-            `"Add-Type -AssemblyName System.Drawing; `+
-            `$pdf = New-Object -ComObject AcroPDF.PDF; `+
-            `if (-not $pdf) { Copy-Item '${normalized}' '${outputNormalized}' } "`;
-          // Fallback simple : utiliser pdf-to-printer avec pages
           await pdfToPrinter.print(filePath, {
-            printer: "Microsoft Print to PDF",
+            printer: "Mp-Pdf",
             pages: `${pageRange.from}-${pageRange.to}`,
-            outputFileName: outputPdfPath,
           });
         } else {
           fs.copyFileSync(filePath, outputPdfPath);
@@ -1304,12 +1311,13 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
     if (ext === ".pdf") {
       // PDF: utiliser pdf-to-printer
-      const pageRange = printOpts.pages === "range"
-        ? `${printOpts.pageFrom || 1}-${printOpts.pageTo || 9999}`
-        : undefined;
-      await pdfToPrinter.print(filePath, { 
+      const pageRange =
+        printOpts.pages === "range"
+          ? `${printOpts.pageFrom || 1}-${printOpts.pageTo || 9999}`
+          : undefined;
+      await pdfToPrinter.print(filePath, {
         printer: printerName,
-        ...(pageRange && { pages: pageRange })
+        ...(pageRange && { pages: pageRange }),
       });
     } else if (
       [".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".rtf"].includes(ext)
@@ -1332,11 +1340,16 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
     // Options d'impression
     const orientation = printOpts.orientation === "portrait" ? 1 : 2; // 1=portrait, 2=landscape
     const duplex = printOpts.duplex || false;
-    const pageRange = printOpts.pages === "range"
-      ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 999 }
-      : null;
+    const pageRange =
+      printOpts.pages === "range"
+        ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 999 }
+        : null;
 
-    console.log(`[PRINT] Options appliquées:`, { orientation, duplex, pageRange });
+    console.log(`[PRINT] Options appliquées:`, {
+      orientation,
+      duplex,
+      pageRange,
+    });
 
     let convertCmd;
     if ([".doc", ".docx"].includes(ext)) {
@@ -1368,7 +1381,9 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         "  $sheet.PageSetup.FitToPagesWide = 1; " +
         "  $sheet.PageSetup.FitToPagesTall = $false; " +
         `  $sheet.PageSetup.Orientation = ${excelOrientation}; ` +
-        (duplex ? "  $sheet.PageSetup.OddAndEvenPagesHeaderFooter = $true; " : "") +
+        (duplex
+          ? "  $sheet.PageSetup.OddAndEvenPagesHeaderFooter = $true; "
+          : "") +
         "} " +
         "$wb.ExportAsFixedFormat(0, '" +
         tmpPdfNorm +
@@ -1447,8 +1462,8 @@ async function printSingleJob(jobId, printerName, copies) {
   );
   await new Promise((resolve) => setTimeout(resolve, PRINT_DELAY_MS));
 
-  await supabase.storage.from("derewol-files").remove([result.storagePath]);
-  console.log(`[PRINT] ${result.fileName} → Storage supprimé ✅`);
+  await supabase.from("files").delete().eq("storage_path", result.storagePath);
+  console.log(`[PRINT] ${result.fileName} → Storage supprimé via webhook ✅`);
 
   if (fs.existsSync(result.tmpPath)) secureDelete(result.tmpPath);
 
@@ -1865,6 +1880,13 @@ ipcMain.handle("printer:list", async () => {
   return await getInstalledPrinters();
 });
 ipcMain.handle("printer:default", async () => await getDefaultPrinter());
+ipcMain.handle("pdf:get-pages", (_event, fileId) => {
+  console.log(`[IPC] getPdfPages called for fileId: ${fileId}`);
+  console.log(`[IPC] Cache keys:`, Object.keys(pdfCache.getAll()));
+  const result = pdfCache.get(fileId);
+  console.log(`[IPC] returning: ${result} for fileId: ${fileId}`);
+  return result;
+});
 ipcMain.handle("log:write", async (_, message) => {
   console.log("[LOG]", message);
   return { success: true };

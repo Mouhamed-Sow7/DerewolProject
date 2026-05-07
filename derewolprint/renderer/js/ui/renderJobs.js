@@ -418,15 +418,13 @@ export default function renderJobs(
   });
 
   // ── Options d'impression ──────────────────────────────────
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
     const btn = e.target.closest(".btn-print-options");
     if (btn) {
-      const { jobId, fileId, fileName, fileExt, numPages } = btn.dataset;
-      const numPagesFinal =
-        fileExt === "pdf"
-          ? window._currentPdfNumPages || parseInt(numPages) || null
-          : parseInt(numPages) || null;
-      openPrintOptionsModal(jobId, fileId, fileName, fileExt, numPagesFinal);
+      const { jobId, fileId, fileName, fileExt } = btn.dataset;
+      const cachedPages =
+        fileExt === "pdf" ? await window.derewol.getPdfPages(fileId) : null;
+      openPrintOptionsModal(jobId, fileId, fileName, fileExt, cachedPages);
     }
   });
 }
@@ -640,7 +638,7 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext, numPages = null) {
     fit: savedOpts?.fit || "fit",
     pages: savedOpts?.pages || "all",
     pageFrom: savedOpts?.pageFrom || 1,
-    pageTo: savedOpts?.pageTo || 999,
+    pageTo: savedOpts?.pageTo || numPages || 999,
     duplex: savedOpts?.duplex || "recto",
   };
 
