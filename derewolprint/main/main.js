@@ -2300,7 +2300,10 @@ ipcMain.handle(
         file_id: newFile.id,
         group_id: groupId,
         status: "queued",
-        storage_path: newStoragePath,
+        print_token: require("crypto").randomUUID(),
+        copies_requested: 1,
+        copies_remaining: 1,
+        expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
       });
 
       if (jobError) throw new Error(`Insert job échoué: ${jobError.message}`);

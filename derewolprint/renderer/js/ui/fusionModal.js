@@ -101,6 +101,12 @@ export async function openFusionModal(selectedFiles, onComplete) {
     preset: "original",
     filters: { ...FUSION_PRESETS[0].filters },
     rotations: [0, 0],
+    scales: [1, 1],
+    offsets: [
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+    ],
+    dragging: null,
     canvas: null,
     ctx: null,
     onComplete,
@@ -396,6 +402,97 @@ function _buildModal() {
       _renderCanvas();
     });
   });
+
+  // ── Drag pour repositionner ──────────────────────────────────────────
+  const canvas = document.getElementById("fusion-canvas");
+
+  canvas.addEventListener("mousedown", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const A4W = 560,
+      A4H = 792,
+      MARGIN = 16;
+
+    // Détecter quelle cellule est cliquée
+    let idx = -1;
+    if (_state.layout === "horizontal") {
+      const cellW = (A4W - MARGIN * 3) / 2;
+      idx = mx < MARGIN + cellW ? 0 : 1;
+    } else {
+      const cellH = (A4H - MARGIN * 3) / 2;
+      idx = my < MARGIN + cellH ? 0 : 1;
+    }
+    if (idx < 0 || !_state.files[idx]?.img) return;
+
+    _state.dragging = {
+      idx,
+      startX: e.clientX,
+      startY: e.clientY,
+      startOffsetX: (_state.offsets || [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+      ])[idx].x,
+      startOffsetY: (_state.offsets || [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+      ])[idx].y,
+    };
+    canvas.style.cursor = "grabbing";
+  });
+
+  canvas.addEventListener("mousemove", (e) => {
+    if (!_state.dragging) return;
+    const { idx, startX, startY, startOffsetX, startOffsetY } = _state.dragging;
+    const scaleRatio = canvas.width / canvas.getBoundingClientRect().width;
+    _state.offsets[idx].x = startOffsetX + (e.clientX - startX) * scaleRatio;
+    _state.offsets[idx].y = startOffsetY + (e.clientY - startY) * scaleRatio;
+    _renderCanvas();
+  });
+
+  canvas.addEventListener("mouseup", () => {
+    _state.dragging = null;
+    canvas.style.cursor = "grab";
+  });
+  canvas.addEventListener("mouseleave", () => {
+    _state.dragging = null;
+    canvas.style.cursor = "grab";
+  });
+
+  // ── Scroll pour zoomer ───────────────────────────────────────────────
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+      const A4W = 560,
+        A4H = 792,
+        MARGIN = 16;
+
+      let idx = -1;
+      if (_state.layout === "horizontal") {
+        const cellW = (A4W - MARGIN * 3) / 2;
+        idx = mx < MARGIN + cellW ? 0 : 1;
+      } else {
+        const cellH = (A4H - MARGIN * 3) / 2;
+        idx = my < MARGIN + cellH ? 0 : 1;
+      }
+      if (idx < 0 || !_state.files[idx]?.img) return;
+
+      if (!_state.scales) _state.scales = [1, 1];
+      const delta = e.deltaY > 0 ? -0.05 : 0.05;
+      _state.scales[idx] = Math.max(
+        0.2,
+        Math.min(3, _state.scales[idx] + delta),
+      );
+      _renderCanvas();
+    },
+    { passive: false },
+  );
+
+  canvas.style.cursor = "grab";
 }
 
 function _buildSlider(key, label, min, max) {
@@ -546,6 +643,11 @@ function _renderCanvas() {
         cellW,
         cellH,
         (_state.rotations || [0, 0])[0],
+        (_state.scales || [1, 1])[0],
+        (_state.offsets || [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+        ])[0],
       );
     if (img1)
       _drawImageFit(
@@ -556,6 +658,11 @@ function _renderCanvas() {
         cellW,
         cellH,
         (_state.rotations || [0, 0])[1],
+        (_state.scales || [1, 1])[1],
+        (_state.offsets || [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+        ])[1],
       );
 
     // Ligne séparation
@@ -585,6 +692,11 @@ function _renderCanvas() {
         cellW,
         cellH,
         (_state.rotations || [0, 0])[0],
+        (_state.scales || [1, 1])[0],
+        (_state.offsets || [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+        ])[0],
       );
     if (img1)
       _drawImageFit(
@@ -595,6 +707,11 @@ function _renderCanvas() {
         cellW,
         cellH,
         (_state.rotations || [0, 0])[1],
+        (_state.scales || [1, 1])[1],
+        (_state.offsets || [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+        ])[1],
       );
 
     // Ligne séparation
@@ -610,16 +727,26 @@ function _renderCanvas() {
   _applyCanvasFilter(canvas);
 }
 
-function _drawImageFit(ctx, img, x, y, maxW, maxH, rotation = 0) {
+function _drawImageFit(
+  ctx,
+  img,
+  x,
+  y,
+  maxW,
+  maxH,
+  rotation = 0,
+  scale = 1,
+  offset = { x: 0, y: 0 },
+) {
   const rad = (rotation * Math.PI) / 180;
-  // Si rotation 90/270, swap dimensions pour le fit
   const fW = rotation % 180 !== 0 ? maxH : maxW;
   const fH = rotation % 180 !== 0 ? maxW : maxH;
-  const scale = Math.min(fW / img.width, fH / img.height);
-  const w = img.width * scale;
-  const h = img.height * scale;
-  const cx = x + maxW / 2;
-  const cy = y + maxH / 2;
+  const baseScale = Math.min(fW / img.width, fH / img.height);
+  const finalScale = baseScale * scale;
+  const w = img.width * finalScale;
+  const h = img.height * finalScale;
+  const cx = x + maxW / 2 + offset.x;
+  const cy = y + maxH / 2 + offset.y;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(rad);
@@ -707,6 +834,8 @@ async function _generatePDF() {
           cellW,
           cellH,
           _state.rotations[0],
+          _state.scales[0],
+          _state.offsets[0],
         );
       if (f1?.img)
         _drawImageFit(
@@ -717,6 +846,8 @@ async function _generatePDF() {
           cellW,
           cellH,
           _state.rotations[1],
+          _state.scales[1],
+          _state.offsets[1],
         );
     } else {
       const cellW = A4W_HQ - MARGIN * 2;
@@ -730,6 +861,8 @@ async function _generatePDF() {
           cellW,
           cellH,
           _state.rotations[0],
+          _state.scales[0],
+          _state.offsets[0],
         );
       if (f1?.img)
         _drawImageFit(
@@ -740,6 +873,8 @@ async function _generatePDF() {
           cellW,
           cellH,
           _state.rotations[1],
+          _state.scales[1],
+          _state.offsets[1],
         );
     }
 
