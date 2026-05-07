@@ -762,30 +762,22 @@ function _drawImageFit(
   const cx = zoneX + zoneW / 2;
   const cy = zoneY + zoneH / 2;
   const PADDING = 16;
+
   const maxW = zoneW - PADDING * 2;
   const maxH = zoneH - PADDING * 2;
 
-  let imgW, imgH;
-  if (rotation % 180 !== 0) {
-    const ratio = Math.min(
-      maxW / (img.naturalHeight || img.height),
-      maxH / (img.naturalWidth || img.width),
-    );
-    imgW = (img.naturalHeight || img.height) * ratio;
-    imgH = (img.naturalWidth || img.width) * ratio;
-  } else {
-    const ratio = Math.min(
-      maxW / (img.naturalWidth || img.width),
-      maxH / (img.naturalHeight || img.height),
-    );
-    imgW = (img.naturalWidth || img.width) * ratio;
-    imgH = (img.naturalHeight || img.height) * ratio;
-  }
+  const iW = img.naturalWidth || img.width;
+  const iH = img.naturalHeight || img.height;
+  const ratioNormal = Math.min(maxW / iW, maxH / iH);
+  const baseRatio = ratioNormal;
+
+  const drawW = iW * baseRatio;
+  const drawH = iH * baseRatio;
 
   ctx.translate(cx + offset.x, cy + offset.y);
   ctx.scale(scale, scale);
   ctx.rotate((rotation * Math.PI) / 180);
-  ctx.drawImage(img, -imgW / 2, -imgH / 2, imgW, imgH);
+  ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
   ctx.restore();
 }
 
