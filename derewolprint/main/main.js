@@ -2005,7 +2005,9 @@ ipcMain.handle("fusion:get-preview", async (event, fileId) => {
       .single();
 
     if (selectErr || !file) {
-      throw new Error(`Fichier ${fileId} introuvable: ${selectErr?.message || "pas de données"}`);
+      throw new Error(
+        `Fichier ${fileId} introuvable: ${selectErr?.message || "pas de données"}`,
+      );
     }
 
     // Créer une URL signée et ajouter cache-buster (même logique que printSingleJobNoDelay)
@@ -2014,14 +2016,19 @@ ipcMain.handle("fusion:get-preview", async (event, fileId) => {
       .createSignedUrl(file.storage_path, 60, { download: true });
 
     if (signedErr || !signedData) {
-      throw new Error(`Impossible créer signed URL pour ${file.storage_path}: ${signedErr?.message || "pas de données"}`);
+      throw new Error(
+        `Impossible créer signed URL pour ${file.storage_path}: ${signedErr?.message || "pas de données"}`,
+      );
     }
 
     const cacheBustedUrl = `${signedData.signedUrl}&cb=${Date.now()}`;
-    console.log(`[FUSION] Télécharger ${file.file_name} depuis ${file.storage_path}`);
+    console.log(
+      `[FUSION] Télécharger ${file.file_name} depuis ${file.storage_path}`,
+    );
 
     const fetchResponse = await fetch(cacheBustedUrl);
-    if (!fetchResponse.ok) throw new Error(`Fetch failed: ${fetchResponse.statusText}`);
+    if (!fetchResponse.ok)
+      throw new Error(`Fetch failed: ${fetchResponse.statusText}`);
     const arrayBuffer = await fetchResponse.arrayBuffer();
 
     // Déchiffrer
@@ -2031,7 +2038,9 @@ ipcMain.handle("fusion:get-preview", async (event, fileId) => {
     }
 
     // Retourner le buffer comme array pour sérialisation IPC
-    console.log(`[FUSION] ✓ Fichier déchiffré: ${file.file_name} (${decrypted.length} bytes)`);
+    console.log(
+      `[FUSION] ✓ Fichier déchiffré: ${file.file_name} (${decrypted.length} bytes)`,
+    );
     return {
       buffer: Array.from(decrypted),
       fileName: file.file_name,
@@ -2275,13 +2284,11 @@ ipcMain.handle(
       const { data: newFile, error: insertError } = await supabase
         .from("files")
         .insert({
-          name: fileName,
+          file_name: fileName,
           storage_path: newStoragePath,
           group_id: groupId,
-          owner_id: ownerId,
-          status: "queued",
-          file_type: "pdf",
-          size: pdfBuffer.length,
+          encrypted_key: null,
+          file_hash: null,
         })
         .select()
         .single();
