@@ -253,6 +253,69 @@ export default function renderJobs(
         })
         .join("");
 
+      // ✅ Rendu spécifique pour groupes terminés (historique)
+      if (group.groupStatus === "completed") {
+        const fileList = group.items
+          .map(
+            (item) => `
+            <div class="file-row-done">
+              <span class="file-row-icon">
+                <i class="fa-solid ${getFileIconClass(item.fileName)}" style="color:var(--text-muted);font-size:13px"></i>
+              </span>
+              <span class="file-row-name file-row-name--done" title="${item.fileName}">
+                ${item.fileName}
+              </span>
+              <span class="file-row-done-tag">
+                <i class="fa-solid fa-check" style="font-size:10px"></i> Imprimé
+              </span>
+            </div>
+          `,
+          )
+          .join("");
+
+        const totalCopies = group.copies || 1;
+
+        return `
+      <div class="job-card job-card--done" id="${group.id}">
+        <div class="job-card-header">
+          <div class="job-card-header-left">
+            <div>
+              <div class="job-client-id">
+                <i class="fa-regular fa-user"></i>
+                ${formatClientId(group.clientId)}
+                ${btBadge}
+                <span class="job-status-badge"
+                  style="background:#f0fdf4;color:#166534">
+                  <i class="fa-solid fa-check-circle" style="font-size:10px"></i>
+                  Terminé
+                </span>
+              </div>
+              <div class="job-time">
+                ${group.time}
+                · ${group.items.length} fichier${group.items.length > 1 ? "s" : ""}
+                · <span style="color:#166534;font-weight:500">
+                    ${totalCopies} copie${totalCopies > 1 ? "s" : ""}
+                  </span>
+              </div>
+            </div>
+          </div>
+          <!-- Aucun bouton action — groupe terminé -->
+        </div>
+
+        <!-- Liste des fichiers -->
+        <div class="job-files-list job-files-list--done">
+          ${fileList}
+        </div>
+
+        <!-- Mention fichiers supprimés -->
+        <div class="job-card-footer-done">
+          <i class="fa-solid fa-shield-halved" style="font-size:11px;color:#6b7280"></i>
+          <span>Fichiers supprimés après impression</span>
+        </div>
+
+      </div>`;
+      }
+
       return `
     <div class="job-card" id="${group.id}">
 
