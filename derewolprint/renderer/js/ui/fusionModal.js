@@ -482,10 +482,13 @@ function _buildModal() {
       if (idx < 0 || !_state.files[idx]?.img) return;
 
       if (!_state.scales) _state.scales = [1, 1];
-      const delta = e.deltaY > 0 ? -0.05 : 0.05;
+      const ZOOM_MIN = 0.5;
+      const ZOOM_MAX = 10;
+      const ZOOM_SPEED = 0.01;
+      const delta = e.deltaY > 0 ? -ZOOM_SPEED : ZOOM_SPEED;
       _state.scales[idx] = Math.max(
-        0.2,
-        Math.min(3, _state.scales[idx] + delta),
+        ZOOM_MIN,
+        Math.min(ZOOM_MAX, _state.scales[idx] + delta),
       );
       _renderCanvas();
     },
