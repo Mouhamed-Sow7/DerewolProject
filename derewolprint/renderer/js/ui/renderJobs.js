@@ -1050,21 +1050,7 @@ async function _openFusionFromSelection() {
   _clearFileSelection();
 
   openFusionModal(selectedFiles, ({ success, fileName }) => {
-    if (success) {
-      const toast = document.createElement("div");
-      toast.textContent = `✅ ${fileName} créé — fichiers remplacés`;
-      toast.style.cssText = `
-        position:fixed;bottom:18px;right:18px;z-index:9999;
-        padding:12px 16px;border-radius:10px;color:#fff;font-size:13px;
-        background:#16a34a;box-shadow:0 4px 18px rgba(0,0,0,.16);
-        font-family:'Inter',sans-serif;
-      `;
-      document.body.appendChild(toast);
-      setTimeout(() => {
-        toast.style.opacity = "0";
-        setTimeout(() => toast.remove(), 300);
-      }, 4000);
-    }
+    // Toast supprimé — fusionModal.js gère déjà la notification
   });
 }
 

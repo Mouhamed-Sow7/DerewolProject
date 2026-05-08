@@ -2257,7 +2257,7 @@ ipcMain.handle(
       const pdfPath = path.join(tmpDir, `fusion_${Date.now()}.pdf`);
 
       fs.writeFileSync(pngPath, Buffer.from(pngData));
-      await _pngToPdf(pngPath, pdfPath);
+      await _pngToPdf(Buffer.from(pngData), pdfPath);
 
       const pdfBuffer = fs.readFileSync(pdfPath);
 
@@ -2335,9 +2335,19 @@ ipcMain.handle(
         await supabase.from("files").delete().eq("id", src.fileId);
 
         if (src.storagePath) {
-          await supabase.storage
+          const { error: storageErr } = await supabase.storage
             .from("derewol-files")
             .remove([src.storagePath]);
+
+          // ✅ LOG TEMPORAIRE — à retirer après debug
+          if (storageErr) {
+            console.error(
+              `[FUSION] Storage delete FAILED for ${src.storagePath}:`,
+              storageErr.message,
+            );
+          } else {
+            console.log(`[FUSION] Storage delete OK: ${src.storagePath}`);
+          }
         }
 
         pdfCache.delete(src.fileId);
@@ -2520,52 +2530,45 @@ ipcMain.handle("dev:logout", () => {
   app.exit(0);
 });
 
-async function _pngToPdf(pngPath, pdfPath) {
+async function _pngToPdf(pngBuffer, outputPdfPath) {
   return new Promise((resolve, reject) => {
-    const psScript = `
-$word = New-Object -ComObject Word.Application
-$word.Visible = $false
-$doc = $word.Documents.Add()
-$doc.PageSetup.PaperSize = 9
-$doc.PageSetup.TopMargin = 28
-$doc.PageSetup.BottomMargin = 28
-$doc.PageSetup.LeftMargin = 28
-$doc.PageSetup.RightMargin = 28
-$range = $doc.Range()
-$shape = $doc.InlineShapes.AddPicture("${pngPath.replace(/'/g, "''")}", $false, $true, $range)
-$pageW = $doc.PageSetup.PageWidth - 56
-$pageH = $doc.PageSetup.PageHeight - 56
-$ratio = $shape.Width / $shape.Height
-if (($pageW / $ratio) -le $pageH) {
-  $shape.Width = $pageW
-  $shape.Height = $pageW / $ratio
-} else {
-  $shape.Height = $pageH
-  $shape.Width = $pageH * $ratio
-}
-$doc.ExportAsFixedFormat("${pdfPath.replace(/'/g, "''")}", 17)
-$doc.Close([Microsoft.Office.Interop.Word.WdSaveOptions]::wdDoNotSaveChanges)
-$word.Quit()
-[System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
-`;
+    try {
+      // Lit les dimensions PNG directement depuis le buffer
+      // Les bytes 16-24 d'un PNG contiennent width et height (IHDR chunk)
+      const width = pngBuffer.readUInt32BE(16);
+      const height = pngBuffer.readUInt32BE(20);
 
-    const tmpPs = path.join(os.tmpdir(), `fusion_${Date.now()}.ps1`);
-    fs.writeFileSync(tmpPs, psScript, "utf8");
+      // A4 en points (72 dpi) : 595.28 x 841.89
+      const A4_W = 595.28;
+      const A4_H = 841.89;
 
-    exec(
-      `powershell -ExecutionPolicy Bypass -File "${tmpPs}"`,
-      { timeout: 30000 },
-      (err, stdout, stderr) => {
-        try {
-          fs.unlinkSync(tmpPs);
-        } catch (_) {}
-        if (err) {
-          reject(new Error(`PowerShell échoué: ${stderr || err.message}`));
-        } else {
-          resolve();
-        }
-      },
-    );
+      const PDFDocument = require("pdfkit");
+      const fs = require("fs");
+
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 0,
+        autoFirstPage: true,
+      });
+
+      const stream = fs.createWriteStream(outputPdfPath);
+      doc.pipe(stream);
+
+      // Calcule le scale pour fit A4 en gardant le ratio
+      const scale = Math.min(A4_W / width, A4_H / height);
+      const drawW = width * scale;
+      const drawH = height * scale;
+      const x = (A4_W - drawW) / 2;
+      const y = (A4_H - drawH) / 2;
+
+      doc.image(pngBuffer, x, y, { width: drawW, height: drawH });
+      doc.end();
+
+      stream.on("finish", resolve);
+      stream.on("error", reject);
+    } catch (err) {
+      reject(new Error(`Erreur conversion PNG→PDF: ${err.message}`));
+    }
   });
 }
 
