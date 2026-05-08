@@ -19,42 +19,72 @@ function usePrintStatus(displayId) {
     let cancelled = false;
     setLoading(true);
 
-    const fetchGroups = async () => {
+    async function fetchGroups() {
       try {
-        const { data, error } = await supabase
+        // 1. Groupes actifs depuis file_groups
+        const { data: activeData } = await supabase
           .from("file_groups")
           .select(
             `
-        id, status, expires_at,
-        files ( id, file_name ),
-        print_jobs ( id, status, copies_requested, copies_remaining, expires_at )
-      `,
+            id, status, expires_at, copies_count, updated_at,
+            files ( id, file_name, rejected ),
+            print_jobs ( id, status, copies_requested, copies_remaining, expires_at )
+          `,
           )
           .eq("owner_id", displayId)
-          .in("status", [
-            "waiting",
-            "printing",
-            "completed",
-            "rejected",
-            "partial_rejected",
-            "expired",
-          ])
-          .order("created_at", { ascending: false })
+          .neq("status", "deleted")
+          .order("updated_at", { ascending: false })
           .limit(50);
 
-        if (!cancelled && !error && data) {
-          const filtered = data.filter((g) => !["deleted"].includes(g.status));
-          filtered.sort(
-            (a, b) => new Date(b.expires_at) - new Date(a.expires_at),
-          );
-          setGroups(filtered);
+        // 2. Historique depuis history directement (file_groups supprimés)
+        const { data: historyData } = await supabase
+          .from("history")
+          .select("id, group_id, file_name, status, copies, printed_at")
+          .eq("owner_id", displayId)
+          .order("printed_at", { ascending: false })
+          .limit(50);
+
+        if (cancelled) return;
+
+        // 3. Groupes actifs non-terminés
+        const active = (activeData ?? []).filter(
+          (g) => !["completed", "rejected", "expired"].includes(g.status),
+        );
+
+        // 4. Reconstruit les groupes historique depuis history
+        const historyMap = {};
+        for (const h of historyData ?? []) {
+          if (!historyMap[h.group_id]) {
+            historyMap[h.group_id] = {
+              id: h.group_id,
+              status: h.status === "rejected" ? "rejected" : "completed",
+              expires_at: h.printed_at,
+              updated_at: h.printed_at,
+              copies_count: h.copies,
+              files: [],
+              print_jobs: [],
+              history: [],
+              isHistoryGroup: true,
+            };
+          }
+          historyMap[h.group_id].history.push(h);
+          // Le statut du groupe = rejected si AU MOINS UN fichier est rejected
+          if (h.status === "completed") {
+            historyMap[h.group_id].status = "completed";
+          }
         }
+
+        const historyGroups = Object.values(historyMap).sort(
+          (a, b) => new Date(b.updated_at) - new Date(a.updated_at),
+        );
+
+        setGroups([...active, ...historyGroups]);
       } catch (err) {
         console.warn("[dashboard] fetch error:", err?.message || err);
       } finally {
         if (!cancelled) setLoading(false);
       }
-    };
+    }
 
     fetchGroups();
     const iv = setInterval(fetchGroups, 3000);
@@ -165,6 +195,9 @@ function GroupCard({ group }) {
 
   const isHistory = ["completed", "rejected", "expired"].includes(status);
 
+  // ✅ Pour l'historique, utilise history au lieu de files (qui est vide)
+  const displayFiles = isHistory ? group.history || [] : group.files || [];
+
   return (
     <div
       className={`db-card ${status === "expired" ? "db-card--expired" : ""}`}
@@ -175,7 +208,7 @@ function GroupCard({ group }) {
           <div className="db-card-icon">{isHistory ? "📋" : "🗂️"}</div>
           <div>
             <div className="db-card-count">
-              {files.length} fichier{files.length > 1 ? "s" : ""}
+              {displayFiles.length} fichier{displayFiles.length > 1 ? "s" : ""}
             </div>
             <div
               style={{
@@ -201,11 +234,12 @@ function GroupCard({ group }) {
         )}
       </div>
 
-      {/* Fichiers */}
+      {/* Liste des fichiers depuis history */}
       <div className="db-files-list">
-        {files.map((f) => {
-          // Détermine le statut individuel du fichier
-          const isRejected = f.rejected === true;
+        {displayFiles.map((f) => {
+          const isRejected = isHistory
+            ? f.status === "rejected"
+            : f.rejected === true;
           const fileStatus = isRejected
             ? "rejected"
             : status === "completed"
