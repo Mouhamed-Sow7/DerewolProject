@@ -2296,31 +2296,45 @@ ipcMain.handle(
       if (insertError)
         throw new Error(`Insert fichier échoué: ${insertError.message}`);
 
-      const { error: jobError } = await supabase.from("print_jobs").insert({
-        file_id: newFile.id,
-        group_id: groupId,
-        status: "queued",
-        print_token: require("crypto").randomUUID(),
-        copies_requested: 1,
-        copies_remaining: 1,
-        expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-      });
-
-      if (jobError) throw new Error(`Insert job échoué: ${jobError.message}`);
+      // ✅ Réutilise le job du premier fichier source au lieu d'en créer un nouveau.
+      const { error: updateJobError } = await supabase
+        .from("print_jobs")
+        .update({
+          file_id: newFile.id,
+          status: "queued",
+          expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+          // copies_requested et copies_remaining inchangés — déjà à 1
+        })
+        .eq("id", firstFile.jobId);
+      if (updateJobError)
+        throw new Error(`Update job échoué: ${updateJobError.message}`);
 
       for (const src of sourceFiles) {
+        if (src.jobId !== firstFile.jobId) {
+          await supabase
+            .from("print_jobs")
+            .update({
+              status: "completed",
+              error_message: "Remplacé par fusion",
+            })
+            .eq("id", src.jobId);
+        }
+
+        await supabase.from("files").delete().eq("id", src.fileId);
+
         if (src.storagePath) {
           await supabase.storage
             .from("derewol-files")
             .remove([src.storagePath]);
         }
-        await supabase
-          .from("print_jobs")
-          .update({ status: "completed", error_message: "Remplacé par fusion" })
-          .eq("id", src.jobId);
-        await supabase.from("files").delete().eq("id", src.fileId);
+
         pdfCache.delete(src.fileId);
       }
+
+      await supabase
+        .from("file_groups")
+        .update({ files_count: 1 })
+        .eq("id", groupId);
 
       try {
         fs.unlinkSync(pngPath);
