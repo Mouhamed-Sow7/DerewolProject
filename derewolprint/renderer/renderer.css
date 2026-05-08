@@ -2194,3 +2194,23 @@ body.dark-mode .act-trial-card {
   border-top: 1px solid;
   font-family: "DM Sans", sans-serif;
 }
+
+/* Carte expirée */
+.job-card--expired {
+  opacity: 0.75;
+  border-left: 3px solid #9ca3af;
+}
+.job-card--expired:hover {
+  opacity: 1;
+}
+
+/* Tag expiré */
+.file-row-done-tag--expired {
+  font-size: 11px;
+  color: #4b5563;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

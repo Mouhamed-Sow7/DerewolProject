@@ -203,14 +203,46 @@ function GroupCard({ group }) {
 
       {/* Fichiers */}
       <div className="db-files-list">
-        {files.map((f) => (
-          <div key={f.id} className="db-file-row">
-            <span className="db-file-icon">📄</span>
-            <span className="db-file-name" title={f.file_name}>
-              {f.file_name}
-            </span>
-          </div>
-        ))}
+        {files.map((f) => {
+          // Détermine le statut individuel du fichier
+          const isRejected = f.rejected === true;
+          const fileStatus = isRejected
+            ? "rejected"
+            : status === "completed"
+              ? "completed"
+              : status === "expired"
+                ? "expired"
+                : null;
+
+          return (
+            <div
+              key={f.id}
+              className={`db-file-row ${isRejected ? "db-file-row--rejected" : ""}`}
+            >
+              <span className="db-file-icon">
+                {isRejected ? "✕" : status === "completed" ? "✓" : "📄"}
+              </span>
+              <span className="db-file-name" title={f.file_name}>
+                {f.file_name}
+              </span>
+              {fileStatus === "completed" && (
+                <span className="db-file-status db-file-status--done">
+                  Imprimé
+                </span>
+              )}
+              {fileStatus === "rejected" && (
+                <span className="db-file-status db-file-status--rejected">
+                  Rejeté — supprimé
+                </span>
+              )}
+              {fileStatus === "expired" && (
+                <span className="db-file-status db-file-status--expired">
+                  Expiré — supprimé
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Message statut */}

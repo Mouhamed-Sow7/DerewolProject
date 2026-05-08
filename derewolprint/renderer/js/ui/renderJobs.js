@@ -316,6 +316,61 @@ export default function renderJobs(
       </div>`;
       }
 
+      // ✅ Rendu spécifique pour groupes expirés
+      if (group.groupStatus === "expired") {
+        const fileList = group.items
+          .map(
+            (item) => `
+            <div class="file-row-done">
+              <span class="file-row-icon">
+                <i class="fa-solid ${getFileIconClass(item.fileName)}"
+                   style="color:var(--text-muted);font-size:13px"></i>
+              </span>
+              <span class="file-row-name file-row-name--done" title="${item.fileName}">
+                ${item.fileName}
+              </span>
+              <span class="file-row-done-tag file-row-done-tag--expired">
+                <i class="fa-solid fa-clock" style="font-size:10px"></i> Expiré — supprimé
+              </span>
+            </div>
+          `,
+          )
+          .join("");
+
+        return `
+      <div class="job-card job-card--expired" id="${group.id}">
+        <div class="job-card-header">
+          <div class="job-card-header-left">
+            <div>
+              <div class="job-client-id">
+                <i class="fa-regular fa-user"></i>
+                ${formatClientId(group.clientId)}
+                ${btBadge}
+                <span class="job-status-badge"
+                  style="background:#f3f4f6;color:#4b5563">
+                  <i class="fa-solid fa-clock" style="font-size:10px"></i>
+                  Expiré
+                </span>
+              </div>
+              <div class="job-time">
+                ${group.time}
+                · ${group.items.length} fichier${group.items.length > 1 ? "s" : ""}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="job-files-list job-files-list--done">
+          ${fileList}
+        </div>
+
+        <div class="job-card-footer-done">
+          <i class="fa-solid fa-clock" style="font-size:11px;color:#6b7280"></i>
+          <span>Délai dépassé — fichiers supprimés automatiquement</span>
+        </div>
+      </div>`;
+      }
+
       return `
     <div class="job-card" id="${group.id}">
 
