@@ -1607,7 +1607,19 @@ ipcMain.handle(
       errors = [];
     let fileGroupId = null,
       ownerId = null;
-    const groupCopies = Math.max(1, ...items.map((i) => Number(i.copies) || 1));
+
+    const activeItems = items.filter(
+      (i) =>
+        i.status !== "completed" &&
+        i.status !== "rejected" &&
+        i.status !== "expired",
+    );
+    const groupCopies = Math.max(
+      1,
+      ...(activeItems.length > 0 ? activeItems : items).map(
+        (i) => Number(i.copies) || 1,
+      ),
+    );
 
     try {
       const { data: firstJob } = await supabase
