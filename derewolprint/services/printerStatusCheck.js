@@ -11,15 +11,31 @@ function checkPrinterStatus(printerName) {
   }
 
   try {
-    // Vérifier si l'imprimante existe et son état WorkOffline
-    const workOfflineCmd = `powershell -command "Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${cleanName}' } | Select-Object -ExpandProperty WorkOffline"`;
-    const workOfflineResult = execSync(workOfflineCmd, { timeout: 3000 })
-      .toString()
-      .trim();
-
-    // Obtenir les détails complets du statut
+    // Obtenir les détails complets du statut (timeout augmenté à 6 secondes)
     const statusCmd = `powershell -command "Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${cleanName}' } | Select-Object PrinterStatus, DetectedErrorState, WorkOffline | ConvertTo-Json"`;
-    const statusRaw = execSync(statusCmd, { timeout: 3000 }).toString().trim();
+    let statusRaw;
+    try {
+      statusRaw = execSync(statusCmd, { timeout: 6000 }).toString().trim();
+    } catch (cmdErr) {
+      console.warn(
+        "[printerStatusCheck] Première tentative échouée, fallback...",
+      );
+      // Fallback: tentative plus simple
+      const simpleCmd = `powershell -command "Get-Printer -Name '${cleanName}' -ErrorAction Stop | Select-Object -ExpandProperty PrinterStatus"`;
+      try {
+        const simpleResult = execSync(simpleCmd, { timeout: 6000 })
+          .toString()
+          .trim();
+        // PrinterStatus: 0=Idle, 1=Processing, 3=Error
+        const statusCode = parseInt(simpleResult);
+        if (statusCode === 3) {
+          return { online: false, reason: "Imprimante en erreur" };
+        }
+        return { online: true, reason: "OK" };
+      } catch {
+        throw cmdErr; // Re-throw original error
+      }
+    }
 
     if (!statusRaw) {
       return { online: false, reason: "Imprimante introuvable" };
@@ -41,8 +57,8 @@ function checkPrinterStatus(printerName) {
 
     return { online: true, reason: "OK" };
   } catch (e) {
-    console.warn("[printerStatusCheck] Erreur WMI:", e.message);
-    return { online: false, reason: "Impossible de vérifier l'imprimante" };
+    console.warn("[printerStatusCheck] Erreur vérification:", e.message);
+    return { online: false, reason: "Erreur vérification" };
   }
 }
 

@@ -1456,44 +1456,69 @@ function startPrinterStatusPolling() {
     const select = document.getElementById("printer-select");
     const dot = document.getElementById("printer-dot");
 
-    if (!select || !dot) return;
+    if (!select || !dot) {
+      console.warn("[PrinterStatus] Éléments DOM manquants");
+      return;
+    }
 
     const printerName = select.value;
+    console.log("[PrinterStatus] Vérification de:", printerName);
+
+    // Si pas de nom d'imprimante, montrer le point rouge
     if (
       !printerName ||
       printerName === "Chargement..." ||
       printerName === "Aucune imprimante physique"
     ) {
+      console.log("[PrinterStatus] Pas de nom d'imprimante valide");
+      const emptyStatus = {
+        online: false,
+        reason: "Aucune imprimante sélectionnée",
+      };
+      currentPrinterStatus = emptyStatus;
+      setPrinterStatus(emptyStatus);
+      dot.style.background = "var(--danger)"; // Red
+      dot.style.display = "block";
+      dot.style.visibility = "visible";
+      dot.title = "Aucune imprimante sélectionnée";
+      console.log("[PrinterStatus] Dot rouge - Pas d'imprimante");
+      updatePrintButtons();
       return;
     }
 
     try {
       const status = await window.derewol.checkPrinterStatus(printerName);
+      console.log("[PrinterStatus] Résultat pour", printerName, ":", status);
       currentPrinterStatus = status;
 
       // Mettre à jour le statut pour renderJobs
       setPrinterStatus(status);
 
-      // Mettre à jour le point
+      // Mettre à jour le point - JAMAIS le cacher
+      dot.style.display = "block";
+      dot.style.visibility = "visible";
       if (status.online) {
         dot.style.background = "var(--success)"; // Vert
-        dot.style.animation = "none";
         dot.title = "Imprimante en ligne";
+        console.log("[PrinterStatus] Dot vert - Imprimante en ligne");
       } else {
         dot.style.background = "var(--danger)"; // Rouge
-        dot.style.animation = "none";
-        dot.title = status.reason;
+        dot.title = status.reason || "Imprimante hors ligne";
+        console.log("[PrinterStatus] Dot rouge - Raison:", status.reason);
       }
 
       // Mettre à jour les boutons "Imprimer tout"
       updatePrintButtons();
     } catch (error) {
-      console.warn("[PRINTER_STATUS] Erreur lors de la vérification:", error);
-      const errorStatus = { online: false, reason: "Erreur de vérification" };
+      console.error("[PrinterStatus] Erreur lors de la vérification:", error);
+      const errorStatus = { online: false, reason: "Erreur vérification" };
       currentPrinterStatus = errorStatus;
       setPrinterStatus(errorStatus);
-      dot.style.background = "var(--danger)";
-      dot.title = "Erreur de vérification";
+      dot.style.display = "block";
+      dot.style.visibility = "visible";
+      dot.style.background = "var(--danger)"; // Red
+      dot.title = "Erreur vérification";
+      console.log("[PrinterStatus] Dot rouge - Erreur attrapée");
       updatePrintButtons();
     }
   };
