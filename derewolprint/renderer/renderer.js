@@ -230,11 +230,12 @@ function bindActivationModal() {
     codeBtn.addEventListener("click", async () => {
       if (!codeInput || _modalState.isActivating) return;
 
-      const code = codeInput.value.replace(/[\s\-]/g, "");
-      if (code.length < 10) {
+      const code = codeInput.value.trim().toUpperCase();
+      const codeFormat = /^DW-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
+      if (!codeFormat.test(code)) {
         if (errorEl) {
           errorEl.innerHTML =
-            '<i class="fa-solid fa-exclamation"></i> Code invalide';
+            '<i class="fa-solid fa-exclamation"></i> Format du code invalide. Exemple : DW-ABCD-1234-EFGH';
           errorEl.style.display = "block";
         }
         return;

@@ -15,6 +15,16 @@ function escAttr(s) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // Attend que requireAuth soit défini (max 3 secondes)
+  let waited = 0;
+  while (typeof requireAuth === "undefined" && waited < 3000) {
+    await new Promise((r) => setTimeout(r, 50));
+    waited += 50;
+  }
+  if (typeof requireAuth === "undefined") {
+    console.error("auth.js non chargé");
+    return;
+  }
   const session = await requireAuth();
   if (!session) return;
 
@@ -73,14 +83,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const genCopy = document.getElementById("gen-copy-btn");
   if (genCopy) {
+    genCopy.innerText = "📋 Copier";
     genCopy.addEventListener("click", () => {
       const code = document.getElementById("gen-code-value").textContent;
       navigator.clipboard.writeText(code);
-      genCopy.innerHTML = '<i class="fa-solid fa-check"></i>';
-      setTimeout(
-        () => (genCopy.innerHTML = '<i class="fa-regular fa-copy"></i>'),
-        2000,
-      );
+      genCopy.innerText = "✓ Copié!";
+      setTimeout(() => (genCopy.innerText = "📋 Copier"), 2000);
     });
   }
 
@@ -252,7 +260,7 @@ async function loadPrinters(search = "") {
         const waMsg = encodeURIComponent(
           "Bonjour " +
             p.name +
-            " 👋\n\nVous utilisez DerewolPrint ? Renouvelez votre abonnement :\n• 1 mois : 4 000 FCFA\n• 2 mois : 6 500 FCFA (-19%)\n• 3 mois : 9 000 FCFA (-25%)\n\nContactez-nous pour votre code d'activation.",
+            " 👋\n\nVous utilisez DerewolPrint ? Renouvelez votre abonnement :\n• 1 mois : 5 000 FCFA\n• 3 mois : 12 500 FCFA\n• 6 mois : 25 500 FCFA\n\nContactez-nous pour votre code d'activation.",
         );
         const waHref = phoneDigits
           ? "https://wa.me/" + phoneDigits + "?text=" + waMsg
@@ -326,8 +334,8 @@ async function loadSubscriptions(filter = "all") {
     };
     const planLabel = {
       "1month": "1 mois",
-      "2months": "2 mois",
       "3months": "3 mois",
+      "6months": "6 mois",
     };
     tbody.innerHTML = data
       .map((s) => {
@@ -343,6 +351,19 @@ async function loadSubscriptions(filter = "all") {
               s.id +
               '"><i class="fa-solid fa-ban"></i> Révoquer</button>'
             : "—";
+        const printerCell =
+          s.printer_id === null
+            ? "<em>Tout imprimeur</em>"
+            : "<strong>" +
+              escAttr(s.printers?.name || "—") +
+              "</strong><br>" +
+              "<small>" +
+              escAttr(s.printers?.slug || "—") +
+              "</small><br>" +
+              "<small>" +
+              escAttr(s.printers?.owner_phone || "—") +
+              "</small>";
+
         return (
           "<tr>" +
           "<td>" +
@@ -356,9 +377,7 @@ async function loadSubscriptions(filter = "all") {
           "</button>" +
           "</td>" +
           "<td>" +
-          (s.printers?.name
-            ? escAttr(s.printers.name)
-            : "<em>Non assigné</em>") +
+          printerCell +
           "</td>" +
           "<td>" +
           escAttr(ml) +
@@ -454,9 +473,9 @@ async function handleGenCode() {
 
   // Durée et montant selon le plan
   const PLANS = {
-    "1month": { days: 30, amount: 4000 },
-    "2months": { days: 61, amount: 6500 },
-    "3months": { days: 92, amount: 9000 },
+    "1month": { days: 30, amount: 5000 },
+    "3months": { days: 90, amount: 12500 },
+    "6months": { days: 180, amount: 25500 },
   };
   const planData = PLANS[plan] || PLANS["1month"];
   const durationDays = planData.days;
@@ -477,44 +496,43 @@ async function handleGenCode() {
       plan,
     });
     document.getElementById("gen-result").style.display = "block";
-    document.getElementById("gen-code-value").textContent =
-      result.activation_code;
+    const codeValue = document.getElementById("gen-code-value");
+    codeValue.textContent = result.activation_code;
+    codeValue.style.display = "inline-block";
+    codeValue.style.padding = "0.75rem 1rem";
+    codeValue.style.border = "1px solid #d1d5db";
+    codeValue.style.borderRadius = "0.75rem";
+    codeValue.style.backgroundColor = "#f8fafc";
+    codeValue.style.fontFamily =
+      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+    codeValue.style.letterSpacing = "0.08em";
+    codeValue.style.marginBottom = "0.75rem";
 
-    // WhatsApp direct avec numéro de l'imprimeur
-    const printers = await fetchPrinters();
-    const printer = printerId ? printers.find((p) => p.id === printerId) : null;
-    const phone = (printer?.owner_phone || "").replace(/\D/g, "");
+    const genCopyBtn = document.getElementById("gen-copy-btn");
+    if (genCopyBtn) {
+      genCopyBtn.innerText = "📋 Copier";
+      genCopyBtn.style.minWidth = "120px";
+    }
+
     const planLabels = {
       "1month": "1 mois",
-      "2months": "2 mois",
       "3months": "3 mois",
+      "6months": "6 mois",
     };
     const planLabel = planLabels[plan] || "";
     const msg = encodeURIComponent(
-      "Bonjour " +
-        (printer?.name || "") +
-        ",\n\nVotre code d'activation DerewolPrint :\n*" +
+      "Votre code d'activation Derewol :\n*" +
         result.activation_code +
-        "*\n\nPlan : " +
+        "*\nPlan : " +
         planLabel +
-        " (" +
-        amount.toLocaleString("fr-FR") +
-        " FCFA)\nValide " +
-        durationDays +
-        " jours après activation.\n\nEntrez ce code dans DerewolPrint → Paramètres → Abonnement.",
+        "\nValable 30 jours",
     );
     const waBtn = document.getElementById("gen-whatsapp-btn");
-    if (phone) {
-      waBtn.href = "https://wa.me/" + phone + "?text=" + msg;
-      waBtn.style.display = "inline-flex";
-      waBtn.innerHTML =
-        '<i class="fa-brands fa-whatsapp"></i> Envoyer à ' +
-        (printer?.name || "l'imprimeur");
-    } else {
+    if (waBtn) {
       waBtn.href = "https://wa.me/?text=" + msg;
+      waBtn.target = "_blank";
       waBtn.style.display = "inline-flex";
-      waBtn.innerHTML =
-        '<i class="fa-brands fa-whatsapp"></i> Envoyer via WhatsApp';
+      waBtn.innerHTML = "<span>📲 Envoyer via WhatsApp</span>";
     }
 
     await loadSubscriptions(currentSubFilter);

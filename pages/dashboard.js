@@ -197,6 +197,10 @@ function GroupCard({ group }) {
 
   // ✅ Pour l'historique, utilise history au lieu de files (qui est vide)
   const displayFiles = isHistory ? group.history || [] : group.files || [];
+  // DEBUG temporaire
+  const debugInfo = isHistory
+    ? `history: ${group.history?.length ?? "null"} entries`
+    : "";
 
   return (
     <div
@@ -220,6 +224,12 @@ function GroupCard({ group }) {
               }}
             >
               <StatusBadge status={status} />
+              {isHistory && (
+                <span style={{ fontSize: "10px", color: "red" }}>
+                  {debugInfo} | statuses:{" "}
+                  {group.history?.map((h) => h.status).join(",")}
+                </span>
+              )}
               <TimerPill expiresAt={jobExpiresAt} status={status} />
             </div>
           </div>
@@ -362,6 +372,24 @@ export default function Dashboard({ showToast }) {
               + Envoyer
             </button>
           </div>
+
+          {!loading && (
+            <div
+              style={{
+                marginBottom: "1rem",
+                padding: "10px",
+                borderRadius: "12px",
+                background: "#fff4f4",
+                color: "#991b1b",
+                fontSize: "12px",
+                lineHeight: 1.4,
+              }}
+            >
+              DEBUG PWA: owner_id={displayId} display_code=
+              {session.display_code} groups={groups.length} active=
+              {activeGroups.length} history={historyGroups.length}
+            </div>
+          )}
 
           {loading && <div className="db-loading">Chargement...</div>}
 

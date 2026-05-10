@@ -4,8 +4,8 @@ const { loadConfig, saveConfig } = require("./printerConfig");
 const PLANS = {
   trial: { days: 7, amount: 0, label: "7 jours gratuits" },
   "1month": { days: 30, amount: 5000, label: "1 mois — 5 000 FCFA" },
-  "3months": { days: 92, amount: 12500, label: "3 mois — 12 500 FCFA (-17%)" },
-  "6months": { days: 183, amount: 25500, label: "6 mois — 25 500 FCFA (-28%)" },
+  "3months": { days: 90, amount: 12500, label: "3 mois — 12 500 FCFA" },
+  "6months": { days: 180, amount: 25500, label: "6 mois — 25 500 FCFA" },
 };
 
 const GRACE_DAYS = 3;
@@ -98,7 +98,8 @@ async function checkSubscription(printerId) {
       .from("subscriptions")
       .select("*")
       .eq("printer_id", printerId)
-      .order("created_at", { ascending: false }) // Get most recent
+      .eq("status", "active")
+      .order("created_at", { ascending: false }) // Get most recent active
       .limit(1)
       .single();
 
@@ -160,17 +161,24 @@ async function activateCode(printerId, code) {
     .from("subscriptions")
     .select("*")
     .eq("activation_code", normalized)
-    .eq("status", "pending")
     .single();
 
-  if (error || !data)
-    return { success: false, error: "Code invalide ou déjà utilisé" };
+  if (error || !data) {
+    return { success: false, error: "Code incorrect" };
+  }
+
+  if (data.status !== "pending") {
+    return { success: false, error: "Code déjà utilisé" };
+  }
 
   if (data.printer_id && data.printer_id !== printerId) {
     return { success: false, error: "Ce code n'est pas pour votre boutique" };
   }
 
-  const plan = PLANS[data.plan] || PLANS["1month"];
+  const plan = PLANS[data.plan];
+  if (!plan) {
+    return { success: false, error: "Code invalide (plan non reconnu)" };
+  }
 
   // Prolonge depuis expiration actuelle si abonnement actif
   let base = new Date();

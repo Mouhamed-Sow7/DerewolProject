@@ -1,1 +1,49 @@
-const ADMIN_EMAILS = ["sowhamedou10@gmail.com"]; // Ajouter tes emails admin async function adminLogin(email, password) { const { data, error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error; return data;} async function adminLogout() { await sb.auth.signOut(); window.location.href = "index.html";} async function requireAuth() { const { data: { session }, } = await sb.auth.getSession(); if (!session) { window.location.href = "index.html"; return null; } // Vérifier que c'est un email admin autorisé if (!ADMIN_EMAILS.includes(session.user.email)) { await sb.auth.signOut(); window.location.href = "index.html"; return null; } return session;} async function redirectIfAuth() { const { data: { session }, } = await sb.auth.getSession(); if (session && ADMIN_EMAILS.includes(session.user.email)) { window.location.href = "dashboard.html"; }}
+const ADMIN_EMAILS = ["sowhamedou10@gmail.com"];
+
+async function adminLogin(email, password) {
+  const { data, error } = await sb.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error) throw error;
+  return data;
+}
+
+async function adminLogout() {
+  await sb.auth.signOut();
+  window.location.href = "index.html";
+}
+
+async function requireAuth() {
+  const {
+    data: { session },
+  } = await sb.auth.getSession();
+
+  if (!session) {
+    window.location.href = "index.html";
+    return null;
+  }
+
+  if (!ADMIN_EMAILS.includes(session.user.email)) {
+    await sb.auth.signOut();
+    window.location.href = "index.html";
+    return null;
+  }
+
+  return session;
+}
+
+async function redirectIfAuth() {
+  const {
+    data: { session },
+  } = await sb.auth.getSession();
+
+  if (session && ADMIN_EMAILS.includes(session.user.email)) {
+    window.location.href = "dashboard.html";
+  }
+}
+
+window.requireAuth = requireAuth;
+window.adminLogin = adminLogin;
+window.adminLogout = adminLogout;
+window.redirectIfAuth = redirectIfAuth;

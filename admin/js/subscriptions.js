@@ -7,6 +7,30 @@
     ).join("");
   return `DW-${rand(4)}-${rand(4)}-${rand(4)}`;
 }
+
+async function generateUniqueCode(maxAttempts = 5) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const code = generateActivationCode();
+    const { data, error } = await sb
+      .from("subscriptions")
+      .select("id")
+      .eq("activation_code", code)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      return code;
+    }
+  }
+
+  throw new Error(
+    "Impossible de générer un code unique après plusieurs tentatives.",
+  );
+}
+
 async function createActivationCode({
   printerId,
   paymentMethod,
@@ -14,16 +38,26 @@ async function createActivationCode({
   amount,
   plan,
 }) {
-  const code = generateActivationCode();
+  const validPlans = ["1month", "3months", "6months"];
+  if (!plan || !validPlans.includes(plan)) {
+    throw new Error("Plan manquant");
+  }
+
+  const code = await generateUniqueCode();
+  const codeExpiresAt = new Date(
+    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
   const { data, error } = await sb
     .from("subscriptions")
     .insert({
       printer_id: printerId || null,
       activation_code: code,
+      code_expires_at: codeExpiresAt,
       payment_method: paymentMethod,
       duration_days: durationDays,
       amount: amount,
-      plan: plan || "1month",
+      plan: plan,
       status: "pending",
     })
     .select()
@@ -34,7 +68,12 @@ async function createActivationCode({
 async function fetchSubscriptions(filter = "all") {
   let query = sb
     .from("subscriptions")
-    .select("*, printers ( name, slug, owner_phone )")
+    .select(
+      `
+      *,
+      printers ( id, name, slug, owner_phone, email )
+    `,
+    )
     .order("created_at", { ascending: false });
   if (filter !== "all") {
     query = query.eq("status", filter);
