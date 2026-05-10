@@ -1,7 +1,7 @@
 /* renderer.js */
 
 import jobStore from "./js/state/jobStore.js";
-import renderJobs, { getFileCopies, setStoreRef } from "./js/ui/renderJobs.js";
+import renderJobs, { getFileCopies, setStoreRef, setPrinterStatus } from "./js/ui/renderJobs.js";
 import { initBridge } from "./js/bridge/derewolBridge.js";
 import { initLang, setLang, t } from "./i18n.js";
 
@@ -1438,7 +1438,92 @@ window.derewol.getPrinters().then((printers) => {
     "Mp-Pdf"; // 🔥 Défaut sur Mp-Pdf si aucune préférence
   if (preferred) select.value = preferred;
   dot.style.background = "var(--jaune)";
+
+  // Démarrer la surveillance du statut de l'imprimante
+  startPrinterStatusPolling();
 });
+
+// Statut global de l'imprimante
+let currentPrinterStatus = { online: true, reason: "Initialisation..." };
+
+// Surveillance du statut de l'imprimante
+function startPrinterStatusPolling() {
+  const updateStatus = async () => {
+    const select = document.getElementById("printer-select");
+    const dot = document.getElementById("printer-dot");
+
+    if (!select || !dot) return;
+
+    const printerName = select.value;
+    if (!printerName || printerName === "Chargement..." || printerName === "Aucune imprimante physique") {
+      return;
+    }
+
+    try {
+      const status = await window.derewol.checkPrinterStatus(printerName);
+      currentPrinterStatus = status;
+
+      // Mettre à jour le statut pour renderJobs
+      setPrinterStatus(status);
+
+      // Mettre à jour le point
+      if (status.online) {
+        dot.style.background = "var(--success)"; // Vert
+        dot.style.animation = "none";
+        dot.title = "Imprimante en ligne";
+      } else {
+        dot.style.background = "var(--danger)"; // Rouge
+        dot.style.animation = "none";
+        dot.title = status.reason;
+      }
+
+      // Mettre à jour les boutons "Imprimer tout"
+      updatePrintButtons();
+
+    } catch (error) {
+      console.warn("[PRINTER_STATUS] Erreur lors de la vérification:", error);
+      const errorStatus = { online: false, reason: "Erreur de vérification" };
+      currentPrinterStatus = errorStatus;
+      setPrinterStatus(errorStatus);
+      dot.style.background = "var(--danger)";
+      dot.title = "Erreur de vérification";
+      updatePrintButtons();
+    }
+  };
+
+  // Vérification initiale
+  updateStatus();
+
+  // Vérification toutes les 30 secondes
+  setInterval(updateStatus, 30000);
+
+  // Écouter les changements d'imprimante sélectionnée
+  const select = document.getElementById("printer-select");
+  if (select) {
+    select.addEventListener("change", () => {
+      // Petite pause pour laisser la sélection se stabiliser
+      setTimeout(updateStatus, 100);
+    });
+  }
+}
+
+// Mettre à jour l'état des boutons "Imprimer tout"
+function updatePrintButtons() {
+  const buttons = document.querySelectorAll('.btn-print[data-id]');
+  buttons.forEach(btn => {
+    if (!currentPrinterStatus.online) {
+      btn.disabled = true;
+      btn.title = "Imprimante hors ligne";
+      btn.style.opacity = "0.5";
+      btn.style.cursor = "not-allowed";
+    } else {
+      btn.disabled = false;
+      btn.title = "";
+      btn.style.opacity = "";
+      btn.style.cursor = "";
+    }
+  });
+}
 
 // Store → UI
 jobStore.subscribe((groups) => {

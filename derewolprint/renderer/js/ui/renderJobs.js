@@ -12,6 +12,13 @@ function setFileCopies(jobId, fileId, val) {
   copiesPerFile[`${jobId}_${fileId}`] = val;
 }
 
+// Importer le statut de l'imprimante depuis renderer.js
+let currentPrinterStatus = { online: true };
+
+export function setPrinterStatus(status) {
+  currentPrinterStatus = status;
+}
+
 let uploadListenersInitialized = false;
 
 function showUploadToast(message, type = "info") {
@@ -134,7 +141,7 @@ export default function renderJobs(
       const statusBadge = `<span class="job-status-badge" style="background:${groupStatus.bg};color:${groupStatus.color}">${groupStatus.label}</span>`;
       const disableActions = ["printing", "completed", "failed"].includes(
         group.groupStatus,
-      );
+      ) || !currentPrinterStatus.online;
 
       // Calculer statut global du groupe
       const allRejected = group.items.every((i) => i.status === "rejected");

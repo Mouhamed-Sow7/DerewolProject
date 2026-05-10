@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.invoke("polling:set-interval", intervalMs),
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
+  checkPrinterStatus: (printerName) => ipcRenderer.invoke("printer:check-status", printerName),
   getHistory: () => ipcRenderer.invoke("history:get"),
   setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
   getPdfPages: (fileId) => ipcRenderer.invoke("pdf:get-pages", fileId),
