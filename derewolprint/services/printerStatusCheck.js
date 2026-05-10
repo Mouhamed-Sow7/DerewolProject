@@ -1,52 +1,7 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { execSync } = require("child_process");
+const { dialog } = require("electron");
 
-function normalizePrinterName(name) {
-  return typeof name === "string" ? name.trim().toLowerCase() : "";
-}
-
-async function getWebContents() {
-  if (!app.isReady()) {
-    await app.whenReady();
-  }
-
-  const window = BrowserWindow.getAllWindows().find(
-    (win) => win && !win.isDestroyed(),
-  );
-  return window ? window.webContents : null;
-}
-
-async function listPrinters() {
-  const webContents = await getWebContents();
-  if (!webContents || typeof webContents.getPrinters !== "function") {
-    return [];
-  }
-  return webContents.getPrinters();
-}
-
-function findPrinter(printerName, printers) {
-  const normalizedName = normalizePrinterName(printerName);
-  if (!normalizedName || !Array.isArray(printers)) return null;
-
-  return printers.find((printer) => {
-    const name = normalizePrinterName(printer.name);
-    const displayName = normalizePrinterName(printer.displayName);
-    return name === normalizedName || displayName === normalizedName;
-  });
-}
-
-function formatStatusReason(status) {
-  if (status === 0 || status === 1) {
-    return { online: true, reason: "" };
-  }
-
-  if (status === 3) {
-    return { online: false, reason: "Imprimante hors ligne" };
-  }
-
-  return { online: false, reason: "Imprimante en erreur" };
-}
-
-async function checkPrinterStatus(printerName) {
+function checkPrinterStatus(printerName) {
   const cleanName = typeof printerName === "string" ? printerName.trim() : "";
   if (!cleanName) {
     return {
@@ -55,31 +10,44 @@ async function checkPrinterStatus(printerName) {
     };
   }
 
-  const printers = await listPrinters();
-  if (!printers.length) {
-    return {
-      online: false,
-      reason: "Impossible de vérifier l'état de l'imprimante",
-    };
-  }
+  try {
+    // Vérifier si l'imprimante existe et son état WorkOffline
+    const workOfflineCmd = `powershell -command "Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${cleanName}' } | Select-Object -ExpandProperty WorkOffline"`;
+    const workOfflineResult = execSync(workOfflineCmd, { timeout: 3000 })
+      .toString()
+      .trim();
 
-  const printer = findPrinter(cleanName, printers);
-  if (!printer) {
-    return {
-      online: false,
-      reason: "Imprimante introuvable",
-    };
-  }
+    // Obtenir les détails complets du statut
+    const statusCmd = `powershell -command "Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${cleanName}' } | Select-Object PrinterStatus, DetectedErrorState, WorkOffline | ConvertTo-Json"`;
+    const statusRaw = execSync(statusCmd, { timeout: 3000 }).toString().trim();
 
-  if (typeof printer.status !== "number") {
-    return { online: true, reason: "" };
-  }
+    if (!statusRaw) {
+      return { online: false, reason: "Imprimante introuvable" };
+    }
 
-  return formatStatusReason(printer.status);
+    const status = JSON.parse(statusRaw);
+
+    if (status.WorkOffline === true) {
+      return { online: false, reason: "Imprimante hors ligne" };
+    }
+
+    if (status.PrinterStatus === 3) {
+      return { online: false, reason: "Imprimante en erreur" };
+    }
+
+    if (status.DetectedErrorState !== 0) {
+      return { online: false, reason: "Imprimante en erreur" };
+    }
+
+    return { online: true, reason: "OK" };
+  } catch (e) {
+    console.warn("[printerStatusCheck] Erreur WMI:", e.message);
+    return { online: false, reason: "Impossible de vérifier l'imprimante" };
+  }
 }
 
-async function guardPrint(printerName, printCallback) {
-  const status = await checkPrinterStatus(printerName);
+function guardPrint(printerName, printCallback) {
+  const status = checkPrinterStatus(printerName);
   if (!status.online) {
     try {
       dialog.showErrorBox("Impression bloquée", status.reason);
@@ -93,8 +61,7 @@ async function guardPrint(printerName, printCallback) {
   }
 
   try {
-    await Promise.resolve(printCallback());
-    return { online: true, reason: "" };
+    return printCallback();
   } catch (err) {
     const errorMessage = err?.message || "Erreur pendant l'impression";
     try {

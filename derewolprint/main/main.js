@@ -905,6 +905,15 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
   const session = viewerSessions.get(sessionKey);
   if (!session) return { success: false, error: "Session expirée" };
 
+  const printerName = printerCfg?.name;
+  if (printerName) {
+    const printerStatus = checkPrinterStatus(printerName);
+    if (!printerStatus.online) {
+      dialog.showErrorBox("Impression bloquée", printerStatus.reason);
+      return { success: false, error: printerStatus.reason };
+    }
+  }
+
   const ext = path.extname(session.tmpPath).toLowerCase();
 
   try {
@@ -1596,7 +1605,7 @@ ipcMain.handle(
       return { success: false, error: "Subscription required to print" };
     }
 
-    const printerStatus = await checkPrinterStatus(printerName);
+    const printerStatus = checkPrinterStatus(printerName);
     if (!printerStatus.online) {
       log("PRINT_BLOCKED", {
         groupId,
@@ -1833,6 +1842,17 @@ ipcMain.handle("job:retry", async (event, jobId, printerName) => {
       return { success: false, error: "Subscription required to print" };
     }
 
+    const printerStatus = checkPrinterStatus(printerName);
+    if (!printerStatus.online) {
+      log("PRINT_BLOCKED", {
+        jobId,
+        printer: printerName,
+        reason: printerStatus.reason,
+      });
+      dialog.showErrorBox("Impression bloquée", printerStatus.reason);
+      return { success: false, error: printerStatus.reason };
+    }
+
     if (processingJobs.has(jobId))
       return { success: false, error: "Job déjà en cours" };
 
@@ -2051,6 +2071,9 @@ ipcMain.handle("printer:list", async () => {
   return await getInstalledPrinters();
 });
 ipcMain.handle("printer:default", async () => await getDefaultPrinter());
+ipcMain.handle("printer:check-status", async (_event, printerName) => {
+  return checkPrinterStatus(printerName);
+});
 ipcMain.handle("pdf:get-pages", (_event, fileId) => {
   console.log(`[IPC] getPdfPages called for fileId: ${fileId}`);
   console.log(`[IPC] Cache keys:`, Object.keys(pdfCache.getAll()));
