@@ -139,9 +139,9 @@ export default function renderJobs(
 
       const groupStatus = getStatusConfig(group.groupStatus);
       const statusBadge = `<span class="job-status-badge" style="background:${groupStatus.bg};color:${groupStatus.color}">${groupStatus.label}</span>`;
-      const disableActions = ["printing", "completed", "failed"].includes(
-        group.groupStatus,
-      ) || !currentPrinterStatus.online;
+      const disableActions =
+        ["printing", "completed", "failed"].includes(group.groupStatus) ||
+        !currentPrinterStatus.online;
 
       // Calculer statut global du groupe
       const allRejected = group.items.every((i) => i.status === "rejected");

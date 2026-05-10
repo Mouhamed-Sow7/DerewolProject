@@ -25,13 +25,15 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.invoke("polling:set-interval", intervalMs),
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
-  checkPrinterStatus: (printerName) => ipcRenderer.invoke("printer:check-status", printerName),
+  checkPrinterStatus: (printerName) =>
+    ipcRenderer.invoke("printer:check-status", printerName),
   getHistory: () => ipcRenderer.invoke("history:get"),
   setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
   getPdfPages: (fileId) => ipcRenderer.invoke("pdf:get-pages", fileId),
 
   // ── Fusion modal ────────────────────────────────────────────
-  getFusionPreview: (fileId) => ipcRenderer.invoke("fusion:get-preview", fileId),
+  getFusionPreview: (fileId) =>
+    ipcRenderer.invoke("fusion:get-preview", fileId),
 
   // ── Abonnement ─────────────────────────────────────────────
   subscriptionCheck: () => ipcRenderer.invoke("subscription:check"),

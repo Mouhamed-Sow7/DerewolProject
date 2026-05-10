@@ -1,7 +1,11 @@
 /* renderer.js */
 
 import jobStore from "./js/state/jobStore.js";
-import renderJobs, { getFileCopies, setStoreRef, setPrinterStatus } from "./js/ui/renderJobs.js";
+import renderJobs, {
+  getFileCopies,
+  setStoreRef,
+  setPrinterStatus,
+} from "./js/ui/renderJobs.js";
 import { initBridge } from "./js/bridge/derewolBridge.js";
 import { initLang, setLang, t } from "./i18n.js";
 
@@ -1455,7 +1459,11 @@ function startPrinterStatusPolling() {
     if (!select || !dot) return;
 
     const printerName = select.value;
-    if (!printerName || printerName === "Chargement..." || printerName === "Aucune imprimante physique") {
+    if (
+      !printerName ||
+      printerName === "Chargement..." ||
+      printerName === "Aucune imprimante physique"
+    ) {
       return;
     }
 
@@ -1479,7 +1487,6 @@ function startPrinterStatusPolling() {
 
       // Mettre à jour les boutons "Imprimer tout"
       updatePrintButtons();
-
     } catch (error) {
       console.warn("[PRINTER_STATUS] Erreur lors de la vérification:", error);
       const errorStatus = { online: false, reason: "Erreur de vérification" };
@@ -1509,8 +1516,8 @@ function startPrinterStatusPolling() {
 
 // Mettre à jour l'état des boutons "Imprimer tout"
 function updatePrintButtons() {
-  const buttons = document.querySelectorAll('.btn-print[data-id]');
-  buttons.forEach(btn => {
+  const buttons = document.querySelectorAll(".btn-print[data-id]");
+  buttons.forEach((btn) => {
     if (!currentPrinterStatus.online) {
       btn.disabled = true;
       btn.title = "Imprimante hors ligne";
