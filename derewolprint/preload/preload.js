@@ -25,14 +25,29 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.invoke("polling:set-interval", intervalMs),
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
-  checkPrinterStatus: async (printerName) => {
+  checkPrinterStatus: async () => {
     try {
-      return await ipcRenderer.invoke("printer:check-status", printerName);
-    } catch (error) {
-      console.error("[Preload] Erreur checkPrinterStatus:", error);
-      return { online: false, reason: "Erreur vérification" };
+      const result = await ipcRenderer.invoke("printer:check-status");
+      if (!result || typeof result.online !== "boolean") {
+        return {
+          online: false,
+          status: null,
+          name: null,
+          method: "invalid-response",
+        };
+      }
+      return result;
+    } catch (err) {
+      return {
+        online: false,
+        status: null,
+        name: null,
+        method: "ipc-error",
+        error: err.message,
+      };
     }
   },
+  debugListPrinters: () => ipcRenderer.invoke("printer:debug-list"),
   getHistory: () => ipcRenderer.invoke("history:get"),
   setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
   getPdfPages: (fileId) => ipcRenderer.invoke("pdf:get-pages", fileId),

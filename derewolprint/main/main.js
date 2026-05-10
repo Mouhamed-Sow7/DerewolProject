@@ -43,7 +43,19 @@ const {
   saveConfig,
   clearConfig,
 } = require("../services/printerConfig");
-const { checkPrinterStatus } = require("../services/printerStatusCheck");
+const {
+  analyzeDocumentForPrint,
+  analyzeExcel,
+} = require("../services/aiPrintAnalyzer");
+const {
+  extractTextFromImage,
+  checkOCRCredits,
+  makeSupabaseCreditDeductor,
+} = require("../services/ocrModule");
+const {
+  checkPrinterStatus,
+  debugListPrinters,
+} = require("../services/printerStatusCheck");
 
 function getPdfPageCount(filePath) {
   try {
@@ -56,6 +68,15 @@ function getPdfPageCount(filePath) {
   } catch {
     return null;
   }
+}
+
+async function getDecryptedAnthropicKey() {
+  if (process.env.ANTHROPIC_API_KEY) {
+    return process.env.ANTHROPIC_API_KEY;
+  }
+  throw new Error(
+    "getDecryptedAnthropicKey non implémenté. Configurez process.env.ANTHROPIC_API_KEY ou implémentez votre logique de déchiffrement.",
+  );
 }
 
 function parseVirtualPrinterArg(argv) {
@@ -2071,9 +2092,92 @@ ipcMain.handle("printer:list", async () => {
   return await getInstalledPrinters();
 });
 ipcMain.handle("printer:default", async () => await getDefaultPrinter());
-ipcMain.handle("printer:check-status", async (_event, printerName) => {
-  return checkPrinterStatus(printerName);
+ipcMain.handle("printer:check-status", async () => {
+  console.log("[Main] printer:check-status");
+  try {
+    const printerName = printerCfg?.name ?? null;
+    const result = await checkPrinterStatus(printerName);
+    return result;
+  } catch (err) {
+    console.error("[Main] printer:check-status échoué :", err.message);
+    return {
+      online: false,
+      status: null,
+      name: null,
+      method: "ipc-error",
+      error: err.message,
+    };
+  }
 });
+ipcMain.handle("printer:debug-list", async () => {
+  const names = await debugListPrinters();
+  console.log("[Main] printer:debug-list :", names);
+  return names;
+});
+
+ipcMain.handle("ai:analyze-document", async (_event, { filePath }) => {
+  console.log("[Main] ai:analyze-document :", filePath);
+  try {
+    const apiKey = await getDecryptedAnthropicKey();
+    const result = await analyzeDocumentForPrint(filePath, apiKey);
+    return { success: true, data: result };
+  } catch (err) {
+    console.error("[Main] ai:analyze-document échoué :", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("ai:analyze-excel", async (_event, { filePath }) => {
+  console.log("[Main] ai:analyze-excel :", filePath);
+  try {
+    const apiKey = await getDecryptedAnthropicKey();
+    const result = await analyzeExcel(filePath, apiKey);
+    return { success: true, data: result };
+  } catch (err) {
+    console.error("[Main] ai:analyze-excel échoué :", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("ocr:check-credits", async (_event, { userId }) => {
+  console.log("[Main] ocr:check-credits userId:", userId);
+  try {
+    const result = await checkOCRCredits(supabase, userId);
+    return { success: true, ...result };
+  } catch (err) {
+    return { success: false, credits: 0, canUseOCR: false, error: err.message };
+  }
+});
+
+ipcMain.handle(
+  "ocr:extract-text",
+  async (_event, { filePath, language, userId }) => {
+    console.log(
+      "[Main] ocr:extract-text :",
+      filePath,
+      "lang:",
+      language,
+      "userId:",
+      userId,
+    );
+    try {
+      const apiKey = await getDecryptedAnthropicKey();
+      const creditDeductor = makeSupabaseCreditDeductor(supabase);
+      const result = await extractTextFromImage({
+        filePath,
+        anthropicApiKey: apiKey,
+        language: language ?? "fr",
+        userId,
+        onCreditDeduct: creditDeductor,
+      });
+      return { success: true, data: result };
+    } catch (err) {
+      console.error("[Main] ocr:extract-text échoué :", err.message);
+      return { success: false, error: err.message };
+    }
+  },
+);
+
 ipcMain.handle("pdf:get-pages", (_event, fileId) => {
   console.log(`[IPC] getPdfPages called for fileId: ${fileId}`);
   console.log(`[IPC] Cache keys:`, Object.keys(pdfCache.getAll()));

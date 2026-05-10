@@ -162,8 +162,33 @@ nav {
   background: var(--jaune);
   border-radius: 50%;
   flex-shrink: 0;
-  display: block !important;
+  display: inline-block !important;
   visibility: visible !important;
+}
+
+#printer-status-dot.dot-online {
+  background-color: #22c55e;
+  box-shadow: 0 0 4px #22c55e88;
+}
+
+#printer-status-dot.dot-offline {
+  background-color: #ef4444;
+  box-shadow: 0 0 4px #ef444488;
+}
+
+#printer-status-dot.dot-checking {
+  background-color: #eab308;
+  animation: dot-pulse 1s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 #printer-select {

@@ -1,95 +1,188 @@
-const { execSync } = require("child_process");
-const { dialog } = require("electron");
+/**
+ * printerStatusCheck.js — Derewol
+ * Vérifie l'état hardware de l'imprimante via WMI PowerShell
+ * Fallback : Get-Printer si WMI échoue
+ */
 
-function checkPrinterStatus(printerName) {
-  const cleanName = typeof printerName === "string" ? printerName.trim() : "";
-  if (!cleanName) {
-    return {
-      online: false,
-      reason: "Aucune imprimante sélectionnée",
-    };
-  }
+const { exec } = require("child_process");
 
-  try {
-    // Obtenir les détails complets du statut (timeout augmenté à 6 secondes)
-    const statusCmd = `powershell -command "Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${cleanName}' } | Select-Object PrinterStatus, DetectedErrorState, WorkOffline | ConvertTo-Json"`;
-    let statusRaw;
-    try {
-      statusRaw = execSync(statusCmd, { timeout: 6000 }).toString().trim();
-    } catch (cmdErr) {
-      console.warn(
-        "[printerStatusCheck] Première tentative échouée, fallback...",
-      );
-      // Fallback: tentative plus simple
-      const simpleCmd = `powershell -command "Get-Printer -Name '${cleanName}' -ErrorAction Stop | Select-Object -ExpandProperty PrinterStatus"`;
-      try {
-        const simpleResult = execSync(simpleCmd, { timeout: 6000 })
-          .toString()
-          .trim();
-        // PrinterStatus: 0=Idle, 1=Processing, 3=Error
-        const statusCode = parseInt(simpleResult);
-        if (statusCode === 3) {
-          return { online: false, reason: "Imprimante en erreur" };
+const POWERSHELL_TIMEOUT_MS = 6000;
+const LOG_PREFIX = "[PrinterStatus]";
+
+function runPowerShell(command, timeoutMs = POWERSHELL_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const proc = exec(
+      `powershell -NoProfile -NonInteractive -Command "${command}"`,
+      { timeout: timeoutMs, windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
         }
-        return { online: true, reason: "OK" };
-      } catch {
-        throw cmdErr; // Re-throw original error
-      }
-    }
+      },
+    );
+    setTimeout(() => {
+      try {
+        proc.kill();
+      } catch (_) {}
+    }, timeoutMs + 500);
+  });
+}
 
-    if (!statusRaw) {
-      return { online: false, reason: "Imprimante introuvable" };
-    }
-
-    const status = JSON.parse(statusRaw);
-
-    if (status.WorkOffline === true) {
-      return { online: false, reason: "Imprimante hors ligne" };
-    }
-
-    if (status.PrinterStatus === 3) {
-      return { online: false, reason: "Imprimante en erreur" };
-    }
-
-    if (status.DetectedErrorState !== 0) {
-      return { online: false, reason: "Imprimante en erreur" };
-    }
-
-    return { online: true, reason: "OK" };
-  } catch (e) {
-    console.warn("[printerStatusCheck] Erreur vérification:", e.message);
-    return { online: false, reason: "Erreur vérification" };
+async function listPrinterNames() {
+  try {
+    const { stdout } = await runPowerShell(
+      "Get-WmiObject Win32_Printer | Select-Object -ExpandProperty Name",
+    );
+    const names = stdout
+      .split("\n")
+      .map((n) => n.trim())
+      .filter(Boolean);
+    console.log(`${LOG_PREFIX} Imprimantes détectées WMI :`, names);
+    return names;
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} listPrinterNames WMI échoué :`, err.message);
+    return [];
   }
 }
 
-function guardPrint(printerName, printCallback) {
-  const status = checkPrinterStatus(printerName);
-  if (!status.online) {
-    try {
-      dialog.showErrorBox("Impression bloquée", status.reason);
-    } catch (err) {
-      console.warn(
-        "[printerStatusCheck] Impossible d'afficher le message d'erreur :",
-        err.message,
-      );
-    }
-    return status;
+async function checkViaWMI(printerName) {
+  let filter = "";
+  if (printerName) {
+    const safe = printerName.replace(/'/g, "''");
+    filter = ` WHERE Name='${safe}'`;
+  } else {
+    filter = " WHERE Default=True";
+  }
+
+  const cmd = `Get-WmiObject Win32_Printer${filter} | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
+  const { stdout, stderr } = await runPowerShell(cmd);
+
+  if (stderr) {
+    console.warn(`${LOG_PREFIX} WMI stderr :`, stderr);
+  }
+
+  if (!stdout || stdout === "null") {
+    console.warn(
+      `${LOG_PREFIX} WMI : aucune imprimante trouvée avec le filtre :`,
+      filter,
+    );
+    return { online: false, status: null, name: null, method: "wmi" };
+  }
+
+  let printerData;
+  try {
+    printerData = JSON.parse(stdout);
+  } catch (parseErr) {
+    console.error(
+      `${LOG_PREFIX} WMI JSON parse échoué :`,
+      parseErr.message,
+      "| stdout :",
+      stdout,
+    );
+    throw new Error("WMI JSON parse failed");
+  }
+
+  const printer = Array.isArray(printerData) ? printerData[0] : printerData;
+  const name = printer.Name ?? null;
+  const printerStatus = printer.PrinterStatus ?? null;
+  const workOffline = printer.WorkOffline ?? false;
+
+  console.log(
+    `${LOG_PREFIX} WMI résultat → Name="${name}" PrinterStatus=${printerStatus} WorkOffline=${workOffline}`,
+  );
+
+  const statusOk =
+    printerStatus !== null && printerStatus >= 3 && printerStatus <= 5;
+  const online = statusOk && !workOffline;
+
+  return { online, status: printerStatus, name, method: "wmi" };
+}
+
+async function checkViaGetPrinter(printerName) {
+  let cmd;
+  if (printerName) {
+    const safe = printerName.replace(/'/g, "''");
+    cmd = `Get-Printer -Name '${safe}' | Select-Object Name,PrinterStatus | ConvertTo-Json`;
+  } else {
+    cmd = `Get-Printer | Where-Object {$_.IsDefault -eq $true} | Select-Object Name,PrinterStatus | ConvertTo-Json`;
+  }
+
+  const { stdout, stderr } = await runPowerShell(cmd);
+
+  if (stderr) {
+    console.warn(`${LOG_PREFIX} Get-Printer stderr :`, stderr);
+  }
+
+  if (!stdout || stdout === "null") {
+    console.warn(`${LOG_PREFIX} Get-Printer : aucun résultat`);
+    return { online: false, status: null, name: null, method: "get-printer" };
+  }
+
+  let printerData;
+  try {
+    printerData = JSON.parse(stdout);
+  } catch {
+    console.error(
+      `${LOG_PREFIX} Get-Printer JSON parse échoué | stdout :`,
+      stdout,
+    );
+    return { online: false, status: null, name: null, method: "get-printer" };
+  }
+
+  const printer = Array.isArray(printerData) ? printerData[0] : printerData;
+  const name = printer.Name ?? null;
+  const printerStatus = printer.PrinterStatus ?? null;
+
+  console.log(
+    `${LOG_PREFIX} Get-Printer résultat → Name="${name}" PrinterStatus="${printerStatus}"`,
+  );
+
+  const online = printerStatus === "Normal" || printerStatus === 0;
+  return { online, status: printerStatus, name, method: "get-printer" };
+}
+
+async function checkPrinterStatus(printerName = null) {
+  console.log(
+    `${LOG_PREFIX} checkPrinterStatus() → printerName="${printerName ?? "default"}"`,
+  );
+  try {
+    const result = await checkViaWMI(printerName);
+    console.log(
+      `${LOG_PREFIX} ✅ WMI → online=${result.online} name="${result.name}"`,
+    );
+    return result;
+  } catch (wmiErr) {
+    console.warn(
+      `${LOG_PREFIX} ⚠️ WMI échoué (${wmiErr.message}), fallback Get-Printer…`,
+    );
   }
 
   try {
-    return printCallback();
-  } catch (err) {
-    const errorMessage = err?.message || "Erreur pendant l'impression";
-    try {
-      dialog.showErrorBox("Erreur d'impression", errorMessage);
-    } catch {
-      // ignore dialog failure
-    }
-    return { online: false, reason: errorMessage };
+    const result = await checkViaGetPrinter(printerName);
+    console.log(
+      `${LOG_PREFIX} ✅ Get-Printer → online=${result.online} name="${result.name}"`,
+    );
+    return result;
+  } catch (gpErr) {
+    console.error(`${LOG_PREFIX} ❌ Get-Printer aussi échoué :`, gpErr.message);
   }
+
+  console.error(
+    `${LOG_PREFIX} ❌ Toutes les stratégies échouées → online=false`,
+  );
+  return {
+    online: false,
+    status: null,
+    name: null,
+    method: "failed",
+    error: "All strategies failed",
+  };
 }
 
-module.exports = {
-  checkPrinterStatus,
-  guardPrint,
-};
+async function debugListPrinters() {
+  return await listPrinterNames();
+}
+
+module.exports = { checkPrinterStatus, debugListPrinters };

@@ -1413,7 +1413,7 @@ if (document.readyState !== "loading") {
 // Imprimantes sidebar
 window.derewol.getPrinters().then((printers) => {
   const select = document.getElementById("printer-select");
-  const dot = document.getElementById("printer-dot");
+  const dot = document.getElementById("printer-status-dot");
   const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
   const real = printers.filter((p) => {
     const name = typeof p === "string" ? p : p?.name;
@@ -1450,100 +1450,104 @@ window.derewol.getPrinters().then((printers) => {
 // Statut global de l'imprimante
 let currentPrinterStatus = { online: true, reason: "Initialisation..." };
 
-// Surveillance du statut de l'imprimante
-function startPrinterStatusPolling() {
-  const updateStatus = async () => {
-    const select = document.getElementById("printer-select");
-    const dot = document.getElementById("printer-dot");
+const PRINTER_POLL_MS = 30_000;
+let _printerPollTimer = null;
 
-    if (!select || !dot) {
-      console.warn("[PrinterStatus] Éléments DOM manquants");
+function setPrinterDotState(state, tooltip = "") {
+  const dot = document.getElementById("printer-status-dot");
+  if (!dot) {
+    console.warn(
+      "[Renderer][PrinterDot] #printer-status-dot introuvable dans le DOM",
+    );
+    return;
+  }
+
+  dot.style.display = "inline-block";
+  dot.style.opacity = "1";
+  dot.style.visibility = "visible";
+  dot.classList.remove("dot-checking", "dot-online", "dot-offline");
+
+  switch (state) {
+    case "checking":
+      dot.classList.add("dot-checking");
+      dot.title = tooltip || "Vérification de l'imprimante…";
+      break;
+    case "online":
+      dot.classList.add("dot-online");
+      dot.title = tooltip || "Imprimante en ligne";
+      break;
+    default:
+      dot.classList.add("dot-offline");
+      dot.title = tooltip || "Imprimante hors ligne ou introuvable";
+      break;
+  }
+
+  console.log(
+    `[Renderer][PrinterDot] état → ${state} | tooltip : "${dot.title}"`,
+  );
+}
+
+async function checkPrinterOnce() {
+  console.log("[Renderer][PrinterDot] checkPrinterOnce() démarré");
+  const dot = document.getElementById("printer-status-dot");
+  const wasOnline = dot?.classList.contains("dot-online");
+  if (!wasOnline) {
+    setPrinterDotState("checking");
+  }
+
+  try {
+    const result = await window.derewol.checkPrinterStatus();
+    console.log("[Renderer][PrinterDot] résultat IPC :", result);
+
+    if (!result || typeof result.online !== "boolean") {
+      console.error("[Renderer][PrinterDot] résultat invalide → offline forcé");
+      setPrinterDotState("offline", "Réponse invalide du processus principal");
+      updatePrintButtons(false);
       return;
     }
 
-    const printerName = select.value;
-    console.log("[PrinterStatus] Vérification de:", printerName);
+    const tooltip = result.name
+      ? `${result.name} — ${result.online ? "En ligne" : "Hors ligne"} (${result.method})`
+      : result.online
+        ? "Imprimante en ligne"
+        : "Imprimante hors ligne";
 
-    // Si pas de nom d'imprimante, montrer le point rouge
-    if (
-      !printerName ||
-      printerName === "Chargement..." ||
-      printerName === "Aucune imprimante physique"
-    ) {
-      console.log("[PrinterStatus] Pas de nom d'imprimante valide");
-      const emptyStatus = {
-        online: false,
-        reason: "Aucune imprimante sélectionnée",
-      };
-      currentPrinterStatus = emptyStatus;
-      setPrinterStatus(emptyStatus);
-      dot.style.background = "var(--danger)"; // Red
-      dot.style.display = "block";
-      dot.style.visibility = "visible";
-      dot.title = "Aucune imprimante sélectionnée";
-      console.log("[PrinterStatus] Dot rouge - Pas d'imprimante");
-      updatePrintButtons();
-      return;
-    }
-
-    try {
-      const status = await window.derewol.checkPrinterStatus(printerName);
-      console.log("[PrinterStatus] Résultat pour", printerName, ":", status);
-      currentPrinterStatus = status;
-
-      // Mettre à jour le statut pour renderJobs
-      setPrinterStatus(status);
-
-      // Mettre à jour le point - JAMAIS le cacher
-      dot.style.display = "block";
-      dot.style.visibility = "visible";
-      if (status.online) {
-        dot.style.background = "var(--success)"; // Vert
-        dot.title = "Imprimante en ligne";
-        console.log("[PrinterStatus] Dot vert - Imprimante en ligne");
-      } else {
-        dot.style.background = "var(--danger)"; // Rouge
-        dot.title = status.reason || "Imprimante hors ligne";
-        console.log("[PrinterStatus] Dot rouge - Raison:", status.reason);
-      }
-
-      // Mettre à jour les boutons "Imprimer tout"
-      updatePrintButtons();
-    } catch (error) {
-      console.error("[PrinterStatus] Erreur lors de la vérification:", error);
-      const errorStatus = { online: false, reason: "Erreur vérification" };
-      currentPrinterStatus = errorStatus;
-      setPrinterStatus(errorStatus);
-      dot.style.display = "block";
-      dot.style.visibility = "visible";
-      dot.style.background = "var(--danger)"; // Red
-      dot.title = "Erreur vérification";
-      console.log("[PrinterStatus] Dot rouge - Erreur attrapée");
-      updatePrintButtons();
-    }
-  };
-
-  // Vérification initiale
-  updateStatus();
-
-  // Vérification toutes les 30 secondes
-  setInterval(updateStatus, 30000);
-
-  // Écouter les changements d'imprimante sélectionnée
-  const select = document.getElementById("printer-select");
-  if (select) {
-    select.addEventListener("change", () => {
-      // Petite pause pour laisser la sélection se stabiliser
-      setTimeout(updateStatus, 100);
-    });
+    setPrinterDotState(result.online ? "online" : "offline", tooltip);
+    updatePrintButtons(result.online);
+  } catch (err) {
+    console.error("[Renderer][PrinterDot] checkPrinterStatus() rejeté :", err);
+    setPrinterDotState("offline", `Erreur : ${err.message}`);
+    updatePrintButtons(false);
   }
 }
 
-// Mettre à jour l'état des boutons "Imprimer tout"
-function updatePrintButtons() {
+function startPrinterStatusPolling() {
+  console.log("[Renderer][PrinterDot] startPrinterStatusPolling() initialisé");
+  if (_printerPollTimer) {
+    clearInterval(_printerPollTimer);
+    _printerPollTimer = null;
+  }
+
+  checkPrinterOnce();
+
+  _printerPollTimer = setInterval(() => {
+    console.log("[Renderer][PrinterDot] tick polling 30s");
+    checkPrinterOnce();
+  }, PRINTER_POLL_MS);
+}
+
+function stopPrinterStatusPolling() {
+  if (_printerPollTimer) {
+    clearInterval(_printerPollTimer);
+    _printerPollTimer = null;
+    console.log("[Renderer][PrinterDot] polling arrêté");
+  }
+}
+
+function updatePrintButtons(online) {
   const buttons = document.querySelectorAll(".btn-print[data-id]");
   buttons.forEach((btn) => {
-    if (!currentPrinterStatus.online) {
+    if (!online) {
       btn.disabled = true;
       btn.title = "Imprimante hors ligne";
       btn.style.opacity = "0.5";
