@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const crypto = require("crypto");
 const { exec, execSync } = require("child_process");
 const {
   decryptFile,
@@ -10,6 +11,7 @@ const {
   secureDelete,
   validateDecryptedBuffer,
 } = require("../services/crypto");
+const SpoolerGuard = require("../lib/spoolerGuard.js");
 
 function execShell(command, options = {}) {
   return new Promise((resolve, reject) => {
@@ -41,6 +43,7 @@ const {
   saveConfig,
   clearConfig,
 } = require("../services/printerConfig");
+const { checkPrinterStatus } = require("../services/printerStatusCheck");
 
 function getPdfPageCount(filePath) {
   try {
@@ -219,6 +222,7 @@ const PRINT_DELAY_MS = 30000; // 30 seconds wait before deletion
 let mainWindow = null;
 let printerCfg = null;
 const processingJobs = new Set();
+const spoolerGuard = new SpoolerGuard();
 // ── Viewer sessions ─────────────────────────────────────────────
 // key = "${jobId}_${fileId}", value = { win, tmpPath, timer }
 const viewerSessions = new Map();
@@ -1592,6 +1596,17 @@ ipcMain.handle(
       return { success: false, error: "Subscription required to print" };
     }
 
+    const printerStatus = await checkPrinterStatus(printerName);
+    if (!printerStatus.online) {
+      log("PRINT_BLOCKED", {
+        groupId,
+        printer: printerName,
+        reason: printerStatus.reason,
+      });
+      dialog.showErrorBox("Impression bloquée", printerStatus.reason);
+      return { success: false, error: printerStatus.reason };
+    }
+
     const items = Array.isArray(jobCopies)
       ? jobCopies
       : [{ jobId: groupId, fileName: "fichier", copies: _copies || 1 }];
@@ -1601,6 +1616,43 @@ ipcMain.handle(
       return { success: false, error: "Job déjà en cours" };
 
     jobIds.forEach((id) => processingJobs.add(id));
+
+    // Vérifier les doublons dans le spooler
+    for (const item of items) {
+      const { data: jobData, error: jobError } = await supabase
+        .from("print_jobs")
+        .select(`file_id, files!print_jobs_file_id_fkey ( storage_path )`)
+        .eq("id", item.jobId)
+        .single();
+
+      if (jobError || !jobData?.files?.storage_path) {
+        console.warn(
+          `[SPOOLER] Impossible de récupérer le chemin pour job ${item.jobId}`,
+        );
+        continue;
+      }
+
+      const fileHash = crypto
+        .createHash("md5")
+        .update(jobData.files.storage_path)
+        .digest("hex");
+      const result = spoolerGuard.addToQueue({
+        jobId: item.jobId,
+        fileName: item.fileName,
+        fileHash,
+      });
+
+      if (!result.allow) {
+        // Bloquer le job
+        log("PRINT_BLOCKED", { jobId: item.jobId, reason: "duplicate_job" });
+        return { success: false, error: result.message };
+      }
+
+      if (result.action === "cancel_old") {
+        console.log(`[SPOOLER] Ancien job annulé pour ${item.jobId}`);
+      }
+    }
+
     log("PRINT_GROUP_START", { groupId, items, printer: printerName });
 
     const results = [],
@@ -1705,6 +1757,7 @@ ipcMain.handle(
             groupId: fileGroupId,
           });
         }
+        spoolerGuard.completeJob(item.jobId);
       }
 
       // ✅ Dériver le statut final du groupe basé sur les résultats réels
@@ -2805,6 +2858,7 @@ function launchApp(isFreshRegistration = false) {
   });
 
   app.on("before-quit", async () => {
+    spoolerGuard.destroy();
     await cleanDerewolFilesDir();
   });
 
