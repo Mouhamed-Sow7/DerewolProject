@@ -15,9 +15,8 @@ function generateCode() {
 
 async function requestRecovery(emailOrPhone) {
   const isEmail = emailOrPhone.includes("@");
-
-  // 1. Cherche l'imprimeur
   const field = isEmail ? "email" : "owner_phone";
+
   const { data: printer, error } = await supabase
     .from("printers")
     .select("id, email, owner_phone, slug")
@@ -28,16 +27,21 @@ async function requestRecovery(emailOrPhone) {
     throw new Error("Aucun compte trouvé avec cet email ou téléphone.");
   }
 
-  // 2. Génère le code
-  const code = generateCode();
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
+  // ✅ Vérifie qu'on a un email pour envoyer le code
+  if (!printer.email) {
+    throw new Error(
+      "Aucun email associé à ce compte. Contactez le support."
+    );
+  }
 
-  // 3. Insert dans recovery_requests
+  const code = generateCode();
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
   const { error: insertError } = await supabase
     .from("recovery_requests")
     .insert({
       printer_id: printer.id,
-      email: printer.email || null,
+      email: printer.email,
       phone: printer.owner_phone || null,
       code,
       expires_at: expiresAt,
@@ -47,31 +51,27 @@ async function requestRecovery(emailOrPhone) {
   if (insertError)
     throw new Error("Erreur création requête: " + insertError.message);
 
-  // 4. Envoie email
-  if (isEmail) {
-    await transporter.sendMail({
-      from: '"DerewolPrint" <derewolprint@gmail.com>',
-      to: printer.email,
-      subject: "Ton code de récupération DerewolPrint",
-      html: `
-        <div style="font-family: sans-serif; max-width: 400px; margin: auto;">
-          <h2 style="color: #1a1a2e;">🖨️ DerewolPrint</h2>
-          <p>Voici ton code de récupération :</p>
-          <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; 
-                      color: #6c63ff; text-align: center; padding: 20px; 
-                      background: #f4f4ff; border-radius: 8px;">
-            ${code}
-          </div>
-          <p style="color: #888; font-size: 13px; margin-top: 16px;">
-            Ce code expire dans 30 minutes. Si tu n'as pas demandé ceci, ignore cet email.
-          </p>
+  // ✅ Envoie TOUJOURS à l'email du printer — que ce soit email ou numéro saisi
+  await transporter.sendMail({
+    from: '"DerewolPrint" <derewolprint@gmail.com>',
+    to: printer.email,
+    subject: "Ton code de récupération DerewolPrint",
+    html: `
+      <div style="font-family: sans-serif; max-width: 400px; margin: auto;">
+        <h2 style="color: #1a1a2e;">🖨️ DerewolPrint</h2>
+        ${!isEmail ? `<p style="color:#888;font-size:13px;">Récupération demandée via numéro : ${emailOrPhone}</p>` : ""}
+        <p>Voici ton code de récupération :</p>
+        <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; 
+                    color: #6c63ff; text-align: center; padding: 20px; 
+                    background: #f4f4ff; border-radius: 8px;">
+          ${code}
         </div>
-      `,
-    });
-  }
-
-  // WhatsApp → à brancher plus tard (Twilio etc.)
-  // if (!isEmail) { await sendWhatsApp(printer.phone, code); }
+        <p style="color: #888; font-size: 13px; margin-top: 16px;">
+          Ce code expire dans 30 minutes. Si tu n'as pas demandé ceci, ignore cet email.
+        </p>
+      </div>
+    `,
+  });
 
   return { success: true, method: isEmail ? "email" : "phone" };
 }
