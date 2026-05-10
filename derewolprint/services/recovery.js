@@ -29,9 +29,7 @@ async function requestRecovery(emailOrPhone) {
 
   // ✅ Vérifie qu'on a un email pour envoyer le code
   if (!printer.email) {
-    throw new Error(
-      "Aucun email associé à ce compte. Contactez le support."
-    );
+    throw new Error("Aucun email associé à ce compte. Contactez le support.");
   }
 
   const code = generateCode();
