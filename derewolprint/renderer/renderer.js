@@ -692,7 +692,7 @@ document.getElementById("btn-filter-clear").addEventListener("click", () => {
 });
 
 // ── Paramètres ────────────────────────────────────────────────
-const VIRTUAL_PRINTER_KEYWORDS = [
+const ALWAYS_HIDDEN_PRINTERS = [
   "microsoft print to pdf",
   "onenote",
   "anydesk printer",
@@ -700,16 +700,31 @@ const VIRTUAL_PRINTER_KEYWORDS = [
   "fax",
 ];
 
+const VIRTUAL_PRINTER_KEYWORDS = [
+  "microsoft print to pdf",
+  "onenote",
+  "anydesk printer",
+  "xps document writer",
+  "fax",
+  "mp-pdf",
+  "mp pdf",
+];
+
+function shouldAlwaysHide(name) {
+  const lower = (name || "").toLowerCase();
+  return ALWAYS_HIDDEN_PRINTERS.some((keyword) => lower.includes(keyword));
+}
+
 function isVirtualPrinterName(name) {
   const lower = (name || "").toLowerCase();
   return VIRTUAL_PRINTER_KEYWORDS.some((keyword) => lower.includes(keyword));
 }
 
 function shouldShowPrinter(name) {
+  if (shouldAlwaysHide(name)) return false;
   const isDev = window.derewol?.isDev?.() ?? false;
   if (isDev) return true;
   if (!name) return false;
-  if (name === "Mp-Pdf") return true;
   return !isVirtualPrinterName(name);
 }
 
@@ -1461,9 +1476,12 @@ window.derewol.getPrinters().then((printers) => {
   dot.style.background = "var(--jaune)";
 
   // Recheck immédiat du statut quand l'utilisateur change d'imprimante
-  select.addEventListener("change", () => {
-    console.log("[Renderer] Imprimante changée → recheck statut dot");
-    checkPrinterOnce();
+  select.addEventListener("change", async () => {
+    const selected = select.value;
+    console.log("[Renderer] Changement imprimante →", selected);
+    setPrinterDotState("checking");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await checkPrinterOnce();
   });
 
   // Démarrer la surveillance du statut de l'imprimante
@@ -1516,12 +1534,17 @@ function setPrinterDotState(state, tooltip = "") {
 }
 
 async function checkPrinterOnce() {
-  console.log("[Renderer][PrinterDot] checkPrinterOnce() → démarré");
+  const printerDropdown = document.getElementById("printer-select");
+  const selectedPrinter = printerDropdown?.value || null;
+  console.log(
+    "[Renderer][PrinterDot] checkPrinterOnce() → démarré pour :",
+    selectedPrinter,
+  );
 
   try {
     setPrinterDotState("checking", "Vérification de l'imprimante…");
 
-    const result = await window.derewol.checkPrinterStatus();
+    const result = await window.derewol.checkPrinterStatus(selectedPrinter);
     console.log("[Renderer][PrinterDot] résultat reçu :", result);
 
     if (!result || typeof result.online !== "boolean") {

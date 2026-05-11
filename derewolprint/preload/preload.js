@@ -26,9 +26,12 @@ contextBridge.exposeInMainWorld("derewol", {
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
   isDev: () => process.env.NODE_ENV === "development",
-  checkPrinterStatus: async () => {
+  checkPrinterStatus: async (printerName) => {
     try {
-      const result = await ipcRenderer.invoke("printer:check-status");
+      const result = await ipcRenderer.invoke(
+        "printer:check-status",
+        printerName ?? null,
+      );
       if (!result || typeof result.online !== "boolean") {
         return {
           online: false,

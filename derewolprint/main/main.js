@@ -2119,9 +2119,11 @@ function filterPrintersForEnv(printerNames) {
   const VIRTUAL_KEYWORDS = [
     "microsoft print to pdf",
     "onenote",
-    "anydesk printer",
+    "anydesk",
     "xps document writer",
     "fax",
+    "mp-pdf",
+    "mp pdf",
   ];
 
   if (isDev) return printerNames;
@@ -2129,7 +2131,6 @@ function filterPrintersForEnv(printerNames) {
   return printerNames.filter((printer) => {
     const name = typeof printer === "string" ? printer : printer?.name;
     if (!name) return false;
-    if (name === "Mp-Pdf") return true;
     const lower = name.toLowerCase();
     return !VIRTUAL_KEYWORDS.some((keyword) => lower.includes(keyword));
   });
@@ -2141,12 +2142,15 @@ ipcMain.handle("printer:list", async () => {
   return filterPrintersForEnv(printers);
 });
 ipcMain.handle("printer:default", async () => await getDefaultPrinter());
-ipcMain.handle("printer:check-status", async () => {
-  console.log("[Main] printer:check-status");
+ipcMain.handle("printer:check-status", async (_event, printerName) => {
+  console.log(
+    "[Main] printer:check-status — printerName reçu du renderer:",
+    printerName,
+  );
   try {
-    // Ne PAS utiliser printerCfg.name qui contient le login utilisateur.
-    const printerName = getPrinterWindowsName();
-    const result = await checkPrinterStatus(printerName);
+    const nameToCheck = printerName || getPrinterWindowsName() || null;
+    console.log("[Main] nameToCheck :", nameToCheck);
+    const result = await checkPrinterStatus(nameToCheck);
     return result;
   } catch (err) {
     console.error("[Main] printer:check-status échoué :", err.message);

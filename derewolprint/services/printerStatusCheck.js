@@ -12,6 +12,7 @@ const LOG_PREFIX = "[PrinterStatus]";
 // Imprimantes virtuelles — toujours considérées online, pas de check WMI
 const VIRTUAL_PRINTERS = [
   "mp-pdf",
+  "mp pdf",
   "microsoft print to pdf",
   "onenote",
   "anydesk printer",
@@ -63,30 +64,22 @@ async function listPrinterNames() {
   }
 }
 
-async function checkViaWMI(printerName) {
-  let cmd;
-  let filterDesc;
-  if (printerName) {
-    const safe = printerName.replace(/'/g, "''");
-    filterDesc = `Name='${safe}'`;
-    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Name='${safe}'" | Select-Object Name,PrinterStatus,WorkOffline,DetectedErrorState | ConvertTo-Json`;
-  } else {
-    filterDesc = "Default=True";
-    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Default=True" | Select-Object Name,PrinterStatus,WorkOffline,DetectedErrorState | ConvertTo-Json`;
-  }
+async function checkViaPowerShell(printerName) {
+  const safe = printerName ? printerName.replace(/'/g, "''") : null;
+  const cmd = printerName
+    ? `Get-Printer -Name '${safe}' | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`
+    : `Get-Printer | Where-Object {$_.IsDefault -eq $true} | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
 
   const { stdout, stderr } = await runPowerShell(cmd);
 
   if (stderr) {
-    console.warn(`${LOG_PREFIX} WMI stderr :`, stderr);
+    console.warn(`${LOG_PREFIX} Get-Printer stderr :`, stderr);
   }
 
   if (!stdout || stdout === "null") {
-    console.warn(
-      `${LOG_PREFIX} WMI : aucune imprimante trouvée avec le filtre :`,
-      filterDesc,
+    throw new Error(
+      `Get-Printer: no result for ${printerName ?? "default printer"}`,
     );
-    return { online: false, status: null, name: null, method: "wmi" };
   }
 
   let printerData;
@@ -94,51 +87,37 @@ async function checkViaWMI(printerName) {
     printerData = JSON.parse(stdout);
   } catch (parseErr) {
     console.error(
-      `${LOG_PREFIX} WMI JSON parse échoué :`,
+      `${LOG_PREFIX} Get-Printer JSON parse échoué :`,
       parseErr.message,
       "| stdout :",
       stdout,
     );
-    throw new Error("WMI JSON parse failed");
+    throw new Error("Get-Printer JSON parse failed");
   }
 
-  const printer = Array.isArray(printerData) ? printerData[0] : printerData;
-  const name = printer.Name ?? null;
-  const printerStatus = printer.PrinterStatus ?? null;
-  const workOffline = printer.WorkOffline ?? false;
-  const detectedErrorState = printer.DetectedErrorState ?? null;
+  const data = Array.isArray(printerData) ? printerData[0] : printerData;
+  const name = data?.Name ?? null;
+  const status = Number(data?.PrinterStatus ?? -1);
+  const workOffline = data?.WorkOffline === true;
 
-  console.log(
-    `${LOG_PREFIX} WMI résultat → Name="${name}" PrinterStatus=${printerStatus} WorkOffline=${workOffline} DetectedErrorState=${detectedErrorState}`,
-  );
-
-  // PrinterStatus WMI — référence complète :
-  // 1 = Other        → état ambigu, NE PAS considérer online seul
-  // 2 = Unknown      → état inconnu
-  // 3 = Idle/Ready   → prêt ✅
-  // 4 = Printing     → en impression ✅
-  // 5 = Warmup       → chauffe ✅
-  // 6 = Stopped      → arrêté ❌
-  // 7 = Offline      → hors ligne ❌
-  const DEFINITE_ONLINE = new Set([3, 4, 5]);
-  const DEFINITE_OFFLINE = new Set([6, 7]);
-
-  let online;
-  if (workOffline) {
-    online = false;
-  } else if (DEFINITE_ONLINE.has(printerStatus)) {
-    online = true;
-  } else if (DEFINITE_OFFLINE.has(printerStatus)) {
-    online = false;
-  } else {
-    online = detectedErrorState === 0 || detectedErrorState === null;
+  if (!data || !name) {
+    throw new Error(
+      `Get-Printer: no result for ${printerName ?? "default printer"}`,
+    );
   }
 
+  const online = !workOffline && status === 0;
+
   console.log(
-    `${LOG_PREFIX} Décision → WorkOffline=${workOffline} Status=${printerStatus} DetectedErrorState=${detectedErrorState} → online=${online}`,
+    `${LOG_PREFIX} Get-Printer → Name="${name}" Status=${status} WorkOffline=${workOffline} → online=${online}`,
   );
 
-  return { online, status: printerStatus, name, method: "wmi" };
+  return {
+    online,
+    status,
+    name,
+    method: "get-printer",
+  };
 }
 
 async function checkViaGetPrinter(printerName) {
@@ -197,37 +176,18 @@ async function checkPrinterStatus(printerName = null) {
   }
 
   try {
-    const result = await checkViaWMI(printerName);
-    console.log(
-      `${LOG_PREFIX} ✅ WMI → online=${result.online} name="${result.name}"`,
-    );
+    const result = await checkViaPowerShell(printerName);
     return result;
-  } catch (wmiErr) {
-    console.warn(
-      `${LOG_PREFIX} ⚠️ WMI échoué (${wmiErr.message}), fallback Get-Printer…`,
-    );
+  } catch (err) {
+    console.warn(`${LOG_PREFIX} Get-Printer échoué → ${err.message}`);
+    return {
+      online: false,
+      status: -1,
+      name: printerName,
+      method: "error",
+      error: err.message,
+    };
   }
-
-  try {
-    const result = await checkViaGetPrinter(printerName);
-    console.log(
-      `${LOG_PREFIX} ✅ Get-Printer → online=${result.online} name="${result.name}"`,
-    );
-    return result;
-  } catch (gpErr) {
-    console.error(`${LOG_PREFIX} ❌ Get-Printer aussi échoué :`, gpErr.message);
-  }
-
-  console.error(
-    `${LOG_PREFIX} ❌ Toutes les stratégies échouées → online=false`,
-  );
-  return {
-    online: false,
-    status: null,
-    name: null,
-    method: "failed",
-    error: "All strategies failed",
-  };
 }
 
 async function debugListPrinters() {
