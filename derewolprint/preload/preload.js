@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.invoke("polling:set-interval", intervalMs),
   getPrinters: () => ipcRenderer.invoke("printer:list"),
   getDefaultPrinter: () => ipcRenderer.invoke("printer:default"),
+  isDev: () => process.env.NODE_ENV === "development",
   checkPrinterStatus: async () => {
     try {
       const result = await ipcRenderer.invoke("printer:check-status");

@@ -2115,9 +2115,30 @@ ipcMain.handle("job:reject", async (event, jobId) => {
   }
 });
 
+function filterPrintersForEnv(printerNames) {
+  const VIRTUAL_KEYWORDS = [
+    "microsoft print to pdf",
+    "onenote",
+    "anydesk printer",
+    "xps document writer",
+    "fax",
+  ];
+
+  if (isDev) return printerNames;
+
+  return printerNames.filter((printer) => {
+    const name = typeof printer === "string" ? printer : printer?.name;
+    if (!name) return false;
+    if (name === "Mp-Pdf") return true;
+    const lower = name.toLowerCase();
+    return !VIRTUAL_KEYWORDS.some((keyword) => lower.includes(keyword));
+  });
+}
+
 // ── IPC : Imprimantes ───────────────────────────────────────────
 ipcMain.handle("printer:list", async () => {
-  return await getInstalledPrinters();
+  const printers = await getInstalledPrinters();
+  return filterPrintersForEnv(printers);
 });
 ipcMain.handle("printer:default", async () => await getDefaultPrinter());
 ipcMain.handle("printer:check-status", async () => {

@@ -692,6 +692,27 @@ document.getElementById("btn-filter-clear").addEventListener("click", () => {
 });
 
 // ── Paramètres ────────────────────────────────────────────────
+const VIRTUAL_PRINTER_KEYWORDS = [
+  "microsoft print to pdf",
+  "onenote",
+  "anydesk printer",
+  "xps document writer",
+  "fax",
+];
+
+function isVirtualPrinterName(name) {
+  const lower = (name || "").toLowerCase();
+  return VIRTUAL_PRINTER_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
+
+function shouldShowPrinter(name) {
+  const isDev = window.derewol?.isDev?.() ?? false;
+  if (isDev) return true;
+  if (!name) return false;
+  if (name === "Mp-Pdf") return true;
+  return !isVirtualPrinterName(name);
+}
+
 function initSettings() {
   document.getElementById("setting-darkmode").checked = settings.darkmode;
   document.getElementById("setting-lang").value = settings.lang;
@@ -700,10 +721,9 @@ function initSettings() {
 
   window.derewol.getPrinters().then((printers) => {
     const sel = document.getElementById("setting-printer");
-    const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
     const real = printers.filter((p) => {
       const name = typeof p === "string" ? p : p?.name;
-      return name && !blacklist.some((b) => name.toLowerCase().includes(b));
+      return shouldShowPrinter(name);
     });
     sel.innerHTML =
       '<option value="">Auto-détection</option>' +
@@ -1414,12 +1434,9 @@ if (document.readyState !== "loading") {
 window.derewol.getPrinters().then((printers) => {
   const select = document.getElementById("printer-select");
   const dot = document.getElementById("printer-status-dot");
-  const blacklist = ["onenote", "pdf", "fax", "xps", "microsoft"];
   const real = printers.filter((p) => {
     const name = typeof p === "string" ? p : p?.name;
-    // 🔥 Ne pas filtrer Mp-Pdf
-    if (name === "Mp-Pdf") return true;
-    return name && !blacklist.some((b) => name.toLowerCase().includes(b));
+    return shouldShowPrinter(name);
   });
 
   if (real.length === 0) {

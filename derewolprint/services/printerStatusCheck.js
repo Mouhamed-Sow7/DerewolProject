@@ -9,6 +9,22 @@ const { exec } = require("child_process");
 const POWERSHELL_TIMEOUT_MS = 6000;
 const LOG_PREFIX = "[PrinterStatus]";
 
+// Imprimantes virtuelles — toujours considérées online, pas de check WMI
+const VIRTUAL_PRINTERS = [
+  "mp-pdf",
+  "microsoft print to pdf",
+  "onenote",
+  "anydesk printer",
+  "fax",
+  "xps document writer",
+];
+
+function isVirtualPrinter(name) {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  return VIRTUAL_PRINTERS.some((v) => lower.includes(v));
+}
+
 function runPowerShell(command, timeoutMs = POWERSHELL_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const proc = exec(
@@ -172,6 +188,14 @@ async function checkPrinterStatus(printerName = null) {
   console.log(
     `${LOG_PREFIX} checkPrinterStatus() → printerName="${printerName ?? "default"}"`,
   );
+
+  if (printerName && isVirtualPrinter(printerName)) {
+    console.log(
+      `${LOG_PREFIX} ✅ Imprimante virtuelle détectée → online=true (pas de check WMI)`,
+    );
+    return { online: true, status: 3, name: printerName, method: "virtual" };
+  }
+
   try {
     const result = await checkViaWMI(printerName);
     console.log(
