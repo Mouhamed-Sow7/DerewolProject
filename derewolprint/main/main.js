@@ -958,7 +958,12 @@ ipcMain.handle("viewer:print", async (_event, jobId, fileId) => {
   if (printerName) {
     const printerStatus = checkPrinterStatus(printerName);
     if (!printerStatus.online) {
-      dialog.showErrorBox("Impression bloquée", printerStatus.reason);
+      dialog.showErrorBox(
+        "Impression bloquée",
+        printerStatus.online === false
+          ? "Imprimante non disponible"
+          : "Erreur imprimante",
+      );
       return { success: false, error: printerStatus.reason };
     }
   }
@@ -1654,14 +1659,17 @@ ipcMain.handle(
       return { success: false, error: "Subscription required to print" };
     }
 
-    const printerStatus = checkPrinterStatus(printerName);
+    const printerStatus = await checkPrinterStatus(printerName);
     if (!printerStatus.online) {
       log("PRINT_BLOCKED", {
         groupId,
         printer: printerName,
-        reason: printerStatus.reason,
+        reason: printerStatus.dotState,
       });
-      dialog.showErrorBox("Impression bloquée", printerStatus.reason);
+      dialog.showErrorBox(
+        "Impression bloquée",
+        "Imprimante non disponible — vérifiez la connexion",
+      );
       return { success: false, error: printerStatus.reason };
     }
 
@@ -1676,6 +1684,20 @@ ipcMain.handle(
     jobIds.forEach((id) => processingJobs.add(id));
 
     // Vérifier les doublons dans le spooler
+    // 🔥 BUG FIX: Skip guard for virtual printers (Mp-Pdf, etc.)
+    const VIRTUAL_KEYWORDS = [
+      "microsoft print to pdf",
+      "onenote",
+      "anydesk",
+      "xps document writer",
+      "fax",
+      "mp-pdf",
+      "mp pdf",
+    ];
+    const isVirtualPrinter = VIRTUAL_KEYWORDS.some((v) =>
+      printerName.toLowerCase().includes(v.toLowerCase()),
+    );
+
     for (const item of items) {
       const { data: jobData, error: jobError } = await supabase
         .from("print_jobs")
@@ -1690,24 +1712,52 @@ ipcMain.handle(
         continue;
       }
 
-      const fileHash = crypto
-        .createHash("md5")
-        .update(jobData.files.storage_path)
-        .digest("hex");
-      const result = spoolerGuard.addToQueue({
-        jobId: item.jobId,
-        fileName: item.fileName,
-        fileHash,
-      });
+      // Skip spooler guard for virtual printers
+      if (!isVirtualPrinter) {
+        const fileHash = crypto
+          .createHash("md5")
+          .update(jobData.files.storage_path)
+          .digest("hex");
 
-      if (!result.allow) {
-        // Bloquer le job
-        log("PRINT_BLOCKED", { jobId: item.jobId, reason: "duplicate_job" });
-        return { success: false, error: result.message };
-      }
+        try {
+          const result = spoolerGuard.addToQueue({
+            jobId: item.jobId,
+            fileName: item.fileName,
+            fileHash,
+          });
 
-      if (result.action === "cancel_old") {
-        console.log(`[SPOOLER] Ancien job annulé pour ${item.jobId}`);
+          if (!result?.allow) {
+            // BUG FIX: Use result.message with fallback, wrap in try/catch
+            const errorMsg = result?.message || "Impression bloquée";
+            log("PRINT_BLOCKED", {
+              jobId: item.jobId,
+              reason: "duplicate_job",
+            });
+            try {
+              dialog.showErrorBox("Impression bloquée", errorMsg);
+            } catch (e) {
+              console.error("[PRINT] Erreur showErrorBox:", e.message);
+            }
+            return { success: false, error: errorMsg };
+          }
+
+          if (result?.action === "cancel_old") {
+            console.log(`[SPOOLER] Ancien job annulé pour ${item.jobId}`);
+          }
+        } catch (guardErr) {
+          const errorMsg = guardErr?.message || "Erreur vérification spooler";
+          console.warn("[SPOOLER] addToQueue error:", errorMsg);
+          try {
+            dialog.showErrorBox("Erreur spooler", errorMsg);
+          } catch (e) {
+            console.error("[PRINT] Erreur showErrorBox:", e.message);
+          }
+          return { success: false, error: errorMsg };
+        }
+      } else {
+        console.log(
+          `[SPOOLER] ✅ Imprimante virtuelle ${printerName} → guard skipped`,
+        );
       }
     }
 
@@ -1896,9 +1946,12 @@ ipcMain.handle("job:retry", async (event, jobId, printerName) => {
       log("PRINT_BLOCKED", {
         jobId,
         printer: printerName,
-        reason: printerStatus.reason,
+        reason: printerStatus.dotState,
       });
-      dialog.showErrorBox("Impression bloquée", printerStatus.reason);
+      dialog.showErrorBox(
+        "Impression bloquée",
+        "Imprimante non disponible — vérifiez la connexion",
+      );
       return { success: false, error: printerStatus.reason };
     }
 
