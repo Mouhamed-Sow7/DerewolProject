@@ -2138,6 +2138,17 @@ ipcMain.handle("printer:check-status", async () => {
     };
   }
 });
+
+// TEMP TEST — simulation d'une imprimante hors ligne
+ipcMain.handle("printer:simulate-offline", async () => {
+  console.log("[Test] Simulation imprimante hors ligne");
+  return {
+    online: false,
+    status: 7,
+    name: "NPIEEBED4 (HP LaserJet M402dn)",
+    method: "wmi-simulated",
+  };
+});
 ipcMain.handle("printer:debug-list", async () => {
   const names = await debugListPrinters();
   console.log("[Main] printer:debug-list :", names);

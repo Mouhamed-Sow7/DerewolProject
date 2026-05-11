@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld("derewol", {
     }
   },
   debugListPrinters: () => ipcRenderer.invoke("printer:debug-list"),
+  simulatePrinterOffline: () => ipcRenderer.invoke("printer:simulate-offline"),
   getHistory: () => ipcRenderer.invoke("history:get"),
   setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
   getPdfPages: (fileId) => ipcRenderer.invoke("pdf:get-pages", fileId),

@@ -49,11 +49,14 @@ async function listPrinterNames() {
 
 async function checkViaWMI(printerName) {
   let cmd;
+  let filterDesc;
   if (printerName) {
     const safe = printerName.replace(/'/g, "''");
-    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Name='${safe}'" | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
+    filterDesc = `Name='${safe}'`;
+    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Name='${safe}'" | Select-Object Name,PrinterStatus,WorkOffline,DetectedErrorState | ConvertTo-Json`;
   } else {
-    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Default=True" | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
+    filterDesc = "Default=True";
+    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Default=True" | Select-Object Name,PrinterStatus,WorkOffline,DetectedErrorState | ConvertTo-Json`;
   }
 
   const { stdout, stderr } = await runPowerShell(cmd);
@@ -65,7 +68,7 @@ async function checkViaWMI(printerName) {
   if (!stdout || stdout === "null") {
     console.warn(
       `${LOG_PREFIX} WMI : aucune imprimante trouvée avec le filtre :`,
-      filter,
+      filterDesc,
     );
     return { online: false, status: null, name: null, method: "wmi" };
   }
@@ -87,14 +90,37 @@ async function checkViaWMI(printerName) {
   const name = printer.Name ?? null;
   const printerStatus = printer.PrinterStatus ?? null;
   const workOffline = printer.WorkOffline ?? false;
+  const detectedErrorState = printer.DetectedErrorState ?? null;
 
   console.log(
-    `${LOG_PREFIX} WMI résultat → Name="${name}" PrinterStatus=${printerStatus} WorkOffline=${workOffline}`,
+    `${LOG_PREFIX} WMI résultat → Name="${name}" PrinterStatus=${printerStatus} WorkOffline=${workOffline} DetectedErrorState=${detectedErrorState}`,
   );
 
-  const statusOk =
-    printerStatus !== null && printerStatus >= 3 && printerStatus <= 5;
-  const online = statusOk && !workOffline;
+  // PrinterStatus WMI — référence complète :
+  // 1 = Other        → état ambigu, NE PAS considérer online seul
+  // 2 = Unknown      → état inconnu
+  // 3 = Idle/Ready   → prêt ✅
+  // 4 = Printing     → en impression ✅
+  // 5 = Warmup       → chauffe ✅
+  // 6 = Stopped      → arrêté ❌
+  // 7 = Offline      → hors ligne ❌
+  const DEFINITE_ONLINE = new Set([3, 4, 5]);
+  const DEFINITE_OFFLINE = new Set([6, 7]);
+
+  let online;
+  if (workOffline) {
+    online = false;
+  } else if (DEFINITE_ONLINE.has(printerStatus)) {
+    online = true;
+  } else if (DEFINITE_OFFLINE.has(printerStatus)) {
+    online = false;
+  } else {
+    online = detectedErrorState === 0 || detectedErrorState === null;
+  }
+
+  console.log(
+    `${LOG_PREFIX} Décision → WorkOffline=${workOffline} Status=${printerStatus} DetectedErrorState=${detectedErrorState} → online=${online}`,
+  );
 
   return { online, status: printerStatus, name, method: "wmi" };
 }
