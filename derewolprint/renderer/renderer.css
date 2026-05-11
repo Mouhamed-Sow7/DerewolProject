@@ -181,6 +181,11 @@ nav {
   animation: dot-pulse 1s ease-in-out infinite;
 }
 
+#printer-status-dot.dot-warning {
+  background-color: #f59e0b;
+  box-shadow: 0 0 4px #f59e0b88;
+}
+
 @keyframes dot-pulse {
   0%,
   100% {

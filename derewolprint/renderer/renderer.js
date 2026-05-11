@@ -1511,7 +1511,12 @@ function setPrinterDotState(state, tooltip = "") {
   dot.style.backgroundColor = "";
   dot.style.boxShadow = "";
 
-  dot.classList.remove("dot-checking", "dot-online", "dot-offline");
+  dot.classList.remove(
+    "dot-checking",
+    "dot-online",
+    "dot-offline",
+    "dot-warning",
+  );
 
   switch (state) {
     case "online":
@@ -1519,6 +1524,9 @@ function setPrinterDotState(state, tooltip = "") {
       break;
     case "offline":
       dot.classList.add("dot-offline");
+      break;
+    case "warning":
+      dot.classList.add("dot-warning");
       break;
     case "checking":
     default:
@@ -1554,9 +1562,15 @@ async function checkPrinterOnce() {
       return;
     }
 
-    const state = result.online ? "online" : "offline";
+    const state = result.dotState || (result.online ? "online" : "offline");
     const tooltip = result.name
-      ? `${result.name} — ${result.online ? "En ligne" : "Hors ligne"} (status:${result.status})`
+      ? `${result.name} — ${
+          state === "online"
+            ? "En ligne"
+            : state === "warning"
+              ? "Détectée mais pas prête"
+              : "Hors ligne"
+        } (status:${result.status})`
       : result.online
         ? "Imprimante en ligne"
         : "Imprimante hors ligne";

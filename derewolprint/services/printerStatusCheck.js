@@ -106,10 +106,25 @@ async function checkViaPowerShell(printerName) {
     );
   }
 
-  const online = !workOffline && status === 0;
+  let dotState;
+  let online;
+
+  if (workOffline) {
+    dotState = "offline";
+    online = false;
+  } else if (status === 0) {
+    dotState = "online";
+    online = true;
+  } else if (status === -1) {
+    dotState = "offline";
+    online = false;
+  } else {
+    dotState = "warning";
+    online = false;
+  }
 
   console.log(
-    `${LOG_PREFIX} Get-Printer → Name="${name}" Status=${status} WorkOffline=${workOffline} → online=${online}`,
+    `${LOG_PREFIX} Get-Printer → Name="${name}" Status=${status} WorkOffline=${workOffline} → dotState=${dotState}`,
   );
 
   return {
@@ -117,6 +132,7 @@ async function checkViaPowerShell(printerName) {
     status,
     name,
     method: "get-printer",
+    dotState,
   };
 }
 
@@ -172,7 +188,13 @@ async function checkPrinterStatus(printerName = null) {
     console.log(
       `${LOG_PREFIX} ✅ Imprimante virtuelle détectée → online=true (pas de check WMI)`,
     );
-    return { online: true, status: 3, name: printerName, method: "virtual" };
+    return {
+      online: true,
+      status: 3,
+      name: printerName,
+      method: "virtual",
+      dotState: "online",
+    };
   }
 
   try {
@@ -186,6 +208,7 @@ async function checkPrinterStatus(printerName = null) {
       name: printerName,
       method: "error",
       error: err.message,
+      dotState: "offline",
     };
   }
 }
