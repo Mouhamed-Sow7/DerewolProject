@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Derewol AI</title>
+    <style>
+      /* Styles pour Derewol AI */
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #0f1117;
+        color: #e2e8f0;
+        margin: 0;
+        padding: 20px;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .logo {
+        font-size: 2.5em;
+        font-weight: bold;
+        color: #4f6ef7;
+        margin-bottom: 10px;
+      }
+
+      .credits {
+        font-size: 1.1em;
+        color: #a0aec0;
+      }
+
+      .buttons {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        background-color: #4f6ef7;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: background-color 0.3s;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .btn:hover {
+        background-color: #3b5bdb;
+      }
+
+      .btn:disabled {
+        background-color: #4a5568;
+        cursor: not-allowed;
+      }
+
+      .results {
+        margin-top: 30px;
+      }
+
+      .card {
+        background-color: #1a1d2e;
+        border: 1px solid #2d3561;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .card.success {
+        border-left: 4px solid #48bb78;
+      }
+
+      .card.warning {
+        border-left: 4px solid #ed8936;
+      }
+
+      .card h3 {
+        margin-top: 0;
+        color: #4f6ef7;
+      }
+
+      .details {
+        margin-top: 20px;
+      }
+
+      .detail-item {
+        margin-bottom: 10px;
+      }
+
+      .recharge {
+        text-align: center;
+        margin-top: 30px;
+      }
+
+      .recharge-options {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        margin-top: 15px;
+        flex-wrap: wrap;
+      }
+
+      .recharge-btn {
+        background-color: #38a169;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        transition: background-color 0.3s;
+      }
+
+      .recharge-btn:hover {
+        background-color: #2f855a;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="logo">Derewol AI ✦</div>
+        <div class="credits" id="credits-display">
+          Chargement des crédits...
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button class="btn" id="btn-analyze-doc">📄 Analyser document</button>
+        <button class="btn" id="btn-analyze-excel">📊 Analyser Excel</button>
+        <button class="btn" id="btn-ocr">🔍 OCR Scan</button>
+      </div>
+
+      <div class="results" id="results" class="hidden">
+        <div class="card success" id="suggestions-card">
+          <h3>Suggestions</h3>
+          <ul id="suggestions-list"></ul>
+        </div>
+
+        <div class="card warning" id="warnings-card" class="hidden">
+          <h3>Avertissements</h3>
+          <ul id="warnings-list"></ul>
+        </div>
+
+        <div class="details">
+          <div class="card">
+            <h3>Détails d'impression</h3>
+            <div class="detail-item">
+              <strong>Orientation :</strong> <span id="orientation">-</span>
+            </div>
+            <div class="detail-item">
+              <strong>Mode :</strong> <span id="mode">-</span>
+            </div>
+            <div class="detail-item">
+              <strong>Type de contenu :</strong>
+              <span id="content-type">-</span>
+            </div>
+            <div class="detail-item">
+              <strong>Format recommandé :</strong> <span id="format">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="recharge hidden" id="recharge-section">
+        <p>Vous n'avez plus de crédits IA. Recharger pour continuer :</p>
+        <div class="recharge-options">
+          <button class="recharge-btn" data-credits="10" data-amount="2000">
+            2 000 XOF = 10 crédits
+          </button>
+          <button class="recharge-btn" data-credits="20" data-amount="3500">
+            3 500 XOF = 20 crédits
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="derewolAI.js"></script>
+  </body>
+</html>

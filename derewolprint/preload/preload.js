@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("derewol", {
   // ── App principale ────────────────────────────────────────
   getPrinterConfig: () => ipcRenderer.invoke("printer:config"),
   updatePrinterName: (name) => ipcRenderer.invoke("printer:update-name", name),
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
   // ── Jobs impression ───────────────────────────────────────
   onJobReceived: (callback) =>

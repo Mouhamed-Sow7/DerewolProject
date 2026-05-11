@@ -44,8 +44,11 @@ const {
   clearConfig,
 } = require("../services/printerConfig");
 const {
-  analyzeDocumentForPrint,
+  analyzeDocument,
   analyzeExcel,
+  ocrDocument,
+  checkAICredits,
+  addAICredits,
 } = require("../services/aiPrintAnalyzer");
 const {
   extractTextFromImage,
@@ -670,6 +673,75 @@ ipcMain.handle("security:enable-screenshot", (_, code) =>
 ipcMain.handle("security:screenshot-status", () => ({
   enabled: screenshotProtectionEnabled,
 }));
+
+// ── IPC : Derewol AI ────────────────────────────────────────────
+// Vérifier les crédits IA du printer
+ipcMain.handle("ai:checkCredits", async (event, { printerId }) => {
+  try {
+    const data = await checkAICredits(printerId);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Analyser un document PDF ou image
+ipcMain.handle("ai:analyzeDocument", async (event, { filePath, printerId }) => {
+  try {
+    const data = await analyzeDocument(filePath, printerId);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Analyser un fichier Excel
+ipcMain.handle("ai:analyzeExcel", async (event, { filePath, printerId }) => {
+  try {
+    const data = await analyzeExcel(filePath, printerId);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// OCR sur une image ou scan
+ipcMain.handle("ai:ocrDocument", async (event, { filePath, printerId }) => {
+  try {
+    const data = await ocrDocument(filePath, printerId);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Ajouter des crédits achetés
+ipcMain.handle(
+  "ai:addCredits",
+  async (event, { printerId, credits, amountXof, paymentRef }) => {
+    try {
+      const data = await addAICredits(
+        printerId,
+        credits,
+        amountXof,
+        paymentRef,
+      );
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+);
+
+// Handler pour ouvrir le sélecteur de fichier
+ipcMain.handle("dialog:openFile", async (event, { filters }) => {
+  const { dialog } = require("electron");
+  const result = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    filters,
+  });
+  return result;
+});
 
 ipcMain.handle("print:set-options", (_event, opts) => {
   global._filesPrintOptions = { ...global._filesPrintOptions, ...opts };

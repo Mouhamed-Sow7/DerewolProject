@@ -3,39 +3,39 @@
 // Propulsé par Claude (Anthropic) — "AI powered by Claude"
 // ═══════════════════════════════════════════════════════════════
 
-const fs      = require('fs')
-const path    = require('path')
-const { createClient } = require('@supabase/supabase-js')
+const fs = require("fs");
+const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
 
 // ── Config ──────────────────────────────────────────────────────
-require('dotenv').config()
+require("dotenv").config();
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL             = 'claude-sonnet-4-20250514'
-const MAX_TOKENS        = 1000
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const MODEL = "claude-sonnet-4-20250514";
+const MAX_TOKENS = 1000;
 
 // Coût approximatif par action (pour les logs)
 const COST_PER_ACTION = {
   analyze_document: { tokens: 2000, usd: 0.03, xof: 18 },
-  analyze_excel:    { tokens: 3000, usd: 0.05, xof: 30 },
-  ocr_document:     { tokens: 2500, usd: 0.04, xof: 24 }
-}
+  analyze_excel: { tokens: 3000, usd: 0.05, xof: 30 },
+  ocr_document: { tokens: 2500, usd: 0.04, xof: 24 },
+};
 
 // ── Clé API ─────────────────────────────────────────────────────
 function getAnthropicKey() {
   // Pour l'instant : .env
   // Plus tard : remplacer par getAnthropicKey() chiffré AES
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) throw new Error('ANTHROPIC_API_KEY manquante dans .env')
-  return key
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY manquante dans .env");
+  return key;
 }
 
 // ── Supabase ─────────────────────────────────────────────────────
 function getSupabase() {
   return createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-  )
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -48,26 +48,26 @@ function getSupabase() {
  */
 async function checkAICredits(printerId) {
   try {
-    const supabase = getSupabase()
+    const supabase = getSupabase();
     const { data, error } = await supabase
-      .from('subscriptions')
-      .select('ai_credits_remaining, ai_credits_purchased')
-      .eq('printer_id', printerId)
-      .eq('status', 'active')
-      .single()
+      .from("subscriptions")
+      .select("ai_credits_remaining, ai_credits_purchased")
+      .eq("printer_id", printerId)
+      .eq("status", "active")
+      .single();
 
     if (error || !data) {
-      return { hasCredits: false, remaining: 0, purchased: 0, total: 0 }
+      return { hasCredits: false, remaining: 0, purchased: 0, total: 0 };
     }
 
-    const remaining = data.ai_credits_remaining ?? 0
-    const purchased = data.ai_credits_purchased ?? 0
-    const total     = remaining + purchased
+    const remaining = data.ai_credits_remaining ?? 0;
+    const purchased = data.ai_credits_purchased ?? 0;
+    const total = remaining + purchased;
 
-    return { hasCredits: total > 0, remaining, purchased, total }
+    return { hasCredits: total > 0, remaining, purchased, total };
   } catch (err) {
-    console.error('[DEREWOL AI] Erreur checkAICredits:', err.message)
-    return { hasCredits: false, remaining: 0, purchased: 0, total: 0 }
+    console.error("[DEREWOL AI] Erreur checkAICredits:", err.message);
+    return { hasCredits: false, remaining: 0, purchased: 0, total: 0 };
   }
 }
 
@@ -77,15 +77,16 @@ async function checkAICredits(printerId) {
  */
 async function consumeAICredit(printerId) {
   try {
-    const supabase = getSupabase()
-    const { data, error } = await supabase
-      .rpc('consume_ai_credit', { p_printer_id: printerId })
+    const supabase = getSupabase();
+    const { data, error } = await supabase.rpc("consume_ai_credit", {
+      p_printer_id: printerId,
+    });
 
-    if (error) throw error
-    return data // { success, source, reason, remaining_after, purchased_after }
+    if (error) throw error;
+    return data; // { success, source, reason, remaining_after, purchased_after }
   } catch (err) {
-    console.error('[DEREWOL AI] Erreur consumeAICredit:', err.message)
-    return { success: false, reason: 'db_error' }
+    console.error("[DEREWOL AI] Erreur consumeAICredit:", err.message);
+    return { success: false, reason: "db_error" };
   }
 }
 
@@ -95,44 +96,50 @@ async function consumeAICredit(printerId) {
  */
 async function addAICredits(printerId, credits, amountXof, paymentRef = null) {
   try {
-    const supabase = getSupabase()
-    const { data, error } = await supabase
-      .rpc('add_ai_credits', {
-        p_printer_id:  printerId,
-        p_credits:     credits,
-        p_amount_xof:  amountXof,
-        p_payment_ref: paymentRef
-      })
+    const supabase = getSupabase();
+    const { data, error } = await supabase.rpc("add_ai_credits", {
+      p_printer_id: printerId,
+      p_credits: credits,
+      p_amount_xof: amountXof,
+      p_payment_ref: paymentRef,
+    });
 
-    if (error) throw error
-    return data
+    if (error) throw error;
+    return data;
   } catch (err) {
-    console.error('[DEREWOL AI] Erreur addAICredits:', err.message)
-    return { success: false }
+    console.error("[DEREWOL AI] Erreur addAICredits:", err.message);
+    return { success: false };
   }
 }
 
 /**
  * Enregistre l'usage dans ai_usage_logs
  */
-async function logAIUsage(printerId, action, fileName, creditSource, status = 'success', errorMsg = null) {
+async function logAIUsage(
+  printerId,
+  action,
+  fileName,
+  creditSource,
+  status = "success",
+  errorMsg = null,
+) {
   try {
-    const supabase = getSupabase()
-    const cost     = COST_PER_ACTION[action] || { tokens: 0, usd: 0, xof: 0 }
+    const supabase = getSupabase();
+    const cost = COST_PER_ACTION[action] || { tokens: 0, usd: 0, xof: 0 };
 
-    await supabase.from('ai_usage_logs').insert({
-      printer_id:    printerId,
+    await supabase.from("ai_usage_logs").insert({
+      printer_id: printerId,
       action,
-      file_name:     fileName,
-      tokens_used:   cost.tokens,
-      cost_usd:      cost.usd,
-      cost_xof:      cost.xof,
+      file_name: fileName,
+      tokens_used: cost.tokens,
+      cost_usd: cost.usd,
+      cost_xof: cost.xof,
       credit_source: creditSource,
       status,
-      error_message: errorMsg
-    })
+      error_message: errorMsg,
+    });
   } catch (err) {
-    console.error('[DEREWOL AI] Erreur logAIUsage:', err.message)
+    console.error("[DEREWOL AI] Erreur logAIUsage:", err.message);
   }
 }
 
@@ -140,52 +147,56 @@ async function logAIUsage(printerId, action, fileName, creditSource, status = 's
 // APPEL API ANTHROPIC
 // ═══════════════════════════════════════════════════════════════
 
-async function callClaude(prompt, imageBase64 = null, mediaType = 'image/jpeg') {
-  const key = getAnthropicKey()
+async function callClaude(
+  prompt,
+  imageBase64 = null,
+  mediaType = "image/jpeg",
+) {
+  const key = getAnthropicKey();
 
   // Construction du message
   const userContent = imageBase64
     ? [
         {
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: imageBase64 }
+          type: "image",
+          source: { type: "base64", media_type: mediaType, data: imageBase64 },
         },
-        { type: 'text', text: prompt }
+        { type: "text", text: prompt },
       ]
-    : prompt
+    : prompt;
 
   const response = await fetch(ANTHROPIC_API_URL, {
-    method:  'POST',
+    method: "POST",
     headers: {
-      'Content-Type':      'application/json',
-      'x-api-key':         key,
-      'anthropic-version': '2023-06-01'
+      "Content-Type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model:      MODEL,
+      model: MODEL,
       max_tokens: MAX_TOKENS,
-      system:     `Tu es Derewol AI, l'assistant IA intégré à l'application Derewol pour les boutiques d'impression au Sénégal.
+      system: `Tu es Derewol AI, l'assistant IA intégré à l'application Derewol pour les boutiques d'impression au Sénégal.
 Tu analyses les documents avant impression et tu donnes des conseils pratiques.
 Réponds TOUJOURS en français.
 Réponds UNIQUEMENT en JSON valide, sans balises markdown, sans texte avant ou après.`,
-      messages: [{ role: 'user', content: userContent }]
-    })
-  })
+      messages: [{ role: "user", content: userContent }],
+    }),
+  });
 
   if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Anthropic API error ${response.status}: ${err}`)
+    const err = await response.text();
+    throw new Error(`Anthropic API error ${response.status}: ${err}`);
   }
 
-  const data = await response.json()
+  const data = await response.json();
   const text = data.content
-    .filter(b => b.type === 'text')
-    .map(b => b.text)
-    .join('')
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("");
 
   // Nettoyer les éventuels ```json ... ```
-  const clean = text.replace(/```json|```/g, '').trim()
-  return JSON.parse(clean)
+  const clean = text.replace(/```json|```/g, "").trim();
+  return JSON.parse(clean);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -202,37 +213,41 @@ Réponds UNIQUEMENT en JSON valide, sans balises markdown, sans texte avant ou a
 async function analyzeDocument(filePath, printerId) {
   const FALLBACK = {
     suggestions: [],
-    warnings:    [],
-    mode:        'noir_blanc',
-    orientation: 'portrait',
-    contentType: 'document',
-    error:       'Analyse IA indisponible',
-    credits:     null
-  }
+    warnings: [],
+    mode: "noir_blanc",
+    orientation: "portrait",
+    contentType: "document",
+    error: "Analyse IA indisponible",
+    credits: null,
+  };
 
   try {
     // 1. Vérifier les crédits
-    const creditCheck = await checkAICredits(printerId)
+    const creditCheck = await checkAICredits(printerId);
     if (!creditCheck.hasCredits) {
       return {
         ...FALLBACK,
-        error:         'credits_epuises',
+        error: "credits_epuises",
         creditsRestants: 0,
-        showRecharge:  true
-      }
+        showRecharge: true,
+      };
     }
 
     // 2. Lire le fichier
-    if (!fs.existsSync(filePath)) throw new Error(`Fichier introuvable: ${filePath}`)
-    const fileBuffer  = fs.readFileSync(filePath)
-    const base64Data  = fileBuffer.toString('base64')
-    const ext         = path.extname(filePath).toLowerCase()
-    const fileName    = path.basename(filePath)
+    if (!fs.existsSync(filePath))
+      throw new Error(`Fichier introuvable: ${filePath}`);
+    const fileBuffer = fs.readFileSync(filePath);
+    const base64Data = fileBuffer.toString("base64");
+    const ext = path.extname(filePath).toLowerCase();
+    const fileName = path.basename(filePath);
 
     // Déterminer le mediaType
-    const mediaType = ext === '.png' ? 'image/png'
-                    : ext === '.pdf' ? 'application/pdf'
-                    : 'image/jpeg'
+    const mediaType =
+      ext === ".png"
+        ? "image/png"
+        : ext === ".pdf"
+          ? "application/pdf"
+          : "image/jpeg";
 
     // 3. Prompt d'analyse complet
     const prompt = `Analyse ce document pour impression et retourne un JSON avec exactement cette structure :
@@ -249,30 +264,41 @@ async function analyzeDocument(filePath, printerId) {
   "warnings": ["warning 1 si critique"],
   "economie_encre": true ou false,
   "format_recommande": "A4" ou "A5" ou "autre"
-}`
+}`;
 
     // 4. Appel Claude
-    const result = await callClaude(prompt, base64Data, mediaType)
+    const result = await callClaude(prompt, base64Data, mediaType);
 
     // 5. Consommer le crédit
-    const creditConsume = await consumeAICredit(printerId)
+    const creditConsume = await consumeAICredit(printerId);
 
     // 6. Logger
-    await logAIUsage(printerId, 'analyze_document', fileName, creditConsume.source)
+    await logAIUsage(
+      printerId,
+      "analyze_document",
+      fileName,
+      creditConsume.source,
+    );
 
     return {
       ...result,
       credits: {
-        source:           creditConsume.source,
+        source: creditConsume.source,
         remainingMonthly: creditConsume.remaining_after,
-        remainingPurchased: creditConsume.purchased_after
-      }
-    }
-
+        remainingPurchased: creditConsume.purchased_after,
+      },
+    };
   } catch (err) {
-    console.error('[DEREWOL AI] analyzeDocument error:', err.message)
-    await logAIUsage(printerId, 'analyze_document', path.basename(filePath), null, 'error', err.message)
-    return FALLBACK
+    console.error("[DEREWOL AI] analyzeDocument error:", err.message);
+    await logAIUsage(
+      printerId,
+      "analyze_document",
+      path.basename(filePath),
+      null,
+      "error",
+      err.message,
+    );
+    return FALLBACK;
   }
 }
 
@@ -289,20 +315,20 @@ async function analyzeDocument(filePath, printerId) {
  */
 async function analyzeExcel(filePath, printerId) {
   const FALLBACK = {
-    issues:          [],
+    issues: [],
     macroSuggestion: null,
-    error:           'Analyse IA indisponible',
-    credits:         null
-  }
+    error: "Analyse IA indisponible",
+    credits: null,
+  };
 
   try {
     // 1. Vérifier les crédits
-    const creditCheck = await checkAICredits(printerId)
+    const creditCheck = await checkAICredits(printerId);
     if (!creditCheck.hasCredits) {
-      return { ...FALLBACK, error: 'credits_epuises', showRecharge: true }
+      return { ...FALLBACK, error: "credits_epuises", showRecharge: true };
     }
 
-    const fileName = path.basename(filePath)
+    const fileName = path.basename(filePath);
 
     // 2. Pour Excel, on passe le nom + demande des conseils généraux
     // (Excel binaire ne peut pas être lu directement par vision)
@@ -321,30 +347,41 @@ Analyse les problèmes courants et retourne ce JSON :
   "macroSuggestion": "Sub CorrigerMiseEnPage()\\n  ' Code VBA complet ici\\nEnd Sub",
   "orientation_recommandee": "paysage" ou "portrait",
   "echelle_recommandee": 85
-}`
+}`;
 
     // 3. Appel Claude (sans image pour Excel)
-    const result = await callClaude(prompt)
+    const result = await callClaude(prompt);
 
     // 4. Consommer le crédit
-    const creditConsume = await consumeAICredit(printerId)
+    const creditConsume = await consumeAICredit(printerId);
 
     // 5. Logger
-    await logAIUsage(printerId, 'analyze_excel', fileName, creditConsume.source)
+    await logAIUsage(
+      printerId,
+      "analyze_excel",
+      fileName,
+      creditConsume.source,
+    );
 
     return {
       ...result,
       credits: {
-        source:             creditConsume.source,
-        remainingMonthly:   creditConsume.remaining_after,
-        remainingPurchased: creditConsume.purchased_after
-      }
-    }
-
+        source: creditConsume.source,
+        remainingMonthly: creditConsume.remaining_after,
+        remainingPurchased: creditConsume.purchased_after,
+      },
+    };
   } catch (err) {
-    console.error('[DEREWOL AI] analyzeExcel error:', err.message)
-    await logAIUsage(printerId, 'analyze_excel', path.basename(filePath), null, 'error', err.message)
-    return FALLBACK
+    console.error("[DEREWOL AI] analyzeExcel error:", err.message);
+    await logAIUsage(
+      printerId,
+      "analyze_excel",
+      path.basename(filePath),
+      null,
+      "error",
+      err.message,
+    );
+    return FALLBACK;
   }
 }
 
@@ -361,27 +398,28 @@ Analyse les problèmes courants et retourne ce JSON :
  */
 async function ocrDocument(filePath, printerId) {
   const FALLBACK = {
-    text:       '',
+    text: "",
     confidence: 0,
-    language:   'fr',
-    error:      'OCR IA indisponible',
-    credits:    null
-  }
+    language: "fr",
+    error: "OCR IA indisponible",
+    credits: null,
+  };
 
   try {
     // 1. Vérifier les crédits
-    const creditCheck = await checkAICredits(printerId)
+    const creditCheck = await checkAICredits(printerId);
     if (!creditCheck.hasCredits) {
-      return { ...FALLBACK, error: 'credits_epuises', showRecharge: true }
+      return { ...FALLBACK, error: "credits_epuises", showRecharge: true };
     }
 
     // 2. Lire le fichier image
-    if (!fs.existsSync(filePath)) throw new Error(`Fichier introuvable: ${filePath}`)
-    const fileBuffer = fs.readFileSync(filePath)
-    const base64Data = fileBuffer.toString('base64')
-    const ext        = path.extname(filePath).toLowerCase()
-    const fileName   = path.basename(filePath)
-    const mediaType  = ext === '.png' ? 'image/png' : 'image/jpeg'
+    if (!fs.existsSync(filePath))
+      throw new Error(`Fichier introuvable: ${filePath}`);
+    const fileBuffer = fs.readFileSync(filePath);
+    const base64Data = fileBuffer.toString("base64");
+    const ext = path.extname(filePath).toLowerCase();
+    const fileName = path.basename(filePath);
+    const mediaType = ext === ".png" ? "image/png" : "image/jpeg";
 
     // 3. Prompt OCR
     const prompt = `Effectue une reconnaissance de texte (OCR) complète sur cette image.
@@ -395,30 +433,36 @@ Retourne ce JSON :
   ],
   "qualite_image": "bonne" ou "moyenne" ou "mauvaise",
   "suggestions": ["amélioration 1 si nécessaire"]
-}`
+}`;
 
     // 4. Appel Claude Vision
-    const result = await callClaude(prompt, base64Data, mediaType)
+    const result = await callClaude(prompt, base64Data, mediaType);
 
     // 5. Consommer le crédit
-    const creditConsume = await consumeAICredit(printerId)
+    const creditConsume = await consumeAICredit(printerId);
 
     // 6. Logger
-    await logAIUsage(printerId, 'ocr_document', fileName, creditConsume.source)
+    await logAIUsage(printerId, "ocr_document", fileName, creditConsume.source);
 
     return {
       ...result,
       credits: {
-        source:             creditConsume.source,
-        remainingMonthly:   creditConsume.remaining_after,
-        remainingPurchased: creditConsume.purchased_after
-      }
-    }
-
+        source: creditConsume.source,
+        remainingMonthly: creditConsume.remaining_after,
+        remainingPurchased: creditConsume.purchased_after,
+      },
+    };
   } catch (err) {
-    console.error('[DEREWOL AI] ocrDocument error:', err.message)
-    await logAIUsage(printerId, 'ocr_document', path.basename(filePath), null, 'error', err.message)
-    return FALLBACK
+    console.error("[DEREWOL AI] ocrDocument error:", err.message);
+    await logAIUsage(
+      printerId,
+      "ocr_document",
+      path.basename(filePath),
+      null,
+      "error",
+      err.message,
+    );
+    return FALLBACK;
   }
 }
 
@@ -435,5 +479,5 @@ module.exports = {
   // Système de crédits (pour main.js)
   checkAICredits,
   consumeAICredit,
-  addAICredits
-}
+  addAICredits,
+};
