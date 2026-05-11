@@ -48,15 +48,14 @@ async function listPrinterNames() {
 }
 
 async function checkViaWMI(printerName) {
-  let filter = "";
+  let cmd;
   if (printerName) {
     const safe = printerName.replace(/'/g, "''");
-    filter = ` WHERE Name='${safe}'`;
+    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Name='${safe}'" | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
   } else {
-    filter = " WHERE Default=True";
+    cmd = `Get-WmiObject -Class Win32_Printer -Filter "Default=True" | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
   }
 
-  const cmd = `Get-WmiObject Win32_Printer${filter} | Select-Object Name,PrinterStatus,WorkOffline | ConvertTo-Json`;
   const { stdout, stderr } = await runPowerShell(cmd);
 
   if (stderr) {

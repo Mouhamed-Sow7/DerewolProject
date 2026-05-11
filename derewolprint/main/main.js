@@ -244,6 +244,34 @@ let mainWindow = null;
 let printerCfg = null;
 const processingJobs = new Set();
 const spoolerGuard = new SpoolerGuard();
+
+/**
+ * Retourne le nom Windows exact de l'imprimante configurée.
+ * Cherche dans les champs possibles de la config locale.
+ * Retourne null si introuvable → WMI utilisera l'imprimante par défaut.
+ */
+function getPrinterWindowsName() {
+  const candidates = [
+    printerCfg?.windows_name,
+    printerCfg?.printer_name,
+    printerCfg?.display_name,
+  ];
+
+  const found = candidates.find(
+    (value) => value && typeof value === "string" && value.trim().length > 0,
+  );
+
+  if (found) {
+    console.log("[Main] getPrinterWindowsName() →", found.trim());
+    return found.trim();
+  }
+
+  console.warn(
+    "[Main] getPrinterWindowsName() → aucun nom trouvé, fallback imprimante par défaut",
+  );
+  return null;
+}
+
 // ── Viewer sessions ─────────────────────────────────────────────
 // key = "${jobId}_${fileId}", value = { win, tmpPath, timer }
 const viewerSessions = new Map();
@@ -2095,7 +2123,8 @@ ipcMain.handle("printer:default", async () => await getDefaultPrinter());
 ipcMain.handle("printer:check-status", async () => {
   console.log("[Main] printer:check-status");
   try {
-    const printerName = printerCfg?.name ?? null;
+    // Ne PAS utiliser printerCfg.name qui contient le login utilisateur.
+    const printerName = getPrinterWindowsName();
     const result = await checkPrinterStatus(printerName);
     return result;
   } catch (err) {
