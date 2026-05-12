@@ -2954,10 +2954,38 @@ async function verifyPrinterExists() {
       .eq("id", printerCfg.id)
       .single();
 
-    if (error || !data) {
-      console.warn(
-        "[VERIFY] Imprimeur supprimé de Supabase → arrêt et onboarding",
-      );
+    if (error) {
+      if (isNetworkError(error)) {
+        // Erreur réseau — continuer en mode hors ligne
+        console.warn("[VERIFY] Erreur réseau — mode hors ligne maintenu");
+      } else {
+        // Erreur Supabase (pas réseau) — compte probablement supprimé
+        console.warn("[VERIFY] Erreur Supabase — compte inexistant, reset config");
+        stopPolling();
+        clearConfig();
+        printerCfg = null;
+
+        if (printerVerificationTimer) {
+          clearInterval(printerVerificationTimer);
+          printerVerificationTimer = null;
+        }
+        if (subscriptionTimer) {
+          clearInterval(subscriptionTimer);
+          subscriptionTimer = null;
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.close();
+        }
+
+        setTimeout(() => launchOnboarding(), 500);
+      }
+      return;
+    }
+
+    if (!data) {
+      // Imprimeur introuvable (compte supprimé)
+      console.warn("[VERIFY] Imprimeur introuvable — compte n'existe plus, reset config");
       stopPolling();
       clearConfig();
       printerCfg = null;
@@ -2978,7 +3006,30 @@ async function verifyPrinterExists() {
       setTimeout(() => launchOnboarding(), 500);
     }
   } catch (err) {
-    console.warn("[VERIFY] Erreur vérification imprimeur:", err.message);
+    if (isNetworkError(err)) {
+      console.warn("[VERIFY] Exception réseau — mode hors ligne maintenu");
+    } else {
+      console.error("[VERIFY] Exception inattendue:", err);
+      // Traiter comme compte inexistant
+      stopPolling();
+      clearConfig();
+      printerCfg = null;
+
+      if (printerVerificationTimer) {
+        clearInterval(printerVerificationTimer);
+        printerVerificationTimer = null;
+      }
+      if (subscriptionTimer) {
+        clearInterval(subscriptionTimer);
+        subscriptionTimer = null;
+      }
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.close();
+      }
+
+      setTimeout(() => launchOnboarding(), 500);
+    }
   }
 }
 
@@ -3117,7 +3168,13 @@ async function uploadModifiedFile(localFilePath, storagePath, fileGroupId) {
 }
 
 // ── Helpers boot ────────────────────────────────────────────────
-function launchApp(isFreshRegistration = false) {
+function launchApp(isFreshRegistration = false, isOffline = false) {
+  // Si on lance normalement, arrêter le retry offline
+  if (!isOffline && offlineRetryTimer) {
+    clearInterval(offlineRetryTimer);
+    offlineRetryTimer = null;
+  }
+
   createMainWindow();
 
   // ALWAYS check access status on window load (source of truth = database)
@@ -3131,7 +3188,11 @@ function launchApp(isFreshRegistration = false) {
       mainWindow.webContents.send("app:ready", {
         status: access.status,
         daysLeft: access.daysLeft,
+        isOffline: isOffline, // Ajouter flag offline
       });
+      if (isOffline) {
+        mainWindow.webContents.send("app:offline-warning", "Mode hors ligne — vérification impossible");
+      }
     } else {
       console.log("[BOOT] Access denied, forcing modal:", access.status);
       mainWindow.webContents.send("show:activation-modal", access);
@@ -3244,6 +3305,48 @@ function launchOnboarding() {
   });
 }
 
+// ── Fonction utilitaire pour détecter erreurs réseau ──────────────
+function isNetworkError(err) {
+  if (!err) return false;
+  const msg = err.message || '';
+  const code = err.code || '';
+  return msg.includes('fetch') || msg.includes('network') || 
+         code === 'ENOTFOUND' || code === 'ECONNREFUSED' || 
+         code === 'ETIMEDOUT' || msg.includes('timeout');
+}
+
+// ── Retry en arrière-plan pour mode hors ligne ───────────────────
+let offlineRetryTimer = null;
+
+async function startOfflineRetry() {
+  if (offlineRetryTimer) clearInterval(offlineRetryTimer);
+  offlineRetryTimer = setInterval(async () => {
+    if (!printerCfg?.id) return;
+    try {
+      console.log("[OFFLINE RETRY] Tentative de vérification Supabase...");
+      const { data, error } = await supabase
+        .from("printers")
+        .select("id, name, slug")
+        .eq("id", printerCfg.id)
+        .single();
+
+      if (!error && data) {
+        console.log("[OFFLINE RETRY] Connexion rétablie — synchronisation");
+        if (data.name !== printerCfg.name) {
+          printerCfg.name = data.name;
+          saveConfig(printerCfg);
+        }
+        // Notifier l'app que la connexion est revenue
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("app:online");
+        }
+        clearInterval(offlineRetryTimer);
+        offlineRetryTimer = null;
+      }
+    } catch (err) {
+      // Continuer à réessayer
+    }
+  }, 30000); // Toutes les 30 secondes
 // ── Boot ────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
@@ -3266,23 +3369,42 @@ app.whenReady().then(async () => {
   );
 
   try {
-    // NE PAS sélectionner deleted_at — colonne inexistante
+    // Vérifier l'existence de l'imprimeur dans Supabase
     const { data, error } = await supabase
       .from("printers")
       .select("id, name, slug")
       .eq("id", printerCfg.id)
       .single();
 
-    if (error || !data) {
-      console.warn(
-        "[BOOT] Imprimeur introuvable dans Supabase → reset config locale",
-      );
+    if (error) {
+      if (isNetworkError(error)) {
+        // Erreur réseau — mode hors ligne
+        console.warn("[BOOT] Erreur réseau — mode hors ligne, vérification impossible");
+        launchApp(true); // Flag offline
+        startOfflineRetry();
+      } else {
+        // Erreur Supabase (pas réseau) — probablement compte supprimé
+        console.warn("[BOOT] Erreur Supabase — compte inexistant, reset config");
+        clearConfig();
+        printerCfg = null;
+        launchOnboarding();
+      }
+      return;
+    }
+
+    if (!data) {
+      // Imprimeur introuvable (compte supprimé)
+      console.warn("[BOOT] Imprimeur introuvable — compte n'existe plus, reset config");
       clearConfig();
       printerCfg = null;
       launchOnboarding();
       return;
     }
 
+    // TODO: Ajouter check pour printer révoqué (ex: colonne active=false)
+    // Si révoqué: afficher message "Accès suspendu — contactez Derewol" sans reset config
+
+    // Imprimeur trouvé — synchroniser le nom si nécessaire
     if (data.name !== printerCfg.name) {
       printerCfg.name = data.name;
       saveConfig(printerCfg);
@@ -3292,12 +3414,20 @@ app.whenReady().then(async () => {
     console.log(`[BOOT] Imprimeur vérifié ✅ → ${printerCfg.name}`);
     launchApp();
   } catch (err) {
-    // Hors ligne → démarrer quand même avec config locale
-    console.warn(
-      "[BOOT] Vérification Supabase impossible (hors ligne) → démarrage avec config locale",
-    );
-    launchApp();
+    if (isNetworkError(err)) {
+      // Exception réseau — mode hors ligne
+      console.warn("[BOOT] Exception réseau — mode hors ligne");
+      launchApp(true);
+      startOfflineRetry();
+    } else {
+      // Exception inattendue — traiter comme compte inexistant
+      console.error("[BOOT] Exception inattendue:", err);
+      clearConfig();
+      printerCfg = null;
+      launchOnboarding();
+    }
   }
+});
 });
 
 app.on("window-all-closed", async () => {
@@ -3310,6 +3440,10 @@ app.on("window-all-closed", async () => {
   if (printerVerificationTimer) {
     clearInterval(printerVerificationTimer);
     printerVerificationTimer = null;
+  }
+  if (offlineRetryTimer) {
+    clearInterval(offlineRetryTimer);
+    offlineRetryTimer = null;
   }
   if (process.platform !== "darwin") app.quit();
 });

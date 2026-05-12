@@ -9,6 +9,46 @@ function invokeChannel(channel, ...args) {
   throw new Error("Bridge IPC non disponible");
 }
 
+function getParentThemeMode() {
+  try {
+    return (
+      window.parent?.document?.body?.classList?.contains("dark-mode") ?? false
+    );
+  } catch (err) {
+    return false;
+  }
+}
+
+function applyThemeMode() {
+  document.body.classList.toggle("dark-mode", getParentThemeMode());
+}
+
+function watchParentThemeChanges() {
+  applyThemeMode();
+
+  try {
+    const parentBody = window.parent.document.body;
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === "class") {
+          applyThemeMode();
+          break;
+        }
+      }
+    });
+    observer.observe(parentBody, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  } catch (err) {
+    console.warn(
+      "Impossible d'observer le thème parent, fallback polling",
+      err,
+    );
+    setInterval(applyThemeMode, 1000);
+  }
+}
+
 // ── Variables globales ──────────────────────────────────────────
 let currentPrinterId = null;
 
@@ -87,7 +127,9 @@ async function ouvrirFichier(type) {
     const filePath = result.filePaths[0];
 
     // Désactiver les boutons pendant l'analyse
-    document.querySelectorAll(".btn").forEach((btn) => (btn.disabled = true));
+    document
+      .querySelectorAll(".btn-secondary, .btn-primary")
+      .forEach((btn) => (btn.disabled = true));
 
     // Appeler le handler approprié
     let handler = "";
@@ -101,7 +143,9 @@ async function ouvrirFichier(type) {
     });
 
     // Réactiver les boutons
-    document.querySelectorAll(".btn").forEach((btn) => (btn.disabled = false));
+    document
+      .querySelectorAll(".btn-secondary, .btn-primary")
+      .forEach((btn) => (btn.disabled = false));
 
     if (response.success) {
       afficherResultats(response.data);
@@ -112,7 +156,9 @@ async function ouvrirFichier(type) {
     }
   } catch (err) {
     console.error("Erreur ouvrirFichier:", err);
-    document.querySelectorAll(".btn").forEach((btn) => (btn.disabled = false));
+    document
+      .querySelectorAll(".btn-secondary, .btn-primary")
+      .forEach((btn) => (btn.disabled = false));
     alert("Erreur lors de l'ouverture du fichier");
   }
 }
@@ -186,6 +232,7 @@ async function rechargerCredits(credits, amountXof) {
 
 // ── Événements ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  watchParentThemeChanges();
   await chargerCredits();
 
   // Boutons d'analyse
