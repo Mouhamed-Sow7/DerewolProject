@@ -688,6 +688,7 @@
                 </button>
               </div>
               <div class="act-code-error" id="act-code-error"></div>
+              <!-- Lien de retour à l'essai gratuit (masqué en renouvellement) -->
               <div
                 style="
                   text-align: center;
@@ -696,6 +697,7 @@
                   color: #1e4d2b;
                   cursor: pointer;
                 "
+                id="act-back-to-trial"
                 onclick="document.querySelector('[data-act-tab=trial]').click()"
               >
                 ← Retour à l'essai gratuit
@@ -705,7 +707,8 @@
         </div>
 
         <div class="act-footer">
-          <p>ID imprimante : <span id="act-printer-slug">—</span></p>
+          <!-- Afficher le nom de la boutique depuis la config locale -->
+          <p>Boutique : <span id="act-printer-name">—</span></p>
         </div>
       </div>
     </div>

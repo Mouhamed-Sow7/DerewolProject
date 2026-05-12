@@ -80,6 +80,10 @@ contextBridge.exposeInMainWorld("derewol", {
     }),
   onAppReady: (callback) =>
     ipcRenderer.on("app:ready", (_, data) => callback(data)),
+  onOfflineWarning: (callback) =>
+    ipcRenderer.on("app:offline-warning", (_, message) => callback(message)),
+  onRevokedWarning: (callback) =>
+    ipcRenderer.on("app:revoked-warning", (_, message) => callback(message)),
 
   // ── QR code (Main process, works offline) ──────────────────────
   generateQR: async (data) => ipcRenderer.invoke("qr:generate", data),

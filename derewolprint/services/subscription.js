@@ -94,17 +94,22 @@ async function ensureTrialOrSubscription(printerId) {
 // Si le user/subscription est supprimé dans Supabase → accès bloqué
 async function checkSubscription(printerId) {
   try {
+    console.log("[SUB DEBUG] checkSubscription called for printer:", printerId);
+
+    // Requête simple et directe sans ordre par colonne inexistante
     const { data, error } = await supabase
       .from("subscriptions")
-      .select("*")
+      .select(
+        "printer_id, status, plan, expires_at, activated_at, ai_credits_remaining, ai_credits_purchased",
+      )
       .eq("printer_id", printerId)
       .eq("status", "active")
-      .order("created_at", { ascending: false }) // Get most recent active
-      .limit(1)
-      .single();
+      .limit(1);
+
+    console.log("[SUB DEBUG] Query result:", { data, error });
 
     if (error) {
-      console.log("[SUB] ❌ No subscription found for", printerId);
+      console.log("[SUB] ❌ Erreur requête subscription:", error.message);
       const currentCfg = loadConfig() || {};
       if (currentCfg.subscription) {
         console.log("[SUB] Clearing local cache");
@@ -114,28 +119,46 @@ async function checkSubscription(printerId) {
       return { valid: false, expired: true, daysLeft: 0 };
     }
 
-    if (!data) {
-      console.log("[SUB] ❌ Subscription data is null");
+    if (!data || data.length === 0) {
+      console.log("[SUB] ❌ No subscription found for printer:", printerId);
+      const currentCfg = loadConfig() || {};
+      if (currentCfg.subscription) {
+        console.log("[SUB] Clearing local cache");
+        delete currentCfg.subscription;
+        saveConfig(currentCfg);
+      }
       return { valid: false, expired: true, daysLeft: 0 };
     }
 
-    // [SUB] subscription found
+    // Récupérer le premier résultat
+    const subscription = data[0];
+    console.log("[SUB DEBUG] Subscription found:", {
+      plan: subscription.plan,
+      status: subscription.status,
+      expires_at: subscription.expires_at,
+    });
 
-    // Check if subscription is expired
+    // Vérifier si abonnement expiré
     const now = new Date();
-    const expiresAt = data.expires_at;
+    const expiresAt = subscription.expires_at;
     const end = new Date(expiresAt);
     const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 
-    // [SUB] date check
+    console.log("[SUB DEBUG] Date check:", {
+      now: now.toISOString(),
+      expiresAt: expiresAt,
+      daysRemaining: diff,
+    });
 
     if (diff <= 0) {
-      // console.log("[SUB] ❌ Subscription expired");
+      console.log(
+        "[SUB] ❌ Subscription expired, " + Math.abs(diff) + " days ago",
+      );
       return { valid: false, expired: true, daysLeft: 0 };
     }
 
     console.log("[SUB] ✅ Subscription VALID", {
-      plan: data.plan,
+      plan: subscription.plan,
       daysLeft: diff,
     });
 
@@ -144,12 +167,12 @@ async function checkSubscription(printerId) {
       expired: false,
       daysLeft: diff,
       expiresAt: expiresAt,
-      plan: data.plan,
-      status: data.status,
-      isTrial: data.plan === "trial",
+      plan: subscription.plan,
+      status: subscription.status,
+      isTrial: subscription.plan === "trial",
     };
   } catch (e) {
-    console.error("[SUB] checkSubscription error:", e.message);
+    console.error("[SUB] ❌ checkSubscription exception:", e.message);
     return { valid: false, expired: true, daysLeft: 0 };
   }
 }

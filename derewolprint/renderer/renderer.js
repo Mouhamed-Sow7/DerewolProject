@@ -122,9 +122,16 @@ function showModalIfNeeded() {
         console.log(
           "[MODAL] Showing modal immediately from cache (inactive subscription)",
         );
-        isShowingModal = true;
-        window.showActivationModal(sub);
-        isShowingModal = false;
+        // NE PAS montrer le modal si mode hors ligne
+        const isOfflineMode =
+          localStorage.getItem("derewol_offline_mode") === "true";
+        if (!isOfflineMode) {
+          isShowingModal = true;
+          window.showActivationModal(sub);
+          isShowingModal = false;
+        } else {
+          console.log("[MODAL] Suppression du modal en mode offline");
+        }
         return;
       } else {
         console.log("[MODAL] Skipping modal from cache (active subscription)");
@@ -300,8 +307,14 @@ function handleSubscriptionStatus(sub) {
   const backdrop = document.getElementById("activation-backdrop");
   if (!backdrop) return;
 
-  const slugEl = document.getElementById("act-printer-slug");
-  if (slugEl) slugEl.textContent = window.__printerCfg?.slug || "—";
+  // Afficher le nom de la boutique (depuis config locale) au lieu de l'ID
+  const nameEl = document.getElementById("act-printer-name");
+  if (nameEl && window.__printerCfg) {
+    // Priorité : name (ex: "medz"), sinon slug, sinon "—"
+    const displayName =
+      window.__printerCfg.name || window.__printerCfg.slug || "—";
+    nameEl.textContent = displayName;
+  }
 
   // ✅ TRIAL OR SUBSCRIPTION ACTIVE → Hide modal
   if (sub && sub.valid === true) {
@@ -324,55 +337,114 @@ function handleSubscriptionStatus(sub) {
   // ❌ EXPIRED OR INACTIVE → Show modal
   const isExpired = sub && sub.expired === true;
   const isInvalid = sub && sub.valid === false;
-  const hasTrialPlan = sub && sub.plan === "trial"; // ← Key check: was there a trial?
-  const hasHistory = sub && sub.status !== undefined; // ← Subscription row exists in DB
+  const hasTrialPlan = sub && sub.plan === "trial"; // ← Clé : un essai a-t-il existé ?
+  const hasHistory = sub && sub.status !== undefined; // ← Une souscription existe en DB
 
   if (isExpired || isInvalid) {
     console.log(
       "[MODAL] Trial/Subscription EXPIRED or INACTIVE — showing modal",
       { isExpired, isInvalid, hasTrialPlan, hasHistory },
     );
-    showActivationModal(sub);
-    if (!activationInitialized) bindActivationModal();
 
-    // Lock trial tab ONLY if a trial subscription actually existed and expired
-    // (not for fresh printers with no subscription row at all)
-    if (isExpired && hasTrialPlan && hasHistory) {
-      console.log("[MODAL] Locking trial tab — trial was used and expired");
+    // NE PAS montrer le modal si mode hors ligne
+    const isOfflineMode =
+      localStorage.getItem("derewol_offline_mode") === "true";
+    if (!isOfflineMode) {
+      showActivationModal(sub);
+      if (!activationInitialized) bindActivationModal();
+    } else {
+      console.log("[MODAL] Suppression du modal en mode offline");
+    }
+
+    // CAS B : Client existant (config locale présente) avec essai épuisé ou abonnement expiré
+    // → Cacher tab Trial, afficher directement Abonnement, adapter titres
+    if (hasHistory && (isExpired || isInvalid)) {
+      console.log(
+        "[MODAL] Cas B (Client en renouvellement) — adaptation du modal",
+      );
+
+      // Cacher le tab Essai gratuit et Abonnement actif par défaut
       const trialTab = document.querySelector('[data-act-tab="trial"]');
+      const subscriptionTab = document.querySelector(
+        '[data-act-tab="subscription"]',
+      );
       const trialPanel = document.getElementById("act-panel-trial");
+      const subscriptionPanel = document.getElementById(
+        "act-panel-subscription",
+      );
+
       if (trialTab) {
-        trialTab.style.opacity = "0.5";
-        trialTab.style.pointerEvents = "none";
-        trialTab.style.cursor = "not-allowed";
+        trialTab.style.display = "none"; // Cacher complètement
+      }
+
+      // Afficher directement le tab Abonnement
+      if (subscriptionTab) {
+        subscriptionTab.classList.add("active");
       }
       if (trialPanel) {
-        const trialBtn = trialPanel.querySelector(".act-btn-activate");
-        if (trialBtn) {
-          trialBtn.disabled = true;
-          trialBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Essai utilisé';
-          trialBtn.style.opacity = "0.6";
-        }
+        trialPanel.classList.remove("active");
+      }
+      if (subscriptionPanel) {
+        subscriptionPanel.classList.add("active");
+      }
+
+      // Changer les titres du modal
+      const actTitle = document.querySelector(".act-title");
+      if (actTitle) {
+        actTitle.textContent = "Renouveler votre abonnement";
+      }
+
+      const actDescription = document.querySelector(".act-description");
+      if (actDescription) {
+        actDescription.textContent = "Choisissez un plan pour continuer";
+      }
+
+      // Supprimer le lien "← Retour à l'essai gratuit"
+      const backToTrialLink = document.getElementById("act-back-to-trial");
+      if (backToTrialLink) {
+        backToTrialLink.style.display = "none";
       }
     } else if (!hasHistory) {
-      // Fresh printer with no subscription → trial tab should be ENABLED
-      console.log("[MODAL] Fresh printer — enabling trial tab");
+      // CAS A : Nouveau client (pas d'historique) → Afficher les 2 tabs normalement
+      console.log("[MODAL] Cas A (Nouveau client) — affichage normal");
+
+      // Restaurer les titres par défaut
+      const actTitle = document.querySelector(".act-title");
+      if (actTitle) {
+        actTitle.textContent = "Activation";
+      }
+
+      const actDescription = document.querySelector(".act-description");
+      if (actDescription) {
+        actDescription.textContent = "Choisissez comment démarrer";
+      }
+
+      // Afficher les 2 tabs
       const trialTab = document.querySelector('[data-act-tab="trial"]');
-      const trialPanel = document.getElementById("act-panel-trial");
       if (trialTab) {
-        trialTab.style.opacity = "1";
-        trialTab.style.pointerEvents = "auto";
-        trialTab.style.cursor = "pointer";
+        trialTab.style.display = "block";
       }
-      if (trialPanel) {
-        const trialBtn = trialPanel.querySelector(".act-btn-activate");
-        if (trialBtn) {
-          trialBtn.disabled = false;
-          trialBtn.innerHTML =
-            '<i class="fa-solid fa-play"></i> Démarrer mon essai';
-          trialBtn.style.opacity = "1";
-        }
+
+      // Show the "Back to trial" link
+      const backToTrialLink = document.getElementById("act-back-to-trial");
+      if (backToTrialLink) {
+        backToTrialLink.style.display = "block";
       }
+
+      // Tab Trial actif par défaut
+      const trialTab2 = document.querySelector('[data-act-tab="trial"]');
+      const subscriptionTab = document.querySelector(
+        '[data-act-tab="subscription"]',
+      );
+      const trialPanel = document.getElementById("act-panel-trial");
+      const subscriptionPanel = document.getElementById(
+        "act-panel-subscription",
+      );
+
+      if (trialTab2) trialTab2.classList.add("active");
+      if (subscriptionTab) subscriptionTab.classList.remove("active");
+      if (trialPanel) trialPanel.classList.add("active");
+      if (subscriptionPanel) subscriptionPanel.classList.remove("active");
     }
   }
 }
@@ -1425,6 +1497,21 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Récupérer la config locale et la stocker globalement
+  if (window.derewol?.getPrinterConfig) {
+    window.derewol
+      .getPrinterConfig()
+      .then((cfg) => {
+        if (cfg) {
+          window.__printerCfg = cfg;
+          console.log("[DEREWOL] Printer config loaded:", cfg);
+        }
+      })
+      .catch((err) => {
+        console.warn("[DEREWOL] Failed to load printer config:", err);
+      });
+  }
+
   // Listen for app ready signal
   if (window.derewol?.onAppReady) {
     window.derewol.onAppReady((data) => {
@@ -1433,6 +1520,35 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.status === "active" || data.status === "trial") {
         console.log("[DEREWOL] Access granted — app visible");
       }
+      // Vérifier le flag offline
+      if (data.isOffline === true) {
+        console.log(
+          "[DEREWOL] Mode hors ligne détecté — modal d'activation masqué",
+        );
+        localStorage.setItem("derewol_offline_mode", "true");
+        // Masquer le modal d'activation en mode offline
+        const backdrop = document.getElementById("activation-backdrop");
+        if (backdrop && backdrop.classList.contains("show")) {
+          hideActivationModal();
+        }
+      }
+    });
+  }
+
+  // Écouter les avertissements offline et revoked
+  if (window.derewol?.onOfflineWarning) {
+    window.derewol.onOfflineWarning?.((message) => {
+      console.warn("[DEREWOL] Offline warning:", message);
+      // En cas d'erreur réseau, l'app démarre quand même
+      // Affichage d'un badge ou notification optionnel
+    });
+  }
+
+  if (window.derewol?.onRevokedWarning) {
+    window.derewol.onRevokedWarning?.((message) => {
+      console.warn("[DEREWOL] Revoked warning:", message);
+      // Afficher message : "Accès suspendu — contactez Derewol"
+      // Sans fermer l'app, juste notification
     });
   }
 });
