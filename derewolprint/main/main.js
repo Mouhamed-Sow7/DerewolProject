@@ -281,8 +281,62 @@ const viewerSessions = new Map();
 // ── File watchers for automatic re-upload ───────────────────────
 // key = filePath, value = { watcher, debounceTimer, fileId, storagePath, groupId }
 const fileWatchers = new Map();
-let subscriptionTimer = null;
+let subscriptionChannel = null;
 let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
+
+async function cleanupSubscriptionChannel() {
+  if (!subscriptionChannel) return;
+  try {
+    await supabase.removeChannel(subscriptionChannel);
+    console.log("[SUB] Realtime subscription channel removed");
+  } catch (err) {
+    console.warn(
+      "[SUB] Unable to remove realtime subscription channel:",
+      err.message,
+    );
+  }
+  subscriptionChannel = null;
+}
+
+async function subscribeToSubscriptionChanges() {
+  if (!printerCfg?.id) return;
+  await cleanupSubscriptionChannel();
+
+  const channel = supabase.channel(`sub-watch-${printerCfg.id}`);
+  channel.on(
+    "postgres_changes",
+    {
+      event: "UPDATE",
+      schema: "public",
+      table: "subscriptions",
+      filter: `printer_id=eq.${printerCfg.id}`,
+    },
+    (payload) => {
+      const status = payload?.new?.status;
+      const expiresAt = payload?.new?.expires_at;
+      const now = new Date();
+      const isExpired =
+        status !== "active" || (expiresAt && new Date(expiresAt) <= now);
+
+      console.log("[SUB] Realtime payload:", {
+        status,
+        expiresAt,
+        isExpired,
+      });
+
+      if (isExpired && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("app:subscription-expired");
+      }
+    },
+  );
+
+  await channel.subscribe();
+  subscriptionChannel = channel;
+  console.log(
+    "[SUB] Realtime subscription channel created for printer:",
+    printerCfg.id,
+  );
+}
 
 function stopFileWatcher(filePath) {
   const entry = fileWatchers.get(filePath);
@@ -2971,10 +3025,6 @@ async function verifyPrinterExists() {
           clearInterval(printerVerificationTimer);
           printerVerificationTimer = null;
         }
-        if (subscriptionTimer) {
-          clearInterval(subscriptionTimer);
-          subscriptionTimer = null;
-        }
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.close();
@@ -2998,10 +3048,6 @@ async function verifyPrinterExists() {
         clearInterval(printerVerificationTimer);
         printerVerificationTimer = null;
       }
-      if (subscriptionTimer) {
-        clearInterval(subscriptionTimer);
-        subscriptionTimer = null;
-      }
 
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.close();
@@ -3023,10 +3069,6 @@ async function verifyPrinterExists() {
         clearInterval(printerVerificationTimer);
         printerVerificationTimer = null;
       }
-      if (subscriptionTimer) {
-        clearInterval(subscriptionTimer);
-        subscriptionTimer = null;
-      }
 
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.close();
@@ -3038,14 +3080,14 @@ async function verifyPrinterExists() {
 }
 
 // ── Check Access Status (source of truth = database) ──────────────
-async function checkAccess() {
+async function checkAccess(subscription = null) {
   if (!printerCfg?.id) {
     console.log("[ACCESS] No printer config → inactive");
     return { status: "inactive" };
   }
 
   try {
-    const sub = await checkSubscription(printerCfg.id);
+    const sub = subscription || (await checkSubscription(printerCfg.id));
 
     // Active subscription (paid or trial with days left)
     if (sub.valid === true && sub.isTrial === true) {
@@ -3184,6 +3226,9 @@ function launchApp(
   }
 
   createMainWindow();
+  subscribeToSubscriptionChanges().catch((err) => {
+    console.warn("[SUB] Failed to subscribe realtime updates:", err.message);
+  });
 
   // ALWAYS check access status on window load (source of truth = database)
   mainWindow.webContents.on("did-finish-load", async () => {
@@ -3259,16 +3304,12 @@ function launchApp(
     await cleanDerewolFilesDir();
   });
 
-  // ── Abonnement : check + push renderer + LIVE expiration detection ───────────
-  // 🔐 SECURITY: Poll for expiration changes every 5 seconds (LIVE detection)
-  // If expired detected → send activation modal immediately
-  if (subscriptionTimer) clearInterval(subscriptionTimer);
-
+  // ── Abonnement : check + push renderer ──────────────────────────────
   // Initial immediate check on boot
   (async () => {
     try {
-      const access = await checkAccess();
       const s = await checkSubscription(printerCfg.id);
+      const access = await checkAccess(s);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("subscription:status", s);
         // Only show modal if NO valid access (not trial, not paid subscription)
@@ -3282,37 +3323,6 @@ function launchApp(
       }
     } catch (_) {}
   })();
-
-  // 🔥 FAST polling to detect trial expiration LIVE (10 seconds = 10x faster than before)
-  // When user runs test-trial-ended.js, modal will show within 10s instead of 5 minutes
-  subscriptionTimer = setInterval(
-    async () => {
-      try {
-        const access = await checkAccess();
-        const s = await checkSubscription(printerCfg.id);
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("subscription:status", s);
-
-          // 🔥 CRITICAL FIX: Only show modal if access BECOMES invalid
-          // AND trial was NOT just activated (prevents modal loop)
-          // The trialJustActivated flag prevents the modal from constantly reopening
-          if (
-            (access.status === "expired" || access.status === "inactive") &&
-            !trialJustActivated
-          ) {
-            console.log(
-              "[EXPIRATION] Trial/Subscription changed to",
-              access.status,
-              "— showing activation modal",
-            );
-            mainWindow.webContents.send("show:activation-modal", access);
-          }
-        }
-      } catch (_) {}
-    },
-    10 * 1000, // ← 10 seconds (was 5 min) — LIVE detection when trial expires
-  );
 }
 
 function launchOnboarding() {
@@ -3469,10 +3479,6 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", async () => {
   stopPolling();
   await cleanDerewolFilesDir(); // Nettoyage dossiers téléchargés à la fermeture
-  if (subscriptionTimer) {
-    clearInterval(subscriptionTimer);
-    subscriptionTimer = null;
-  }
   if (printerVerificationTimer) {
     clearInterval(printerVerificationTimer);
     printerVerificationTimer = null;
@@ -3480,6 +3486,11 @@ app.on("window-all-closed", async () => {
   if (offlineRetryTimer) {
     clearInterval(offlineRetryTimer);
     offlineRetryTimer = null;
+  }
+  if (subscriptionChannel) {
+    cleanupSubscriptionChannel().catch((err) => {
+      console.warn("[SUB] Error cleaning up realtime channel:", err.message);
+    });
   }
   if (process.platform !== "darwin") app.quit();
 });

@@ -94,8 +94,6 @@ async function ensureTrialOrSubscription(printerId) {
 // Si le user/subscription est supprimé dans Supabase → accès bloqué
 async function checkSubscription(printerId) {
   try {
-    console.log("[SUB DEBUG] checkSubscription called for printer:", printerId);
-
     // Requête simple et directe sans ordre par colonne inexistante
     const { data, error } = await supabase
       .from("subscriptions")
@@ -105,8 +103,6 @@ async function checkSubscription(printerId) {
       .eq("printer_id", printerId)
       .eq("status", "active")
       .limit(1);
-
-    console.log("[SUB DEBUG] Query result:", { data, error });
 
     if (error) {
       console.log("[SUB] ❌ Erreur requête subscription:", error.message);
@@ -132,23 +128,12 @@ async function checkSubscription(printerId) {
 
     // Récupérer le premier résultat
     const subscription = data[0];
-    console.log("[SUB DEBUG] Subscription found:", {
-      plan: subscription.plan,
-      status: subscription.status,
-      expires_at: subscription.expires_at,
-    });
 
     // Vérifier si abonnement expiré
     const now = new Date();
     const expiresAt = subscription.expires_at;
     const end = new Date(expiresAt);
     const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-
-    console.log("[SUB DEBUG] Date check:", {
-      now: now.toISOString(),
-      expiresAt: expiresAt,
-      daysRemaining: diff,
-    });
 
     if (diff <= 0) {
       console.log(
