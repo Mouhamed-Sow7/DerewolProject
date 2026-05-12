@@ -5,11 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Derewol AI</title>
     <style>
-      /* Styles pour Derewol AI */
+      /* Styles pour Derewol AI - Thème de l'app */
+      :root {
+        --vert: #1e4d2b;
+        --vert-clair: #2d6a4f;
+        --jaune: #f5c842;
+        --jaune-clair: #f7d794;
+        --gris-fonce: #2d3748;
+        --gris-clair: #4a5568;
+        --blanc: #ffffff;
+        --noir: #1a202c;
+        --rouge: #e53e3e;
+        --bleu: #3182ce;
+        --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --border-radius: 8px;
+        --transition: all 0.3s ease;
+      }
+
       body {
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background-color: #0f1117;
-        color: #e2e8f0;
+        background-color: var(--noir);
+        color: var(--blanc);
         margin: 0;
         padding: 20px;
         line-height: 1.6;
@@ -28,13 +44,13 @@
       .logo {
         font-size: 2.5em;
         font-weight: bold;
-        color: #4f6ef7;
+        color: var(--jaune);
         margin-bottom: 10px;
       }
 
       .credits {
         font-size: 1.1em;
-        color: #a0aec0;
+        color: var(--gris-clair);
       }
 
       .buttons {
@@ -46,24 +62,28 @@
       }
 
       .btn {
-        background-color: #4f6ef7;
-        color: white;
+        background-color: var(--vert);
+        color: var(--blanc);
         border: none;
         padding: 12px 20px;
-        border-radius: 8px;
+        border-radius: var(--border-radius);
         cursor: pointer;
         font-size: 1em;
-        transition: background-color 0.3s;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: var(--transition);
+        box-shadow: var(--shadow);
       }
 
       .btn:hover {
-        background-color: #3b5bdb;
+        background-color: var(--vert-clair);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
       }
 
       .btn:disabled {
-        background-color: #4a5568;
+        background-color: var(--gris-fonce);
         cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
       }
 
       .results {
@@ -71,25 +91,31 @@
       }
 
       .card {
-        background-color: #1a1d2e;
-        border: 1px solid #2d3561;
-        border-radius: 8px;
+        background-color: var(--gris-fonce);
+        border: 1px solid var(--vert);
+        border-radius: var(--border-radius);
         padding: 15px;
         margin-bottom: 15px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: var(--shadow);
+        transition: var(--transition);
+      }
+
+      .card:hover {
+        border-color: var(--jaune);
+        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
       }
 
       .card.success {
-        border-left: 4px solid #48bb78;
+        border-left: 4px solid var(--vert);
       }
 
       .card.warning {
-        border-left: 4px solid #ed8936;
+        border-left: 4px solid var(--jaune);
       }
 
       .card h3 {
         margin-top: 0;
-        color: #4f6ef7;
+        color: var(--jaune);
       }
 
       .details {
@@ -98,6 +124,10 @@
 
       .detail-item {
         margin-bottom: 10px;
+        padding: 8px 12px;
+        background-color: rgba(30, 77, 43, 0.1);
+        border-radius: 4px;
+        border-left: 3px solid var(--vert);
       }
 
       .recharge {
@@ -114,22 +144,44 @@
       }
 
       .recharge-btn {
-        background-color: #38a169;
-        color: white;
+        background-color: var(--jaune);
+        color: var(--noir);
         border: none;
         padding: 10px 15px;
-        border-radius: 6px;
+        border-radius: var(--border-radius);
         cursor: pointer;
         font-size: 0.9em;
-        transition: background-color 0.3s;
+        transition: var(--transition);
+        font-weight: 600;
       }
 
       .recharge-btn:hover {
-        background-color: #2f855a;
+        background-color: var(--jaune-clair);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow);
       }
 
       .hidden {
         display: none;
+      }
+
+      /* Responsive design */
+      @media (max-width: 768px) {
+        .buttons {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .recharge-options {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .btn,
+        .recharge-btn {
+          width: 100%;
+          max-width: 250px;
+        }
       }
     </style>
   </head>
