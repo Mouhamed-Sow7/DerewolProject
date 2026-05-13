@@ -652,6 +652,14 @@ function showView(viewName) {
   document.querySelector(`[data-view="${viewName}"]`).classList.add("active");
   currentView = viewName;
 
+  if (window.derewol?.invoke) {
+    window.derewol
+      .invoke("app:save-active-tab", viewName)
+      .catch((err) =>
+        console.warn("[APP] save-active-tab failed:", err.message),
+      );
+  }
+
   if (viewName === "history") loadHistory();
   if (viewName === "settings") initSettings();
   if (viewName === "qr") initQRView();
@@ -1386,12 +1394,18 @@ console.log("[DEREWOL] Modal functions exposed globally:", {
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[DEREWOL] DOM READY — Initializing i18n & modals");
 
-  // Restaurer l'onglet actif depuis le cache localStorage après un reload
-  const lastTab = localStorage.getItem("lastActiveTab");
-  if (lastTab && lastTab !== "jobs") {
-    // On le restaurera après les initialisations
-    window.__restoreTab = lastTab;
-  }
+  (async () => {
+    try {
+      if (window.derewol?.invoke) {
+        const lastTab = await window.derewol.invoke("app:get-active-tab");
+        if (lastTab && lastTab !== "jobs") {
+          window.__restoreTab = lastTab;
+        }
+      }
+    } catch (err) {
+      console.warn("[APP] Failed to get active tab:", err.message);
+    }
+  })();
 
   // Check cache and show modal immediately if needed (no delays)
   showModalIfNeeded();

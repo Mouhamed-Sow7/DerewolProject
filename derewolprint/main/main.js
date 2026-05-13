@@ -246,8 +246,22 @@ const PRINT_DELAY_MS = 30000; // 30 seconds wait before deletion
 let mainWindow = null;
 let printerCfg = null;
 let isOfflineApp = false;
+let lastActiveTabGlobal = "jobs"; // ─ Sauvegarde onglet actif côté main (résiste aux reload)
 const processingJobs = new Set();
 const spoolerGuard = new SpoolerGuard();
+
+// ── Vérifier la connectivité réseau dynamiquement ──────────────────────────────
+async function testConnectivity() {
+  try {
+    await fetch("https://www.google.com/favicon.ico", {
+      signal: AbortSignal.timeout(3000),
+      mode: "no-cors",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Retourne le nom Windows exact de l'imprimante configurée.
@@ -1264,6 +1278,19 @@ ipcMain.handle(
     }
   },
 );
+
+// ── IPC : Sauvegarde de l'onglet actif (restauration après reload) ────────────────────────
+ipcMain.handle("app:save-active-tab", (_, tabName) => {
+  if (tabName && typeof tabName === "string") {
+    lastActiveTabGlobal = tabName;
+    console.log("[APP] Onglet actif sauvegardé:", tabName);
+  }
+  return { success: true };
+});
+
+ipcMain.handle("app:get-active-tab", () => {
+  return lastActiveTabGlobal;
+});
 
 // ── IPC : Config imprimeur ──────────────────────────────────────
 ipcMain.handle("printer:config", () => {
@@ -3261,8 +3288,14 @@ function launchApp(
   mainWindow.webContents.on("did-finish-load", async () => {
     console.log("[BOOT] Window loaded — checking access status from DB");
 
-    if (isOffline) {
-      console.log("[BOOT] Mode hors ligne détecté — accès non vérifié");
+    // ─ Ré-tester la connectivité au cas où l'utilisateur fait un reload manuel
+    const isOnline = await testConnectivity();
+    isOfflineApp = !isOnline;
+
+    if (isOfflineApp) {
+      console.log(
+        "[BOOT] Mode hors ligne détecté (via test connectivité) — accès non vérifié",
+      );
       mainWindow.webContents.send("app:ready", {
         status: "offline",
         daysLeft: 0,
