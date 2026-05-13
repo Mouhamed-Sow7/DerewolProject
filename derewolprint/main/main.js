@@ -247,6 +247,8 @@ let mainWindow = null;
 let printerCfg = null;
 let isOfflineApp = false;
 let lastActiveTabGlobal = "jobs"; // ─ Sauvegarde onglet actif côté main (résiste aux reload)
+let isBooting = false; // Empêche le handler did-finish-load de se relancer pendant le boot
+let hasReloadedAfterReconnect = false; // Empêche les reloads répétés après reconnexion
 const processingJobs = new Set();
 const spoolerGuard = new SpoolerGuard();
 
@@ -3286,47 +3288,57 @@ function launchApp(
 
   // ALWAYS check access status on window load (source of truth = database)
   mainWindow.webContents.on("did-finish-load", async () => {
-    console.log("[BOOT] Window loaded — checking access status from DB");
-
-    // ─ Ré-tester la connectivité au cas où l'utilisateur fait un reload manuel
-    const isOnline = await testConnectivity();
-    isOfflineApp = !isOnline;
-
-    if (isOfflineApp) {
-      console.log(
-        "[BOOT] Mode hors ligne détecté (via test connectivité) — accès non vérifié",
-      );
-      mainWindow.webContents.send("app:ready", {
-        status: "offline",
-        daysLeft: 0,
-        isOffline: true,
-      });
-      mainWindow.webContents.send(
-        "app:offline-warning",
-        "Mode hors ligne — vérification impossible",
-      );
+    if (isBooting) {
+      console.log("[BOOT] Boot déjà en cours — skip did-finish-load");
       return;
     }
 
-    const access = await checkAccess();
+    isBooting = true;
+    try {
+      console.log("[BOOT] Window loaded — checking access status from DB");
 
-    // Allow app to load if trial OR paid subscription is active
-    if (access.status === "active" || access.status === "trial") {
-      console.log("[BOOT] Access granted — showing main app", access.status);
-      mainWindow.webContents.send("app:ready", {
-        status: access.status,
-        daysLeft: access.daysLeft,
-        isOffline: false,
-      });
-      if (skipPolling) {
-        mainWindow.webContents.send(
-          "app:revoked-warning",
-          "Accès suspendu — contactez Derewol",
+      // ─ Ré-tester la connectivité au cas où l'utilisateur fait un reload manuel
+      const isOnline = await testConnectivity();
+      isOfflineApp = !isOnline;
+
+      if (isOfflineApp) {
+        console.log(
+          "[BOOT] Mode hors ligne détecté (via test connectivité) — accès non vérifié",
         );
+        mainWindow.webContents.send("app:ready", {
+          status: "offline",
+          daysLeft: 0,
+          isOffline: true,
+        });
+        mainWindow.webContents.send(
+          "app:offline-warning",
+          "Mode hors ligne — vérification impossible",
+        );
+        return;
       }
-    } else {
-      console.log("[BOOT] Access denied, forcing modal:", access.status);
-      mainWindow.webContents.send("show:activation-modal", access);
+
+      const access = await checkAccess();
+
+      // Allow app to load if trial OR paid subscription is active
+      if (access.status === "active" || access.status === "trial") {
+        console.log("[BOOT] Access granted — showing main app", access.status);
+        mainWindow.webContents.send("app:ready", {
+          status: access.status,
+          daysLeft: access.daysLeft,
+          isOffline: false,
+        });
+        if (skipPolling) {
+          mainWindow.webContents.send(
+            "app:revoked-warning",
+            "Accès suspendu — contactez Derewol",
+          );
+        }
+      } else {
+        console.log("[BOOT] Access denied, forcing modal:", access.status);
+        mainWindow.webContents.send("show:activation-modal", access);
+      }
+    } finally {
+      isBooting = false;
     }
   });
 
@@ -3447,20 +3459,19 @@ async function startOfflineRetry() {
         // Notifier l'app que la connexion est revenue
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("app:online");
-          try {
-            // Sauvegarder l'onglet actif avant de recharger
-            mainWindow.webContents
-              .executeJavaScript(
-                `localStorage.setItem('lastActiveTab', window.currentView || 'jobs')`,
-              )
-              .catch(() => {});
-            // Recharger la fenêtre avec la connexion rétablie
-            mainWindow.webContents.reload();
-          } catch (reloadErr) {
-            console.warn(
-              "[OFFLINE RETRY] Impossible de recharger la fenêtre:",
-              reloadErr.message,
-            );
+          if (!hasReloadedAfterReconnect) {
+            hasReloadedAfterReconnect = true;
+            setTimeout(() => {
+              hasReloadedAfterReconnect = false;
+            }, 5000);
+            try {
+              mainWindow.webContents.reload();
+            } catch (reloadErr) {
+              console.warn(
+                "[OFFLINE RETRY] Impossible de recharger la fenêtre:",
+                reloadErr.message,
+              );
+            }
           }
         }
         clearInterval(offlineRetryTimer);
