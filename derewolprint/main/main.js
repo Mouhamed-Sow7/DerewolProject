@@ -245,6 +245,7 @@ const PRINT_DELAY_MS = 30000; // 30 seconds wait before deletion
 
 let mainWindow = null;
 let printerCfg = null;
+let isOfflineApp = false;
 const processingJobs = new Set();
 const spoolerGuard = new SpoolerGuard();
 
@@ -287,11 +288,12 @@ let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial a
 async function cleanupSubscriptionChannel() {
   if (!subscriptionChannel) return;
   try {
-    await supabase.removeChannel(subscriptionChannel);
-    console.log("[SUB] Realtime subscription channel removed");
+    // Utiliser unsubscribe() au lieu de removeChannel() pour éviter l'erreur "close is not a function"
+    await subscriptionChannel.unsubscribe().catch(() => {});
+    console.log("[SUB] Realtime subscription channel unsubscribed");
   } catch (err) {
     console.warn(
-      "[SUB] Unable to remove realtime subscription channel:",
+      "[SUB] Unable to cleanup realtime subscription channel:",
       err.message,
     );
   }
@@ -1264,7 +1266,16 @@ ipcMain.handle(
 );
 
 // ── IPC : Config imprimeur ──────────────────────────────────────
-ipcMain.handle("printer:config", () => printerCfg);
+ipcMain.handle("printer:config", () => {
+  if (!printerCfg) {
+    const localConfig = loadConfig();
+    if (localConfig) {
+      printerCfg = localConfig;
+    }
+    return localConfig;
+  }
+  return printerCfg;
+});
 
 ipcMain.handle("printer:update-name", async (_, name) => {
   if (!printerCfg) return { success: false };
@@ -1283,11 +1294,17 @@ ipcMain.handle("printer:update-name", async (_, name) => {
 // - Audit logging captures all access attempts (allowed and blocked)
 
 ipcMain.handle("subscription:check", async () => {
+  if (isOfflineApp) {
+    return { valid: false, expired: true, daysLeft: 0, offline: true };
+  }
   if (!printerCfg?.id) return { valid: false, expired: true, daysLeft: 0 };
   return await checkSubscription(printerCfg.id);
 });
 
 ipcMain.handle("subscription:activate", async (_, code) => {
+  if (isOfflineApp) {
+    return { success: false, error: "Mode hors ligne — activation impossible" };
+  }
   if (!printerCfg?.id) return { success: false, error: "Non configuré" };
 
   // 🔐 SECURITY: Log activation attempt (audit trail)
@@ -1312,6 +1329,9 @@ ipcMain.handle("subscription:activate", async (_, code) => {
 });
 
 ipcMain.handle("trial:activate", async () => {
+  if (isOfflineApp) {
+    return { success: false, error: "Mode hors ligne — essai impossible" };
+  }
   if (!printerCfg?.id)
     return { success: false, error: "Imprimante non configurée" };
 
@@ -3081,6 +3101,11 @@ async function verifyPrinterExists() {
 
 // ── Check Access Status (source of truth = database) ──────────────
 async function checkAccess(subscription = null) {
+  if (isOfflineApp) {
+    console.log("[ACCESS] Mode hors ligne — vérification suspendue");
+    return { status: "offline", daysLeft: 0 };
+  }
+
   if (!printerCfg?.id) {
     console.log("[ACCESS] No printer config → inactive");
     return { status: "inactive" };
@@ -3219,6 +3244,8 @@ function launchApp(
   isOffline = false,
   skipPolling = false,
 ) {
+  isOfflineApp = isOffline;
+
   // Si on lance normalement, arrêter le retry offline
   if (!isOffline && offlineRetryTimer) {
     clearInterval(offlineRetryTimer);
@@ -3233,6 +3260,21 @@ function launchApp(
   // ALWAYS check access status on window load (source of truth = database)
   mainWindow.webContents.on("did-finish-load", async () => {
     console.log("[BOOT] Window loaded — checking access status from DB");
+
+    if (isOffline) {
+      console.log("[BOOT] Mode hors ligne détecté — accès non vérifié");
+      mainWindow.webContents.send("app:ready", {
+        status: "offline",
+        daysLeft: 0,
+        isOffline: true,
+      });
+      mainWindow.webContents.send(
+        "app:offline-warning",
+        "Mode hors ligne — vérification impossible",
+      );
+      return;
+    }
+
     const access = await checkAccess();
 
     // Allow app to load if trial OR paid subscription is active
@@ -3241,14 +3283,8 @@ function launchApp(
       mainWindow.webContents.send("app:ready", {
         status: access.status,
         daysLeft: access.daysLeft,
-        isOffline: isOffline, // Ajouter flag offline
+        isOffline: false,
       });
-      if (isOffline) {
-        mainWindow.webContents.send(
-          "app:offline-warning",
-          "Mode hors ligne — vérification impossible",
-        );
-      }
       if (skipPolling) {
         mainWindow.webContents.send(
           "app:revoked-warning",
@@ -3308,6 +3344,10 @@ function launchApp(
   // Initial immediate check on boot
   (async () => {
     try {
+      if (isOfflineApp) {
+        console.log("[BOOT] Skip subscription check en mode hors ligne");
+        return;
+      }
       const s = await checkSubscription(printerCfg.id);
       const access = await checkAccess(s);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3366,6 +3406,7 @@ async function startOfflineRetry() {
 
       if (!error && data) {
         console.log("[OFFLINE RETRY] Connexion rétablie — synchronisation");
+        isOfflineApp = false;
         if (data.name !== printerCfg.name) {
           printerCfg.name = data.name;
           saveConfig(printerCfg);
@@ -3373,6 +3414,21 @@ async function startOfflineRetry() {
         // Notifier l'app que la connexion est revenue
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("app:online");
+          try {
+            // Sauvegarder l'onglet actif avant de recharger
+            mainWindow.webContents
+              .executeJavaScript(
+                `localStorage.setItem('lastActiveTab', window.currentView || 'jobs')`,
+              )
+              .catch(() => {});
+            // Recharger la fenêtre avec la connexion rétablie
+            mainWindow.webContents.reload();
+          } catch (reloadErr) {
+            console.warn(
+              "[OFFLINE RETRY] Impossible de recharger la fenêtre:",
+              reloadErr.message,
+            );
+          }
         }
         clearInterval(offlineRetryTimer);
         offlineRetryTimer = null;
@@ -3418,7 +3474,7 @@ app.whenReady().then(async () => {
         console.warn(
           "[BOOT] Erreur réseau — mode hors ligne, vérification impossible",
         );
-        launchApp(true); // Flag offline
+        launchApp(false, true); // Mode offline
         startOfflineRetry();
       } else {
         // Erreur Supabase (pas réseau) — probablement compte supprimé
@@ -3464,7 +3520,7 @@ app.whenReady().then(async () => {
     if (isNetworkError(err)) {
       // Exception réseau — mode hors ligne
       console.warn("[BOOT] Exception réseau — mode hors ligne");
-      launchApp(true);
+      launchApp(false, true);
       startOfflineRetry();
     } else {
       // Exception inattendue — traiter comme compte inexistant

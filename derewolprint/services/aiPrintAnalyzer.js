@@ -5,6 +5,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { app } = require("electron");
 const { createClient } = require("@supabase/supabase-js");
 
 // ── Config ──────────────────────────────────────────────────────
@@ -46,6 +47,45 @@ function getSupabase() {
  * Vérifie si le printer a des crédits disponibles
  * @returns {Object} { hasCredits, remaining, purchased, total }
  */
+async function getAICreditsCachePath() {
+  const userDataPath = app.getPath("userData");
+  return path.join(userDataPath, "ai-credits-cache.json");
+}
+
+function saveAICreditsCache(cacheData) {
+  try {
+    const cachePath = path.join(
+      app.getPath("userData"),
+      "ai-credits-cache.json",
+    );
+    fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2), "utf8");
+    console.log("[DEREWOL AI] Cache crédits IA sauvegardé :", cachePath);
+  } catch (cacheErr) {
+    console.warn(
+      "[DEREWOL AI] Impossible de sauvegarder le cache crédits IA:",
+      cacheErr.message,
+    );
+  }
+}
+
+function loadAICreditsCache() {
+  try {
+    const cachePath = path.join(
+      app.getPath("userData"),
+      "ai-credits-cache.json",
+    );
+    if (!fs.existsSync(cachePath)) return null;
+    const raw = fs.readFileSync(cachePath, "utf8");
+    return JSON.parse(raw);
+  } catch (cacheErr) {
+    console.warn(
+      "[DEREWOL AI] Impossible de lire le cache crédits IA:",
+      cacheErr.message,
+    );
+    return null;
+  }
+}
+
 async function checkAICredits(printerId) {
   try {
     const supabase = getSupabase();
@@ -57,17 +97,50 @@ async function checkAICredits(printerId) {
       .single();
 
     if (error || !data) {
-      return { hasCredits: false, remaining: 0, purchased: 0, total: 0 };
+      throw error || new Error("Aucune donnée de crédits IA");
     }
 
     const remaining = data.ai_credits_remaining ?? 0;
     const purchased = data.ai_credits_purchased ?? 0;
     const total = remaining + purchased;
+    const cachePayload = {
+      remaining,
+      purchased,
+      cachedAt: new Date().toISOString(),
+    };
+    saveAICreditsCache(cachePayload);
 
-    return { hasCredits: total > 0, remaining, purchased, total };
+    return {
+      hasCredits: total > 0,
+      remaining,
+      purchased,
+      total,
+      offline: false,
+      cachedAt: cachePayload.cachedAt,
+    };
   } catch (err) {
     console.error("[DEREWOL AI] Erreur checkAICredits:", err.message);
-    return { hasCredits: false, remaining: 0, purchased: 0, total: 0 };
+    const cache = loadAICreditsCache();
+    if (cache) {
+      const remaining = cache.remaining ?? 0;
+      const purchased = cache.purchased ?? 0;
+      const total = remaining + purchased;
+      return {
+        hasCredits: total > 0,
+        remaining,
+        purchased,
+        total,
+        offline: true,
+        cachedAt: cache.cachedAt,
+      };
+    }
+    return {
+      hasCredits: false,
+      remaining: 0,
+      purchased: 0,
+      total: 0,
+      offline: true,
+    };
   }
 }
 

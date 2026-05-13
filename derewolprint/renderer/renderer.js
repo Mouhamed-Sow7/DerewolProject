@@ -1386,6 +1386,13 @@ console.log("[DEREWOL] Modal functions exposed globally:", {
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[DEREWOL] DOM READY — Initializing i18n & modals");
 
+  // Restaurer l'onglet actif depuis le cache localStorage après un reload
+  const lastTab = localStorage.getItem("lastActiveTab");
+  if (lastTab && lastTab !== "jobs") {
+    // On le restaurera après les initialisations
+    window.__restoreTab = lastTab;
+  }
+
   // Check cache and show modal immediately if needed (no delays)
   showModalIfNeeded();
 
@@ -1397,6 +1404,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize activation modal
   bindActivationModal();
+
+  // Restaurer l'onglet actif s'il a été sauvegardé
+  if (window.__restoreTab) {
+    setTimeout(() => {
+      showView(window.__restoreTab);
+      console.log("[DEREWOL] Onglet restauré :", window.__restoreTab);
+      delete window.__restoreTab;
+    }, 100);
+  }
 
   // Auto-show activation modal for testing (will be removed in production)
   setTimeout(() => {
