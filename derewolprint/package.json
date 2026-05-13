@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "cross-env": "^7.0.3",
+    "dotenv": "^16.1.4",
     "electron-log": "^5.0.0",
     "mammoth": "^1.7.0",
     "nodemailer": "^8.0.7",
@@ -33,6 +34,8 @@
       "preload/**/*",
       "renderer/**/*",
       "services/**/*",
+      "lib/**/*",
+      "assets/**/*",
       "!services/bluetooth.js",
       "!services/bluetoothSync.js",
       "node_modules/**/*",
