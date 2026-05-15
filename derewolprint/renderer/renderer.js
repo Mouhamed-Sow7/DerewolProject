@@ -1394,19 +1394,6 @@ console.log("[DEREWOL] Modal functions exposed globally:", {
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[DEREWOL] DOM READY — Initializing i18n & modals");
 
-  (async () => {
-    try {
-      if (window.derewol?.invoke) {
-        const lastTab = await window.derewol.invoke("app:get-active-tab");
-        if (lastTab && lastTab !== "jobs") {
-          window.__restoreTab = lastTab;
-        }
-      }
-    } catch (err) {
-      console.warn("[APP] Failed to get active tab:", err.message);
-    }
-  })();
-
   // Check cache and show modal immediately if needed (no delays)
   showModalIfNeeded();
 
@@ -1419,14 +1406,19 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize activation modal
   bindActivationModal();
 
-  // Restaurer l'onglet actif s'il a été sauvegardé
-  if (window.__restoreTab) {
-    setTimeout(() => {
-      showView(window.__restoreTab);
-      console.log("[DEREWOL] Onglet restauré :", window.__restoreTab);
-      delete window.__restoreTab;
-    }, 100);
-  }
+  // EN DERNIER — restaurer le tab actif sauvegardé après toutes les initialisations
+  (async () => {
+    try {
+      if (window.derewol?.invoke) {
+        const savedTab = await window.derewol.invoke("app:get-active-tab");
+        if (savedTab && savedTab !== "jobs") {
+          setTimeout(() => showView(savedTab), 100);
+        }
+      }
+    } catch (err) {
+      console.warn("[APP] Failed to restore active tab:", err.message);
+    }
+  })();
 
   // Auto-show activation modal for testing (will be removed in production)
   setTimeout(() => {

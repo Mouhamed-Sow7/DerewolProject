@@ -309,6 +309,7 @@ const viewerSessions = new Map();
 // key = filePath, value = { watcher, debounceTimer, fileId, storagePath, groupId }
 const fileWatchers = new Map();
 let subscriptionChannel = null;
+let subscriptionCheckTimer = null;
 let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
 
 async function cleanupSubscriptionChannel() {
@@ -324,6 +325,29 @@ async function cleanupSubscriptionChannel() {
     );
   }
   subscriptionChannel = null;
+}
+
+function startSubscriptionPolling(printerId) {
+  if (subscriptionCheckTimer) clearInterval(subscriptionCheckTimer);
+
+  subscriptionCheckTimer = setInterval(async () => {
+    if (isOfflineApp) return;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!printerId) return;
+
+    console.log("[SUB POLL] Vérification abonnement...");
+    const sub = await checkSubscription(printerId);
+
+    if (!sub || sub.status !== "active") {
+      console.log("[SUB POLL] Abonnement inactif détecté → modal");
+      mainWindow.webContents.send("show:activation-modal", {
+        status: sub?.status || "deleted",
+        isRenewal: true,
+      });
+      clearInterval(subscriptionCheckTimer);
+      subscriptionCheckTimer = null;
+    }
+  }, 60000); // toutes les 60 secondes
 }
 
 async function subscribeToSubscriptionChanges() {
@@ -3360,6 +3384,7 @@ function launchApp(
           daysLeft: access.daysLeft,
           isOffline: false,
         });
+        startSubscriptionPolling(printerCfg.id);
         if (skipPolling) {
           mainWindow.webContents.send(
             "app:revoked-warning",
@@ -3414,6 +3439,10 @@ function launchApp(
   });
 
   app.on("before-quit", async () => {
+    if (subscriptionCheckTimer) {
+      clearInterval(subscriptionCheckTimer);
+      subscriptionCheckTimer = null;
+    }
     spoolerGuard.destroy();
     await cleanDerewolFilesDir();
   });
