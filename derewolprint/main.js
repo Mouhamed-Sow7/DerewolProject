@@ -1475,6 +1475,30 @@ ipcMain.handle("subscription:activate", async (_, code) => {
 
   if (mainWindow && res.success) {
     const s = await checkSubscription(printerCfg.id);
+
+    const planMonths =
+      res.plan === "1month"
+        ? 1
+        : res.plan === "3months"
+          ? 3
+          : res.plan === "6months"
+            ? 6
+            : 1;
+
+    try {
+      console.log("[AI] Initialisation des crédits IA pour plan:", res.plan);
+      await supabase.rpc("init_ai_credits_for_plan", {
+        p_printer_id: printerCfg.id,
+        p_plan_months: planMonths,
+      });
+      console.log("[AI] Crédits IA initialisés pour plan:", res.plan);
+    } catch (rpcErr) {
+      console.warn(
+        "[AI] Échec initialisation crédits IA:",
+        rpcErr.message || rpcErr,
+      );
+    }
+
     mainWindow.webContents.send("subscription:status", s);
     log("SUBSCRIPTION_ACTIVATED", { printer_id: printerCfg.id, plan: s.plan });
   } else {
@@ -1484,6 +1508,12 @@ ipcMain.handle("subscription:activate", async (_, code) => {
     });
   }
   return res;
+});
+
+ipcMain.handle("shell:openExternal", async (_, { url }) => {
+  const { shell } = require("electron");
+  await shell.openExternal(url);
+  return { success: true };
 });
 
 ipcMain.handle("trial:activate", async () => {
@@ -3414,6 +3444,7 @@ function launchApp(
   }
 
   createMainWindow();
+  console.log("[SUB WATCH] Lancement surveillance abonnement...");
   subscribeToSubscriptionChanges()
     .then(() => console.log("[SUB] subscribeToSubscriptionChanges appelée"))
     .catch((err) => {

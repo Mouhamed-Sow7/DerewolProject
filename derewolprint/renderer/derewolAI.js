@@ -206,34 +206,30 @@ function afficherResultats(data) {
 
 // ── Gestion de la recharge de crédits ───────────────────────────
 async function rechargerCredits(credits, amountXof) {
-  try {
-    if (!currentPrinterId) currentPrinterId = await getPrinterId();
+  if (!currentPrinterId) currentPrinterId = await getPrinterId();
 
-    // Ici, simuler le paiement ou appeler un service de paiement
-    // Pour l'exemple, on appelle directement ai:addCredits
-    const response = await invokeChannel("ai:addCredits", {
-      printerId: currentPrinterId,
-      credits: credits,
-      amountXof: amountXof,
-      paymentRef: "simulation-" + Date.now(),
-    });
+  const message = encodeURIComponent(
+    `Bonjour, je souhaite recharger ${credits} crédits Derewol AI (${amountXof} XOF). Mon ID boutique : ${currentPrinterId}`,
+  );
+  const whatsappUrl = `https://wa.me/+221781220391?text=${message}`;
 
-    if (response.success) {
-      alert(`Recharge réussie : ${credits} crédits ajoutés`);
-      await chargerCredits(); // Recharger l'affichage
-    } else {
-      alert("Erreur lors de la recharge : " + response.error);
-    }
-  } catch (err) {
-    console.error("Erreur rechargerCredits:", err);
-    alert("Erreur lors de la recharge");
-  }
+  await invokeChannel("shell:openExternal", { url: whatsappUrl });
 }
 
 // ── Événements ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   watchParentThemeChanges();
   await chargerCredits();
+
+  // ── Écouter les mises à jour de crédits après activation d'abonnement ──
+  if (window.derewol?.onAICreditsUpdated) {
+    window.derewol.onAICreditsUpdated(() => {
+      console.log(
+        "[AI] Événement credits-updated reçu — rechargement des crédits",
+      );
+      chargerCredits();
+    });
+  }
 
   // Boutons d'analyse
   document

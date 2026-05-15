@@ -1356,6 +1356,28 @@ ipcMain.handle("subscription:activate", async (_, code) => {
 
   if (mainWindow && res.success) {
     const s = await checkSubscription(printerCfg.id);
+
+    // ── Initialiser les crédits IA pour le plan activé ──
+    const planMonths =
+      s.plan === "1month"
+        ? 1
+        : s.plan === "3months"
+          ? 3
+          : s.plan === "6months"
+            ? 6
+            : 1;
+    try {
+      await supabase.rpc("init_ai_credits_for_plan", {
+        p_printer_id: printerCfg.id,
+        p_plan_months: planMonths,
+      });
+      console.log("[AI] Crédits IA initialisés pour plan:", s.plan);
+      // ── Notifier le renderer de recharger les crédits IA ──
+      mainWindow.webContents.send("ai:credits-updated");
+    } catch (e) {
+      console.error("[AI] Erreur init crédits:", e.message);
+    }
+
     mainWindow.webContents.send("subscription:status", s);
     log("SUBSCRIPTION_ACTIVATED", { printer_id: printerCfg.id, plan: s.plan });
   } else {
@@ -3292,6 +3314,7 @@ function launchApp(
   }
 
   createMainWindow();
+  console.log("[SUB WATCH] Lancement surveillance abonnement...");
   subscribeToSubscriptionChanges().catch((err) => {
     console.warn("[SUB] Failed to subscribe realtime updates:", err.message);
   });
