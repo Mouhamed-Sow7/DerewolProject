@@ -36,6 +36,14 @@ function showActivationModal(subscription) {
   backdrop.onclick = null;
   backdrop.style.pointerEvents = "auto";
 
+  // ✅ FIX : Nom de boutique à chaque ouverture du modal
+  const nameEl = document.getElementById("act-printer-name");
+  if (nameEl) {
+    const displayName =
+      window.__printerCfg?.name || window.__printerCfg?.slug || "—";
+    nameEl.textContent = displayName;
+  }
+
   // Re-enable transitions after a brief moment
   setTimeout(() => {
     backdrop.style.transition = "";
