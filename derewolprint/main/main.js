@@ -75,11 +75,20 @@ function getPdfPageCount(filePath) {
 }
 
 async function getDecryptedAnthropicKey() {
+  // 1. Variables d'environnement (dev)
   if (process.env.ANTHROPIC_API_KEY) {
     return process.env.ANTHROPIC_API_KEY;
   }
+
+  // 2. Fallback hardcodé (production embarquée)
+  // ⚠️  IMPORTANT : Remplacer la valeur par votre vraie clé API
+  if (process.env.ANTHROPIC_API_KEY_PROD) {
+    console.warn("[MAIN] Utilisation de la clé Anthropic embarquée");
+    return process.env.ANTHROPIC_API_KEY_PROD;
+  }
+
   throw new Error(
-    "getDecryptedAnthropicKey non implémenté. Configurez process.env.ANTHROPIC_API_KEY ou implémentez votre logique de déchiffrement.",
+    "ANTHROPIC_API_KEY manquante — configurez process.env.ANTHROPIC_API_KEY ou process.env.ANTHROPIC_API_KEY_PROD",
   );
 }
 

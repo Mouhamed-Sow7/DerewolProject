@@ -74,11 +74,20 @@ function getPdfPageCount(filePath) {
 }
 
 async function getDecryptedAnthropicKey() {
+  // 1. Variables d'environnement (dev)
   if (process.env.ANTHROPIC_API_KEY) {
     return process.env.ANTHROPIC_API_KEY;
   }
+
+  // 2. Fallback hardcodé (production embarquée)
+  // ⚠️  IMPORTANT : Remplacer la valeur par votre vraie clé API
+  if (process.env.ANTHROPIC_API_KEY_PROD) {
+    console.warn("[MAIN] Utilisation de la clé Anthropic embarquée");
+    return process.env.ANTHROPIC_API_KEY_PROD;
+  }
+
   throw new Error(
-    "getDecryptedAnthropicKey non implémenté. Configurez process.env.ANTHROPIC_API_KEY ou implémentez votre logique de déchiffrement.",
+    "ANTHROPIC_API_KEY manquante — configurez process.env.ANTHROPIC_API_KEY ou process.env.ANTHROPIC_API_KEY_PROD",
   );
 }
 
@@ -299,6 +308,7 @@ const viewerSessions = new Map();
 // key = filePath, value = { watcher, debounceTimer, fileId, storagePath, groupId }
 const fileWatchers = new Map();
 let subscriptionChannel = null;
+let subscriptionPollingTimer = null; // ⏱️ Mini-polling de sécurité toutes les 60s
 let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
 
 async function cleanupSubscriptionChannel() {
@@ -314,13 +324,88 @@ async function cleanupSubscriptionChannel() {
     );
   }
   subscriptionChannel = null;
+
+  // Arrêter le mini-polling
+  if (subscriptionPollingTimer) {
+    clearInterval(subscriptionPollingTimer);
+    subscriptionPollingTimer = null;
+    console.log("[SUB] Subscription polling stopped");
+  }
+}
+
+// ── Démarrer le mini-polling de sécurité (toutes les 60s) ─────
+function startSubscriptionPolling() {
+  if (subscriptionPollingTimer) {
+    clearInterval(subscriptionPollingTimer);
+  }
+
+  subscriptionPollingTimer = setInterval(async () => {
+    console.log("[SUB POLL] Vérification subscription...");
+    if (isOfflineApp || !printerCfg?.id) {
+      console.log("[SUB POLL] Skip — offline ou pas de config:", {
+        isOfflineApp,
+        printerId: printerCfg?.id,
+      });
+      return;
+    }
+
+    try {
+      // Vérifier que la subscription existe toujours et est active
+      const sub = await checkSubscription(printerCfg.id);
+      console.log("[SUB POLL] Résultat checkSubscription:", {
+        status: sub?.status,
+        valid: sub?.valid,
+      });
+
+      if (!sub || sub.status !== "active") {
+        console.warn(
+          "[SUB] ⚠️ Mini-polling: Subscription n'existe plus ou inactive",
+          {
+            status: sub?.status || "deleted",
+            valid: sub?.valid,
+          },
+        );
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log("[SUB POLL] Envoi modal activation via polling");
+          mainWindow.webContents.send("show:activation-modal", {
+            status: sub?.status || "deleted",
+            isRenewal: true,
+          });
+        } else {
+          console.warn(
+            "[SUB POLL] Impossible d'envoyer modal — mainWindow null ou détruit",
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[SUB] Mini-polling error:", err.message);
+    }
+  }, 60000); // Vérification toutes les 60 secondes
 }
 
 async function subscribeToSubscriptionChanges() {
-  if (!printerCfg?.id) return;
+  console.log("[SUB] Tentative souscription Realtime, printerCfg:", {
+    id: printerCfg?.id,
+    name: printerCfg?.name,
+  });
+  if (!printerCfg?.id) {
+    console.warn(
+      "[SUB] Skip souscription — printerCfg.id manquant, retry dans 1s",
+    );
+    setTimeout(() => {
+      subscribeToSubscriptionChanges().catch((err) => {
+        console.warn("[SUB] Retry failed:", err.message);
+      });
+    }, 1000);
+    return;
+  }
   await cleanupSubscriptionChannel();
 
   const channel = supabase.channel(`sub-watch-${printerCfg.id}`);
+  console.log("[SUB] Canal créé:", `sub-watch-${printerCfg.id}`);
+
+  // ── Écouter les UPDATE de subscription ──
   channel.on(
     "postgres_changes",
     {
@@ -330,20 +415,61 @@ async function subscribeToSubscriptionChanges() {
       filter: `printer_id=eq.${printerCfg.id}`,
     },
     (payload) => {
+      console.log("[SUB REALTIME] Événement UPDATE reçu:", payload);
       const status = payload?.new?.status;
       const expiresAt = payload?.new?.expires_at;
       const now = new Date();
       const isExpired =
         status !== "active" || (expiresAt && new Date(expiresAt) <= now);
 
-      console.log("[SUB] Realtime payload:", {
+      console.log("[SUB] Realtime UPDATE payload:", {
         status,
         expiresAt,
         isExpired,
       });
 
       if (isExpired && mainWindow && !mainWindow.isDestroyed()) {
+        console.log("[SUB REALTIME] Envoi app:subscription-expired via UPDATE");
         mainWindow.webContents.send("app:subscription-expired");
+      } else if (isExpired) {
+        console.warn(
+          "[SUB REALTIME] Impossible d'envoyer expiration — mainWindow null ou détruit",
+        );
+      }
+    },
+  );
+
+  // ── Écouter les DELETE de subscription (suppression = accès révoqué) ──
+  channel.on(
+    "postgres_changes",
+    {
+      event: "DELETE",
+      schema: "public",
+      table: "subscriptions",
+      filter: `printer_id=eq.${printerCfg.id}`,
+    },
+    (payload) => {
+      console.log("[SUB REALTIME] DELETE détecté:", payload);
+      console.warn(
+        "[SUB] 🚨 Ligne subscription supprimée → accès révoqué immédiatement",
+      );
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log(
+          "[SUB REALTIME] Envoi app:access-denied et modal via DELETE",
+        );
+        // Notifier l'app que l'accès a été supprimé
+        mainWindow.webContents.send("app:access-denied", "deleted");
+
+        // Afficher le modal d'activation avec status "deleted"
+        mainWindow.webContents.send("show:activation-modal", {
+          status: "deleted",
+          isRenewal: true,
+        });
+      } else {
+        console.warn(
+          "[SUB REALTIME] Impossible d'envoyer modal — mainWindow null ou détruit",
+        );
       }
     },
   );
@@ -354,6 +480,10 @@ async function subscribeToSubscriptionChanges() {
     "[SUB] Realtime subscription channel created for printer:",
     printerCfg.id,
   );
+
+  // Démarrer le mini-polling de sécurité
+  startSubscriptionPolling();
+  console.log("[SUB] Mini-polling démarré (60s)");
 }
 
 function stopFileWatcher(filePath) {
@@ -1296,14 +1426,13 @@ ipcMain.handle("app:get-active-tab", () => {
 
 // ── IPC : Config imprimeur ──────────────────────────────────────
 ipcMain.handle("printer:config", () => {
-  if (!printerCfg) {
-    const localConfig = loadConfig();
-    if (localConfig) {
-      printerCfg = localConfig;
-    }
-    return localConfig;
+  // Priorité : printerCfg en mémoire, sinon charger depuis disque
+  const config = printerCfg || loadConfig();
+  if (!config) {
+    // Retourner objet avec null si aucune config trouvée
+    return { name: null, slug: null, id: null };
   }
-  return printerCfg;
+  return config;
 });
 
 ipcMain.handle("printer:update-name", async (_, name) => {
@@ -3067,6 +3196,7 @@ async function verifyPrinterExists() {
           "[VERIFY] Erreur Supabase — compte inexistant, reset config",
         );
         stopPolling();
+        await cleanupSubscriptionChannel();
         clearConfig();
         printerCfg = null;
 
@@ -3090,6 +3220,7 @@ async function verifyPrinterExists() {
         "[VERIFY] Imprimeur introuvable — compte n'existe plus, reset config",
       );
       stopPolling();
+      await cleanupSubscriptionChannel();
       clearConfig();
       printerCfg = null;
 
@@ -3111,6 +3242,7 @@ async function verifyPrinterExists() {
       console.error("[VERIFY] Exception inattendue:", err);
       // Traiter comme compte inexistant
       stopPolling();
+      await cleanupSubscriptionChannel();
       clearConfig();
       printerCfg = null;
 
@@ -3282,9 +3414,13 @@ function launchApp(
   }
 
   createMainWindow();
-  subscribeToSubscriptionChanges().catch((err) => {
-    console.warn("[SUB] Failed to subscribe realtime updates:", err.message);
-  });
+  subscribeToSubscriptionChanges()
+    .then(() => console.log("[SUB] subscribeToSubscriptionChanges appelée"))
+    .catch((err) => {
+      console.warn("[SUB] Failed to subscribe realtime updates:", err.message);
+    });
+  startSubscriptionPolling();
+  console.log("[SUB POLL] startSubscriptionPolling appelée");
 
   // ALWAYS check access status on window load (source of truth = database)
   mainWindow.webContents.on("did-finish-load", async () => {

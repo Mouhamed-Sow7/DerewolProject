@@ -22,19 +22,45 @@ const COST_PER_ACTION = {
 
 // ── Clé API ─────────────────────────────────────────────────────
 function getAnthropicKey() {
-  // Pour l'instant : .env
-  // Plus tard : remplacer par getAnthropicKey() chiffré AES
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY manquante dans .env");
-  return key;
+  // 1. Variables d'environnement (dev via .env)
+  if (process.env.ANTHROPIC_API_KEY) {
+    return process.env.ANTHROPIC_API_KEY;
+  }
+
+  // 2. Fallback hardcodé (production embarquée)
+  // ⚠️  IMPORTANT : Remplacer la valeur par votre vraie clé API
+  const fallbackKey = process.env.ANTHROPIC_API_KEY_PROD || "";
+  if (fallbackKey) {
+    console.warn("[DEREWOL AI] Utilisation de la clé Anthropic embarquée");
+    return fallbackKey;
+  }
+
+  throw new Error(
+    "ANTHROPIC_API_KEY manquante — configurez process.env.ANTHROPIC_API_KEY ou process.env.ANTHROPIC_API_KEY_PROD",
+  );
 }
 
 // ── Supabase ─────────────────────────────────────────────────────
 function getSupabase() {
-  return createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  // 1. Variables d'environnement (dev)
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+    );
+  }
+
+  // 2. Fallback — clés embarquées
+  const supabaseUrl =
+    process.env.SUPABASE_URL || "https://bmkvhplsekddrqivpxyy.supabase.co";
+  const supabaseServiceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJta3ZocGxzZWtkZHJxaXZweHl5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyNDE4MiwiZXhwIjoyMDg3MDAwMTgyfQ.7cjOllYm3_p_Anlu32fbj98W19MhtW7anbGVvQC_phU";
+
+  console.warn(
+    "[DEREWOL AI] Utilisation des clés Supabase embarquées pour ce nœud",
   );
+  return createClient(supabaseUrl, supabaseServiceKey);
 }
 
 // ═══════════════════════════════════════════════════════════════

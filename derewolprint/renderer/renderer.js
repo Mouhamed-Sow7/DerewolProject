@@ -1532,9 +1532,34 @@ document.addEventListener("DOMContentLoaded", () => {
     window.derewol
       .getPrinterConfig()
       .then((cfg) => {
-        if (cfg) {
+        if (cfg && cfg.name) {
           window.__printerCfg = cfg;
           console.log("[DEREWOL] Printer config loaded:", cfg);
+        } else {
+          // Retry après 1s si config nulle ou sans nom
+          console.log("[DEREWOL] Config nulle, retry dans 1s...");
+          setTimeout(() => {
+            window.derewol
+              .getPrinterConfig()
+              .then((retryCfg) => {
+                window.__printerCfg = retryCfg || {
+                  name: null,
+                  slug: null,
+                  id: null,
+                };
+                console.log(
+                  "[DEREWOL] Printer config loaded after retry:",
+                  window.__printerCfg,
+                );
+              })
+              .catch((err) => {
+                console.warn(
+                  "[DEREWOL] Failed to load printer config after retry:",
+                  err,
+                );
+                window.__printerCfg = { name: null, slug: null, id: null };
+              });
+          }, 1000);
         }
       })
       .catch((err) => {

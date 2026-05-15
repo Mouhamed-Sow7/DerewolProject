@@ -42,11 +42,12 @@ function loadConfig() {
     console.error("[SUPABASE] Erreur lecture config.json:", e.message);
   }
 
-  // 3. Fallback — ne devrait jamais arriver en prod
-  console.error(
-    "[SUPABASE] Aucune configuration trouvée — vérifiez .env ou config.json",
-  );
-  return { url: "", key: "" };
+  // 3. Fallback hardcodé (production sans config.json) — EMBARQUÉ dans le build
+  console.warn("[SUPABASE] Utilisation des clés hardcodées par défaut");
+  return {
+    url: "https://bmkvhplsekddrqivpxyy.supabase.co",
+    key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJta3ZocGxzZWtkZHJxaXZweHl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjQxODIsImV4cCI6MjA4NzAwMDE4Mn0.BeQVYSBkI9Q_Au0ZBzu7LfYg9cwnxBJL5Y5vYvPZfEQ",
+  };
 }
 
 const { url, key } = loadConfig();
@@ -160,7 +161,9 @@ async function cleanupTempPreview(previewPath) {
 }
 
 // Client service_role (bypass RLS)
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || null;
+const serviceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJta3ZocGxzZWtkZHJxaXZweHl5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyNDE4MiwiZXhwIjoyMDg3MDAwMTgyfQ.7cjOllYm3_p_Anlu32fbj98W19MhtW7anbGVvQC_phU";
 const supabaseAdmin = serviceKey ? createClient(url, serviceKey) : null;
 module.exports = {
   supabase,
