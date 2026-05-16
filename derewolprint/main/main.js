@@ -364,8 +364,7 @@ async function subscribeToSubscriptionChanges() {
     },
     (payload) => {
       // Ignorer les events d'autres imprimeurs
-      const rowPrinterId =
-        payload?.new?.printer_id || payload?.old?.printer_id;
+      const rowPrinterId = payload?.new?.printer_id || payload?.old?.printer_id;
       if (rowPrinterId !== printerCfg.id) return;
 
       console.log("[SUB] Realtime event:", payload.eventType, {
