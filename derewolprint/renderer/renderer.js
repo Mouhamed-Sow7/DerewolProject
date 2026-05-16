@@ -1606,6 +1606,17 @@ document.addEventListener("DOMContentLoaded", () => {
       // Sans fermer l'app, juste notification
     });
   }
+
+  // ── Relayer ai:credits-updated vers l'iframe derewolAI ──
+  if (window.derewol?.onAICreditsUpdated) {
+    window.derewol.onAICreditsUpdated(() => {
+      const iframeAI = document.getElementById("iframe-derewol-ai");
+      if (iframeAI && iframeAI.contentWindow) {
+        iframeAI.contentWindow.postMessage({ type: "ai-credits-updated" }, "*");
+        console.log("[RENDERER] Relayed ai:credits-updated to iframe");
+      }
+    });
+  }
 });
 
 // If DOM is already loaded, initialize immediately

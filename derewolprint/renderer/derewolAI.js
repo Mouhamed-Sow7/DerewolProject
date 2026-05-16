@@ -219,6 +219,15 @@ async function rechargerCredits(credits, amountXof) {
 // ── Événements ──────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   watchParentThemeChanges();
+
+  // ── Écouter les mises à jour de crédits depuis le parent ──
+  window.addEventListener("message", (e) => {
+    if (e.data?.type === "ai-credits-updated") {
+      console.log("[AI] Mise à jour crédits reçue du parent → rechargement");
+      chargerCredits();
+    }
+  });
+
   await chargerCredits();
 
   // ✅ Polling crédits IA toutes les 30s (détection recharge admin)

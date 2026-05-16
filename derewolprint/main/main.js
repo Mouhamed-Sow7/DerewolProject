@@ -1,4 +1,10 @@
 require("dotenv").config();
+
+// ── WebSocket polyfill pour Supabase Realtime (Node 18) ──────────
+const WebSocket = require("ws");
+global.WebSocket = WebSocket;
+// ─────────────────────────────────────────────────────────────────
+
 const { app, BrowserWindow, ipcMain, Menu, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
@@ -378,7 +384,10 @@ async function subscribeToSubscriptionChanges() {
       if (eventType === "DELETE") {
         console.log("[SUB] Realtime DELETE détecté → modal activation");
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("app:subscription-expired");
+          mainWindow.webContents.send("show:activation-modal", {
+            status: "expired",
+            isRenewal: true,
+          });
         }
         return;
       }
@@ -396,13 +405,42 @@ async function subscribeToSubscriptionChanges() {
         isExpired,
       });
 
-      if (isExpired && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("app:subscription-expired");
+      if (isExpired) {
+        // ❌ Abonnement expiré → ouvrir modal
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("show:activation-modal", {
+            status: status || "expired",
+            isRenewal: true,
+          });
+        }
+      } else {
+        // ✅ Abonnement actif → fermer modal si ouvert
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log("[SUB] Realtime → abonnement actif, fermeture modal");
+          mainWindow.webContents.send("hide:activation-modal");
+
+          // ✅ Crédits IA mis à jour → notifier renderer immédiatement
+          const newPurchased = payload?.new?.ai_credits_purchased;
+          const oldPurchased = payload?.old?.ai_credits_purchased;
+          if (newPurchased !== undefined && newPurchased !== oldPurchased) {
+            console.log(
+              "[SUB] Realtime → crédits IA changés:",
+              oldPurchased,
+              "→",
+              newPurchased,
+            );
+            mainWindow.webContents.send("ai:credits-updated");
+          }
+        }
       }
     },
   );
 
-  await channel.subscribe();
+  // ── Diagnostic : vérifier si WebSocket fonctionne ──
+  channel.subscribe((status, err) => {
+    console.log("[SUB] Realtime status:", status, err ? err.message : "ok");
+  });
+
   subscriptionChannel = channel;
   console.log(
     "[SUB] Realtime subscription channel created for printer:",
