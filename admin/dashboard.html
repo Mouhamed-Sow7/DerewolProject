@@ -58,6 +58,10 @@
           <i class="fa-solid fa-credit-card"></i>
           <span>Abonnements</span>
         </button>
+        <button type="button" class="nav-item" data-view="ai-credits">
+          <i class="fa-solid fa-robot"></i>
+          <span>Crédits IA</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button type="button" class="btn-logout" id="logout-btn">
@@ -193,6 +197,29 @@
           </table>
         </div>
       </section>
+
+      <!-- ── Vue: Crédits IA ────────────────────────────────────── -->
+      <section id="view-ai-credits" class="view">
+        <div class="view-header">
+          <h1>Crédits IA <span class="count-badge" id="ai-credits-count">0</span></h1>
+        </div>
+        <p class="view-intro">Rechargez manuellement les crédits Derewol AI après confirmation de paiement WhatsApp.</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Boutique</th>
+                <th>Téléphone</th>
+                <th>Crédits</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ai-credits-list">
+              <tr><td colspan="4" class="loading">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
 
     <!-- ── Modal: Générer un code ──────────────────────────────── -->
@@ -269,12 +296,84 @@
       </div>
     </div>
 
+
+    <!-- ── Modal: Recharge Crédits IA ────────────────────────── -->
+    <div id="modal-ai-recharge" class="modal" style="display:none">
+      <div class="modal-backdrop" onclick="closeRechargeModal()"></div>
+      <div class="modal-box">
+        <h2><i class="fa-solid fa-bolt"></i> Recharge Crédits IA</h2>
+        <p class="modal-hint">Boutique : <strong id="recharge-printer-name">—</strong></p>
+        <input type="hidden" id="recharge-printer-id-hidden">
+        <input type="hidden" id="recharge-printer-phone-hidden">
+
+        <div class="form-group">
+          <label for="recharge-pack">Pack de crédits</label>
+          <select id="recharge-pack" onchange="updateRechargeFields(this.value)">
+            <option value="pack10">10 crédits — 2 000 FCFA</option>
+            <option value="pack20">20 crédits — 3 500 FCFA</option>
+            <option value="pack50">50 crédits — 7 500 FCFA</option>
+            <option value="custom">Montant libre...</option>
+          </select>
+        </div>
+
+        <div id="recharge-custom-fields" style="display:none">
+          <div class="form-group">
+            <label for="recharge-custom-credits">Nombre de crédits</label>
+            <input type="number" id="recharge-custom-credits" min="1" placeholder="ex: 15">
+          </div>
+          <div class="form-group">
+            <label for="recharge-custom-amount">Montant reçu (FCFA)</label>
+            <input type="number" id="recharge-custom-amount" min="0" placeholder="ex: 2500">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="recharge-method">Méthode de paiement</label>
+          <select id="recharge-method">
+            <option value="Wave">Wave</option>
+            <option value="Orange Money">Orange Money</option>
+            <option value="Manuel">Manuel / Cash</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="recharge-ref">Référence paiement (optionnel)</label>
+          <input type="text" id="recharge-ref" placeholder="ex: Wave #12345 ou nom client">
+        </div>
+
+        <p id="recharge-summary" style="font-weight:600;color:var(--primary);margin:8px 0 16px"></p>
+        <div id="recharge-error" class="error-msg" style="display:none"></div>
+        <div id="recharge-success" class="gen-result" style="display:none;padding:12px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;color:#166534"></div>
+
+        <div class="modal-actions">
+          <button type="button" id="recharge-submit-btn" class="btn-primary" onclick="handleRecharge()">
+            <i class="fa-solid fa-bolt"></i> Recharger
+          </button>
+          <button type="button" class="btn-secondary" onclick="closeRechargeModal()">Fermer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Historique Crédits IA ───────────────────────── -->
+    <div id="modal-ai-history" class="modal" style="display:none">
+      <div class="modal-backdrop" onclick="closeHistoryModal()"></div>
+      <div class="modal-box">
+        <h2><i class="fa-solid fa-clock-rotate-left"></i> Historique Recharges</h2>
+        <p class="modal-hint">Boutique : <strong id="history-printer-name">—</strong></p>
+        <div id="history-list" style="max-height:360px;overflow-y:auto;margin-top:12px"></div>
+        <div class="modal-actions" style="margin-top:16px">
+          <button type="button" class="btn-secondary" onclick="closeHistoryModal()">Fermer</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Scripts ─────────────────────────────────────────────── -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="js/supabase-client.js?v=2"></script>
     <script src="js/auth.js?v=2"></script>
     <script src="js/printers.js?v=2"></script>
     <script src="js/subscriptions.js?v=2"></script>
+    <script src="js/ai-credits.js?v=2"></script>
     <script src="js/dashboard.js?v=2"></script>
 
     <!-- ── Mobile Menu Script ──────────────────────────────────── -->

@@ -164,6 +164,7 @@ async function loadView(view) {
   if (view === "overview") await loadOverview();
   if (view === "printers") await loadPrinters();
   if (view === "subscriptions") await loadSubscriptions(currentSubFilter);
+  if (view === "ai-credits") await loadAiCredits();
 }
 
 async function loadOverview() {

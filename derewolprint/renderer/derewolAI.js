@@ -221,6 +221,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   watchParentThemeChanges();
   await chargerCredits();
 
+  // ✅ Polling crédits IA toutes les 30s (détection recharge admin)
+  let aiCreditsPollingInterval = setInterval(async () => {
+    try {
+      await chargerCredits();
+      console.log("[AI] Polling crédits IA — rafraîchi");
+    } catch (e) {
+      console.warn("[AI] Polling crédits IA — erreur:", e.message);
+    }
+  }, 30_000);
+
+  // Nettoyage si la page est déchargée
+  window.addEventListener("beforeunload", () => {
+    clearInterval(aiCreditsPollingInterval);
+  });
+
   // ── Écouter les mises à jour de crédits après activation d'abonnement ──
   if (window.derewol?.onAICreditsUpdated) {
     window.derewol.onAICreditsUpdated(() => {

@@ -358,12 +358,33 @@ async function subscribeToSubscriptionChanges() {
   channel.on(
     "postgres_changes",
     {
-      event: "UPDATE",
+      event: "*",
       schema: "public",
       table: "subscriptions",
-      filter: `printer_id=eq.${printerCfg.id}`,
     },
     (payload) => {
+      // Ignorer les events d'autres imprimeurs
+      const rowPrinterId =
+        payload?.new?.printer_id || payload?.old?.printer_id;
+      if (rowPrinterId !== printerCfg.id) return;
+
+      console.log("[SUB] Realtime event:", payload.eventType, {
+        new: payload.new,
+        old: payload.old,
+      });
+
+      const eventType = payload.eventType; // INSERT, UPDATE, DELETE
+
+      // DELETE → abonnement supprimé
+      if (eventType === "DELETE") {
+        console.log("[SUB] Realtime DELETE détecté → modal activation");
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("app:subscription-expired");
+        }
+        return;
+      }
+
+      // INSERT ou UPDATE → vérifier le statut
       const status = payload?.new?.status;
       const expiresAt = payload?.new?.expires_at;
       const now = new Date();
@@ -779,6 +800,13 @@ ipcMain.handle("security:enable-screenshot", (_, code) =>
 ipcMain.handle("security:screenshot-status", () => ({
   enabled: screenshotProtectionEnabled,
 }));
+
+// ── IPC : Shell ──────────────────────────────────────────────────
+ipcMain.handle("shell:openExternal", async (_, { url }) => {
+  const { shell } = require("electron");
+  await shell.openExternal(url);
+  return { success: true };
+});
 
 // ── IPC : Derewol AI ────────────────────────────────────────────
 // Vérifier les crédits IA du printer

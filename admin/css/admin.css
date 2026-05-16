@@ -1084,8 +1084,9 @@ body {
     transform: translateX(0);
   }
 
-  .sidebar-overlay {
+  .sidebar-overlay.active {
     display: block;
+    opacity: 1;
   }
 
   /* ── Main Content ─────────────────────────────────────── */
@@ -1231,4 +1232,73 @@ body {
 
 .mb-4 {
   margin-bottom: 16px;
+}
+
+/* ===== RESPONSIVE FIX TABLES ===== */
+
+/* Le contenu principal ne doit pas bloquer l'overflow des enfants */
+.main-content {
+  overflow-x: hidden;
+}
+
+/* Chaque vue ne contraint pas la largeur */
+.view {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Le wrapper du tableau : scroll horizontal actif */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #2d6a4f transparent;
+  display: block;
+}
+
+/* Scrollbar visible sur webkit */
+.table-wrap::-webkit-scrollbar { height: 5px; }
+.table-wrap::-webkit-scrollbar-track { background: transparent; }
+.table-wrap::-webkit-scrollbar-thumb { background: #2d6a4f; border-radius: 4px; }
+
+/* Le tableau lui-même ne rétrécit jamais sous sa largeur naturelle */
+.data-table {
+  min-width: 600px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding: 16px 10px 48px;
+    overflow-x: hidden;
+  }
+
+  .table-wrap {
+    max-width: calc(100vw - 20px);
+    overflow-x: auto !important;
+  }
+
+  .data-table {
+    min-width: 520px;
+    font-size: 13px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 8px;
+    white-space: nowrap;
+  }
+
+  .td-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .btn-action {
+    font-size: 12px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
 }
