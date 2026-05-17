@@ -1645,6 +1645,40 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ── Realtime jobs ────────────────────────────────────────
+  if (window.derewol?.onJobsNew) {
+    window.derewol.onJobsNew((job) => {
+      console.log("[JOBS] Nouveau job reçu via Realtime:", job?.id);
+      // Rafraîchir la liste des jobs immédiatement
+      if (typeof loadJobs === "function") loadJobs();
+      if (typeof refreshJobsList === "function") refreshJobsList();
+      // Notification visuelle
+      if (typeof showJobNotification === "function") showJobNotification();
+    });
+  }
+
+  if (window.derewol?.onJobsNewGroup) {
+    window.derewol.onJobsNewGroup((group) => {
+      console.log("[JOBS] Nouveau groupe client reçu via Realtime:", group?.id);
+      if (typeof loadJobs === "function") loadJobs();
+      if (typeof refreshJobsList === "function") refreshJobsList();
+      if (typeof showJobNotification === "function") showJobNotification();
+    });
+  }
+
+  if (window.derewol?.onJobsUpdated) {
+    window.derewol.onJobsUpdated((job) => {
+      console.log(
+        "[JOBS] Job mis à jour via Realtime:",
+        job?.id,
+        "→",
+        job?.status,
+      );
+      if (typeof loadJobs === "function") loadJobs();
+      if (typeof refreshJobsList === "function") refreshJobsList();
+    });
+  }
+
   // ── Relayer ai:credits-updated vers l'iframe derewolAI ──
   if (window.derewol?.onAICreditsUpdated) {
     window.derewol.onAICreditsUpdated(() => {

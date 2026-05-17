@@ -86,6 +86,12 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.on("app:revoked-warning", (_, message) => callback(message)),
   onAppOnline: (callback) =>
     ipcRenderer.on("app:online", (_, data) => callback(data)),
+  onJobsNew: (callback) =>
+    ipcRenderer.on("jobs:new", (_, data) => callback(data)),
+  onJobsUpdated: (callback) =>
+    ipcRenderer.on("jobs:updated", (_, data) => callback(data)),
+  onJobsNewGroup: (callback) =>
+    ipcRenderer.on("jobs:new-group", (_, data) => callback(data)),
   onAICreditsUpdated: (callback) =>
     ipcRenderer.on("ai:credits-updated", () => callback()),
 

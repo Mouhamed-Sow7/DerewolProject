@@ -318,6 +318,7 @@ const decryptedFileCache = new Map();
 // key = filePath, value = { watcher, debounceTimer, fileId, storagePath, groupId }
 const fileWatchers = new Map();
 let subscriptionChannel = null;
+let jobsChannel = null;
 let subscriptionCheckTimer = null;
 let trialJustActivated = false; // 🔥 Flag to prevent modal loop after trial activation
 
@@ -449,6 +450,81 @@ async function subscribeToSubscriptionChanges() {
     "[SUB] Realtime subscription channel created for printer:",
     printerCfg.id,
   );
+}
+
+async function subscribeToJobChanges() {
+  if (!printerCfg?.id) return;
+
+  // Nettoyer l'ancien channel si existe
+  if (jobsChannel) {
+    await supabase.removeChannel(jobsChannel);
+    jobsChannel = null;
+  }
+
+  const channel = supabase.channel(`jobs-watch-${printerCfg.id}`);
+
+  // Écouter les nouveaux jobs (INSERT)
+  channel.on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "print_jobs",
+      filter: `printer_id=eq.${printerCfg.id}`,
+    },
+    (payload) => {
+      console.log("[JOBS] Realtime INSERT job:", payload.new?.id);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("jobs:new", payload.new);
+      }
+    },
+  );
+
+  // Écouter les mises à jour de statut (UPDATE)
+  channel.on(
+    "postgres_changes",
+    {
+      event: "UPDATE",
+      schema: "public",
+      table: "print_jobs",
+      filter: `printer_id=eq.${printerCfg.id}`,
+    },
+    (payload) => {
+      console.log(
+        "[JOBS] Realtime UPDATE job:",
+        payload.new?.id,
+        "→",
+        payload.new?.status,
+      );
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("jobs:updated", payload.new);
+      }
+    },
+  );
+
+  // Écouter les nouveaux file_groups (INSERT) — détecte l'arrivée d'un client
+  channel.on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "file_groups",
+      filter: `printer_id=eq.${printerCfg.id}`,
+    },
+    (payload) => {
+      console.log("[JOBS] Realtime nouveau file_group:", payload.new?.id);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("jobs:new-group", payload.new);
+      }
+    },
+  );
+
+  channel.subscribe((status, err) => {
+    console.log("[JOBS] Realtime status:", status, err ? err.message : "ok");
+  });
+
+  jobsChannel = channel;
+  console.log("[JOBS] Realtime channel créé pour printer:", printerCfg.id);
 }
 
 function stopFileWatcher(filePath) {
@@ -3607,6 +3683,9 @@ function launchApp(
   subscribeToSubscriptionChanges().catch((err) => {
     console.warn("[SUB] Failed to subscribe realtime updates:", err.message);
   });
+  subscribeToJobChanges().catch((err) =>
+    console.warn("[JOBS] Failed to subscribe job realtime:", err.message),
+  );
 
   // ALWAYS check access status on window load (source of truth = database)
   mainWindow.webContents.on("did-finish-load", async () => {
@@ -3708,6 +3787,10 @@ function launchApp(
       clearInterval(subscriptionCheckTimer);
       subscriptionCheckTimer = null;
     }
+    if (jobsChannel) {
+      supabase.removeChannel(jobsChannel);
+      jobsChannel = null;
+    }
     spoolerGuard.destroy();
     await cleanDerewolFilesDir();
   });
@@ -3793,6 +3876,7 @@ async function startOfflineRetry() {
               mainWindow.webContents.send("hide:activation-modal");
               startSubscriptionPolling(printerCfg.id);
               await subscribeToSubscriptionChanges();
+              await subscribeToJobChanges();
               console.log("[OFFLINE RETRY] ✅ En ligne — pas de reload");
             } else {
               mainWindow.webContents.send("show:activation-modal", {
