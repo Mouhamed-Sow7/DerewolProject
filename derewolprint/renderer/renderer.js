@@ -1722,19 +1722,26 @@ window.derewol.getPrinters().then((printers) => {
       return `<option value="${name}">${name}</option>`;
     })
     .join("");
+  const lastPrinter =
+    localStorage.getItem("derewol:lastPrinter") || settings.printer;
   const preferred =
-    settings.printer ||
+    real.find((p) => (typeof p === "string" ? p : p.name) === lastPrinter)
+      ?.name ||
     real.find((p) => {
       const name = typeof p === "string" ? p : p.name;
       return name.toLowerCase().includes("hp");
     })?.name ||
-    "Mp-Pdf"; // 🔥 Défaut sur Mp-Pdf si aucune préférence
-  if (preferred) select.value = preferred;
+    (typeof real[0] === "string" ? real[0] : real[0]?.name);
+  if (preferred) {
+    select.value = preferred;
+    localStorage.setItem("derewol:lastPrinter", preferred);
+  }
   dot.style.background = "var(--jaune)";
 
   // Recheck immédiat du statut quand l'utilisateur change d'imprimante
   select.addEventListener("change", async () => {
     const selected = select.value;
+    localStorage.setItem("derewol:lastPrinter", selected);
     console.log("[Renderer] Changement imprimante →", selected);
     setPrinterDotState("checking");
     await new Promise((resolve) => setTimeout(resolve, 200));

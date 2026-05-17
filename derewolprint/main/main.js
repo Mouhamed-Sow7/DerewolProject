@@ -2021,15 +2021,62 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
     }
 
     if (ext === ".pdf") {
-      // PDF: utiliser pdf-to-printer
       const pageRange =
         printOpts.pages === "range"
           ? `${printOpts.pageFrom || 1}-${printOpts.pageTo || 9999}`
           : undefined;
-      await pdfToPrinter.print(filePath, {
+
+      let printPath = filePath;
+
+      // Appliquer la rotation si orientation demandée
+      if (printOpts.orientation) {
+        try {
+          const { PDFDocument, degrees } = require("pdf-lib");
+          const fs = require("fs");
+          const pdfBytes = fs.readFileSync(filePath);
+          const pdfDoc = await PDFDocument.load(pdfBytes);
+          const pages = pdfDoc.getPages();
+
+          pages.forEach((page) => {
+            const { width, height } = page.getSize();
+            const isLandscape = width > height;
+            const wantsLandscape = printOpts.orientation === "landscape";
+
+            // Corriger seulement si l'orientation ne correspond pas
+            if (isLandscape && !wantsLandscape) {
+              page.setRotation(degrees(270));
+            } else if (!isLandscape && wantsLandscape) {
+              page.setRotation(degrees(90));
+            }
+          });
+
+          const rotatedBytes = await pdfDoc.save();
+          const tmpPath = filePath.replace(".pdf", "_rotated_tmp.pdf");
+          fs.writeFileSync(tmpPath, rotatedBytes);
+          printPath = tmpPath;
+          console.log(
+            `[PRINT] PDF rotation appliquée → ${printOpts.orientation}`,
+          );
+        } catch (err) {
+          console.warn(
+            "[PRINT] Rotation PDF échouée, impression sans rotation:",
+            err.message,
+          );
+          printPath = filePath;
+        }
+      }
+
+      await pdfToPrinter.print(printPath, {
         printer: printerName,
         ...(pageRange && { pages: pageRange }),
       });
+
+      // Nettoyer le fichier temporaire
+      if (printPath !== filePath) {
+        try {
+          require("fs").unlinkSync(printPath);
+        } catch {}
+      }
     } else if (
       [".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".rtf"].includes(ext)
     ) {

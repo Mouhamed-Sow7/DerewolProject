@@ -704,6 +704,11 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext, numPages = null) {
           </div>
           <span id="opt-page-count" style="font-size:11px;color:#888;"></span>
         </div>
+        <div id="derewol-ai-section"
+          style="background:#f0faf4;border:1px solid #c8e6c9;border-radius:8px;
+            padding:10px 12px;min-height:36px;">
+          <p style="font-size:11px;color:#aaa;margin:0;">✨ Analyse en cours...</p>
+        </div>
 
         <div>
           <p style="font-size:11px;color:#888;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em;">Recto / Verso</p>
@@ -740,6 +745,55 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext, numPages = null) {
   `;
 
   document.body.appendChild(modal);
+
+  // ── Derewol AI — Analyse locale gratuite ──────────────────────
+  const aiSection = modal.querySelector("#derewol-ai-section");
+  if (aiSection) {
+    analyzeFileForPrint(fileId, ext, numPages).then((suggestion) => {
+      if (!suggestion) return;
+      aiSection.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <span style="font-size:18px;">✨</span>
+        <div style="flex:1;">
+          <p style="font-size:11px;font-weight:600;color:#1B5E35;margin:0 0 3px;">
+            Derewol AI recommande
+          </p>
+          <p style="font-size:11px;color:#555;margin:0 0 8px;line-height:1.4;">
+            ${suggestion.reason}
+          </p>
+          <button id="ai-apply-suggestion"
+            style="font-size:11px;padding:5px 12px;border-radius:6px;
+              border:1.5px solid #1B5E35;background:#E8F5E9;color:#1B5E35;
+              cursor:pointer;font-weight:600;font-family:'Inter',sans-serif;">
+            Appliquer
+          </button>
+        </div>
+      </div>
+    `;
+      modal
+        .querySelector("#ai-apply-suggestion")
+        ?.addEventListener("click", () => {
+          if (suggestion.orientation) setOptOri(suggestion.orientation);
+          if (suggestion.fit) setOptFit(suggestion.fit);
+          // Marquer comme appliqué
+          window._printOptions.aiApplied = true;
+          // Feedback visuel
+          const btn = modal.querySelector("#ai-apply-suggestion");
+          if (btn) {
+            btn.textContent = "✓ Appliqué";
+            btn.disabled = true;
+          }
+        });
+      // Restaurer l'état "Appliqué" si déjà appliqué précédemment
+      if (window._printOptions.aiApplied) {
+        const btn = modal.querySelector("#ai-apply-suggestion");
+        if (btn) {
+          btn.textContent = "✓ Appliqué";
+          btn.disabled = true;
+        }
+      }
+    });
+  }
 
   // Fermeture overlay
   modal.addEventListener("click", (e) => {
@@ -799,6 +853,7 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext, numPages = null) {
     pageFrom: savedOpts?.pageFrom || 1,
     pageTo: savedOpts?.pageTo || numPages || 999,
     duplex: savedOpts?.duplex || "recto",
+    aiApplied: savedOpts?.aiApplied || false,
   };
 
   // Limiter le champ "à" au nombre de pages réel
@@ -973,7 +1028,7 @@ function confirmPrintOptions(jobId, fileId) {
     opts.pageTo =
       parseInt(document.getElementById("opt-page-to")?.value) || 999;
   }
-  // Stocker les options par fichier
+  // Stocker les options par fichier (inclut aiApplied)
   if (!window._filesPrintOptions) window._filesPrintOptions = {};
   window._filesPrintOptions[jobId + "_" + fileId] = { ...opts };
   closePrintOptionsModal();
@@ -1104,6 +1159,43 @@ function _getSelectedFiles() {
 
 function _onFileCheckboxChange() {
   _updateFusionBar();
+}
+
+// Helper: Derewol AI local analysis for print suggestions
+async function analyzeFileForPrint(fileId, ext, numPages) {
+  const isExcel = ["xlsx", "xls"].includes(ext);
+  const isPdf = ext === "pdf";
+  const isDoc = ["doc", "docx"].includes(ext);
+
+  let suggestion = null;
+
+  if (isExcel) {
+    // Analyse locale : on suggère paysage par défaut pour Excel
+    suggestion = {
+      orientation: "landscape",
+      fit: "fit",
+      reason:
+        "Tableau Excel détecté — paysage recommandé pour éviter les colonnes coupées",
+      cost: 0,
+    };
+  } else if (isPdf && numPages) {
+    // Analyse locale ratio : PDF multi-pages → portrait standard
+    suggestion = {
+      orientation: "portrait",
+      fit: "fit",
+      reason: `PDF ${numPages} page(s) — portrait recommandé`,
+      cost: 0,
+    };
+  } else if (isDoc) {
+    suggestion = {
+      orientation: "portrait",
+      fit: "fit",
+      reason: "Document texte — portrait recommandé",
+      cost: 0,
+    };
+  }
+
+  return suggestion;
 }
 
 async function _openFusionFromSelection() {
