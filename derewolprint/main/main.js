@@ -3396,6 +3396,21 @@ function launchApp(
 ) {
   isOfflineApp = isOffline;
 
+  // ── Guard : ne pas créer une nouvelle fenêtre si elle existe déjà ──
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log("[BOOT] Fenêtre déjà ouverte — skip createMainWindow()");
+    // Mettre à jour le mode offline seulement
+    if (isOffline) {
+      mainWindow.webContents.send(
+        "app:offline-warning",
+        "Mode hors ligne — réception des jobs suspendue",
+      );
+    } else {
+      mainWindow.webContents.send("app:online");
+    }
+    return;
+  }
+
   // Si on lance normalement, arrêter le retry offline
   if (!isOffline && offlineRetryTimer) {
     clearInterval(offlineRetryTimer);
@@ -3588,7 +3603,7 @@ async function startOfflineRetry() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("app:online");
           try {
-            const access = await checkAccess(printerCfg.id);
+            const access = await checkAccess();
             if (access.status === "active" || access.status === "trial") {
               mainWindow.webContents.send("hide:activation-modal");
               startSubscriptionPolling(printerCfg.id);

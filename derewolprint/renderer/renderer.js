@@ -1637,6 +1637,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  if (window.derewol?.onAppOnline) {
+    window.derewol.onAppOnline(() => {
+      console.log("[DEREWOL] Connexion rétablie — masquage banner offline");
+      showOfflineBanner(false);
+      localStorage.removeItem("derewol_offline_mode");
+    });
+  }
+
   // ── Relayer ai:credits-updated vers l'iframe derewolAI ──
   if (window.derewol?.onAICreditsUpdated) {
     window.derewol.onAICreditsUpdated(() => {

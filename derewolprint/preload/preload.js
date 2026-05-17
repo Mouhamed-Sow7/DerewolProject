@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.on("app:offline-warning", (_, message) => callback(message)),
   onRevokedWarning: (callback) =>
     ipcRenderer.on("app:revoked-warning", (_, message) => callback(message)),
+  onAppOnline: (callback) =>
+    ipcRenderer.on("app:online", (_, data) => callback(data)),
   onAICreditsUpdated: (callback) =>
     ipcRenderer.on("ai:credits-updated", () => callback()),
 
