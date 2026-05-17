@@ -36,7 +36,12 @@ const {
   cleanupTempPreview, // NOUVEAU
 } = require("../services/supabase");
 const { requestRecovery, verifyRecovery } = require("../services/recovery");
-const { startPolling, stopPolling } = require("../services/polling");
+const {
+  startPolling,
+  stopPolling,
+  restartPolling,
+  fetchPendingJobs,
+} = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
 const QRCode = require("qrcode");
@@ -2722,6 +2727,19 @@ ipcMain.handle("job:reject", async (event, jobId) => {
     return { success: true, jobId, newGroupStatus };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("job:poll-now", async () => {
+  // Ne pas redémarrer le polling — juste forcer un fetch unique
+  try {
+    const jobs = await fetchPendingJobs(printerCfg.id);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("job:received", jobs);
+    }
+    console.log("[JOBS] poll-now: fetch forcé, jobs envoyés");
+  } catch (err) {
+    console.warn("[JOBS] poll-now error:", err.message);
   }
 });
 

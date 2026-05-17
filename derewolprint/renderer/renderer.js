@@ -1402,6 +1402,19 @@ applyPollingInterval();
 initBridge();
 
 // ═══════════════════════════════════════════════════════════════
+// REALTIME JOB NOTIFICATIONS ════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+function showJobNotification(message) {
+  const msg = message || "🖨️ Nouveau job reçu !";
+  if (typeof showUploadToast === "function") {
+    showUploadToast(msg, "success");
+  }
+  if (typeof playNotification === "function") {
+    playNotification();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPOSE MODAL FUNCTIONS GLOBALLY ═══════════════════════════════
 // ═══════════════════════════════════════════════════════════════
 
@@ -1648,34 +1661,24 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Realtime jobs ────────────────────────────────────────
   if (window.derewol?.onJobsNew) {
     window.derewol.onJobsNew((job) => {
-      console.log("[JOBS] Nouveau job reçu via Realtime:", job?.id);
-      // Rafraîchir la liste des jobs immédiatement
-      if (typeof loadJobs === "function") loadJobs();
-      if (typeof refreshJobsList === "function") refreshJobsList();
-      // Notification visuelle
-      if (typeof showJobNotification === "function") showJobNotification();
+      console.log("[JOBS] Realtime INSERT:", job?.id);
+      showJobNotification("🖨️ Nouveau job d'impression reçu !");
+      window.derewol.requestJobRefresh?.();
     });
   }
 
   if (window.derewol?.onJobsNewGroup) {
     window.derewol.onJobsNewGroup((group) => {
-      console.log("[JOBS] Nouveau groupe client reçu via Realtime:", group?.id);
-      if (typeof loadJobs === "function") loadJobs();
-      if (typeof refreshJobsList === "function") refreshJobsList();
-      if (typeof showJobNotification === "function") showJobNotification();
+      console.log("[JOBS] Realtime nouveau groupe:", group?.id);
+      showJobNotification("📂 Nouveau client en attente !");
+      window.derewol.requestJobRefresh?.();
     });
   }
 
   if (window.derewol?.onJobsUpdated) {
     window.derewol.onJobsUpdated((job) => {
-      console.log(
-        "[JOBS] Job mis à jour via Realtime:",
-        job?.id,
-        "→",
-        job?.status,
-      );
-      if (typeof loadJobs === "function") loadJobs();
-      if (typeof refreshJobsList === "function") refreshJobsList();
+      console.log("[JOBS] Realtime UPDATE:", job?.id, "→", job?.status);
+      // Refresh silencieux, pas de notification pour les updates
     });
   }
 

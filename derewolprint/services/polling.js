@@ -327,4 +327,9 @@ function restartPolling(newIntervalMs) {
   startPolling(currentCallback, currentPrinterId, newIntervalMs);
 }
 
-module.exports = { startPolling, stopPolling, restartPolling };
+module.exports = {
+  startPolling,
+  stopPolling,
+  restartPolling,
+  fetchPendingJobs,
+};

@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.on("jobs:updated", (_, data) => callback(data)),
   onJobsNewGroup: (callback) =>
     ipcRenderer.on("jobs:new-group", (_, data) => callback(data)),
+  requestJobRefresh: () => ipcRenderer.invoke("job:poll-now"),
   onAICreditsUpdated: (callback) =>
     ipcRenderer.on("ai:credits-updated", () => callback()),
 
