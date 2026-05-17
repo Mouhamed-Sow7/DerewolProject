@@ -418,6 +418,55 @@ function StatusBadge({ status }) {
   );
 }
 
+function FileIcon({ fileName }) {
+  const ext = String(fileName || "")
+    .split(".")
+    .pop()
+    .trim()
+    .toLowerCase();
+  const icons = {
+    docx: { icon: "fa-file-word", color: "#2563eb" },
+    doc: { icon: "fa-file-word", color: "#2563eb" },
+    xlsx: { icon: "fa-file-excel", color: "#16a34a" },
+    xls: { icon: "fa-file-excel", color: "#16a34a" },
+    png: { icon: "fa-file-image", color: "#7c3aed" },
+    jpg: { icon: "fa-file-image", color: "#7c3aed" },
+    jpeg: { icon: "fa-file-image", color: "#7c3aed" },
+    txt: { icon: "fa-file-lines", color: "#6b7280" },
+  };
+
+  if (ext === "pdf") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        style={{ marginRight: 6, flexShrink: 0 }}
+        aria-hidden="true"
+      >
+        <path
+          fill="#dc2626"
+          d="M6 2h7.5L18 6.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"
+        />
+        <path fill="#fff" d="M14 2v4h4.5L14 2Z" />
+        <path
+          fill="#fff"
+          d="M8 16h2.4l1.1-2.8 1 2.8H15l-2.2-5h-1.3L8 16Zm4.8 0h1.8V11h-1.8V16Zm4.2 0h1.2V11h-1.2v3.4l-1.7-1.7h-1.2l1.8 1.8-1.8 1.8h1.2l1.7-1.7V16Z"
+        />
+      </svg>
+    );
+  }
+
+  const { icon, color } = icons[ext] || { icon: "fa-file", color: "#6b7280" };
+  return (
+    <i
+      className={`fa-solid ${icon}`}
+      style={{ color, fontSize: 16, marginRight: 6, flexShrink: 0 }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function GroupCard({ group, onPreview, C, t, history = false }) {
   const [expanded, setExpanded] = useState(false);
   const job = group.print_jobs?.[0];
@@ -427,10 +476,20 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
   const historyFiles = [];
 
   allFiles.forEach((file) => {
+    // Un fichier va dans historyFiles si :
+    // - il est rejeté
+    // - OU son job associé est completed/rejected
+    const fileJob =
+      group.print_jobs?.find((j) => j.file_id === file.id) ||
+      group.print_jobs?.[0];
+    const jobDone =
+      fileJob?.status === "completed" || fileJob?.status === "rejected";
+
     if (
       file.status === "completed" ||
       file.status === "rejected" ||
-      file.rejected === true
+      file.rejected === true ||
+      jobDone
     ) {
       historyFiles.push(file);
     } else {
@@ -616,107 +675,108 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
       </div>
       {files.length > 0 && (
         <div>
-          {visibleFiles.map((f) => (
-            <div
-              key={f.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 16px",
-                borderBottom: `1px solid ${C.border}`,
-                background: f.rejected ? "#fdecea" : "transparent",
-                borderLeft: f.rejected ? "3px solid #e53935" : "none",
-                opacity: f.rejected ? 0.75 : 1,
-              }}
-            >
-              <span
+          {uiStatus !== "completed" &&
+            visibleFiles.map((f) => (
+              <div
+                key={f.id}
                 style={{
-                  fontSize: 16,
-                  color: f.rejected ? "#e53935" : "#dc2626",
-                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 16px",
+                  borderBottom: `1px solid ${C.border}`,
+                  background: f.rejected ? "#fdecea" : "transparent",
+                  borderLeft: f.rejected ? "3px solid #e53935" : "none",
+                  opacity: f.rejected ? 0.75 : 1,
                 }}
               >
-                <i
-                  className={
-                    f.rejected ? "fa-solid fa-xmark" : "fa-regular fa-file-pdf"
-                  }
-                />
-              </span>
-              <span
-                style={{
-                  flex: 1,
-                  fontSize: 13,
-                  color: C.text,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  textDecoration: f.rejected ? "line-through" : "none",
-                }}
-                title={f.file_name}
-              >
-                {f.file_name}
-              </span>
-              {(f.rejected || f.status === "rejected") && (
                 <span
                   style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#e53935",
-                    background: "#fdecea",
-                    padding: "2px 8px",
-                    borderRadius: 20,
+                    fontSize: 16,
+                    color: f.rejected ? "#e53935" : "#6b7280",
+                    flexShrink: 0,
+                  }}
+                >
+                  {f.rejected ? (
+                    <i className="fa-solid fa-xmark" />
+                  ) : (
+                    <FileIcon fileName={f.file_name} />
+                  )}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    fontSize: 13,
+                    color: C.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    flexShrink: 0,
+                    textDecoration: f.rejected ? "line-through" : "none",
                   }}
+                  title={f.file_name}
                 >
-                  Rejeté — supprimé
+                  {f.file_name}
                 </span>
-              )}
-              {!f.rejected && f.storage_path && (
-                <button
-                  onClick={() => onPreview(f.storage_path, f.file_name)}
-                  style={{
-                    background: C.greenLight,
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "4px 10px",
-                    color: C.green,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
-                    fontFamily: "Inter, sans-serif",
-                  }}
-                >
-                  <i className="fa-regular fa-eye" /> Voir
-                </button>
-              )}
-              {f.status === "rejected" && (
-                <span
-                  style={{
-                    background: "#fee2e2",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "4px 10px",
-                    color: "#e53935",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
-                    fontFamily: "Inter, sans-serif",
-                  }}
-                >
-                  <i className="fa-solid fa-xmark-circle" /> Supprimé
-                </span>
-              )}
-            </div>
-          ))}
+                {(f.rejected || f.status === "rejected") && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#e53935",
+                      background: "#fdecea",
+                      padding: "2px 8px",
+                      borderRadius: 20,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Rejeté — supprimé
+                  </span>
+                )}
+                {uiStatus !== "completed" && !f.rejected && f.storage_path && (
+                  <button
+                    onClick={() => onPreview(f.storage_path, f.file_name)}
+                    style={{
+                      background: C.greenLight,
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "4px 10px",
+                      color: C.green,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      flexShrink: 0,
+                      fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    <i className="fa-regular fa-eye" /> Voir
+                  </button>
+                )}
+                {f.status === "rejected" && (
+                  <span
+                    style={{
+                      background: "#fee2e2",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "4px 10px",
+                      color: "#e53935",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      flexShrink: 0,
+                      fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    <i className="fa-solid fa-xmark-circle" /> Supprimé
+                  </span>
+                )}
+              </div>
+            ))}
           {files.length > THRESHOLD && (
             <button
               onClick={() => setExpanded(!expanded)}
@@ -753,34 +813,57 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
         )}
         {uiStatus === "completed" && (
           <div>
-            {historyFiles.length > 0 &&
-              historyFiles.map((f) => (
+            {historyFiles.map((f) => (
+              <div
+                key={f.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "6px 0",
+                  borderBottom: "1px solid #dcfce7",
+                  fontSize: 13,
+                  gap: 8,
+                }}
+              >
                 <div
-                  key={f.id}
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
-                    padding: "4px 0",
-                    borderBottom: "1px solid #dcfce7",
-                    fontSize: 13,
+                    alignItems: "center",
+                    overflow: "hidden",
+                    flex: 1,
                   }}
                 >
+                  <FileIcon fileName={f.file_name || f.name} />
                   <span
-                    style={{ color: "#166534", textDecoration: "line-through" }}
+                    style={{
+                      color: "#6b7280",
+                      textDecoration: "line-through",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
                   >
                     {f.file_name || f.name}
                   </span>
-                  <span style={{ color: "#166534", fontWeight: 500 }}>
-                    <i className="fa-solid fa-check" /> Terminé — supprimé
-                  </span>
                 </div>
-              ))}
+                <span
+                  style={{
+                    color: "#166534",
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <i className="fa-solid fa-check" /> Terminé — supprimé
+                </span>
+              </div>
+            ))}
             <p
               style={{
                 color: "#166534",
                 fontSize: 13,
                 fontWeight: 500,
-                marginTop: 6,
+                marginTop: 8,
               }}
             >
               <i className="fa-solid fa-check" /> Terminé — fichiers supprimés
