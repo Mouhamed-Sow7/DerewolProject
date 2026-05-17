@@ -3563,7 +3563,6 @@ function isNetworkError(err) {
 
 // ── Retry en arrière-plan pour mode hors ligne ───────────────────
 let offlineRetryTimer = null;
-
 async function startOfflineRetry() {
   if (offlineRetryTimer) clearInterval(offlineRetryTimer);
   offlineRetryTimer = setInterval(async () => {
@@ -3575,39 +3574,41 @@ async function startOfflineRetry() {
         .select("id, name, slug")
         .eq("id", printerCfg.id)
         .single();
-
       if (!error && data) {
-        console.log("[OFFLINE RETRY] Connexion rétablie — synchronisation");
+        console.log("[OFFLINE RETRY] Connexion rétablie — sync silencieuse");
         isOfflineApp = false;
+        clearInterval(offlineRetryTimer);
+        offlineRetryTimer = null;
+
         if (data.name !== printerCfg.name) {
           printerCfg.name = data.name;
           saveConfig(printerCfg);
         }
-        // Notifier l'app que la connexion est revenue
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("app:online");
-          if (!hasReloadedAfterReconnect) {
-            hasReloadedAfterReconnect = true;
-            setTimeout(() => {
-              hasReloadedAfterReconnect = false;
-            }, 5000);
-            try {
-              mainWindow.webContents.reload();
-            } catch (reloadErr) {
-              console.warn(
-                "[OFFLINE RETRY] Impossible de recharger la fenêtre:",
-                reloadErr.message,
-              );
+          try {
+            const access = await checkAccess(printerCfg.id);
+            if (access.status === "active" || access.status === "trial") {
+              mainWindow.webContents.send("hide:activation-modal");
+              startSubscriptionPolling(printerCfg.id);
+              await subscribeToSubscriptionChanges();
+              console.log("[OFFLINE RETRY] ✅ En ligne — pas de reload");
+            } else {
+              mainWindow.webContents.send("show:activation-modal", {
+                status: access.status,
+                isRenewal: true,
+              });
             }
+          } catch (accessErr) {
+            console.warn("[OFFLINE RETRY] Accès échoué:", accessErr.message);
           }
         }
-        clearInterval(offlineRetryTimer);
-        offlineRetryTimer = null;
       }
     } catch (err) {
-      // Continuer à réessayer
+      console.log("[OFFLINE RETRY] Pas encore connecté...");
     }
-  }, 30000); // Toutes les 30 secondes
+  }, 30000);
 }
 
 // ── Boot ────────────────────────────────────────────────────────

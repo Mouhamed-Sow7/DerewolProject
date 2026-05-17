@@ -117,7 +117,33 @@ let acceptanceInitialized = false;
 let isShowingModal = false;
 let isReloading = false;
 
-// ┌─────────────────────────────────────────────────────────────┐
+function showOfflineBanner(show) {
+  let banner = document.getElementById("offline-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "offline-banner";
+    banner.innerHTML = `
+      <span>⚠️ Mode hors-ligne — réception des jobs suspendue</span>
+    `;
+    banner.style.cssText = `
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #f59e0b;
+      color: #1c1917;
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 99999;
+      display: none;
+      transition: all 0.3s ease;
+    `;
+    document.body.appendChild(banner);
+  }
+  banner.style.display = show ? "block" : "none";
+}
+
+// ─────────────────────────────────────────────────────────────
 // │ IMMEDIATE MODAL DISPLAY WITH CACHE — NO DELAYS             │
 // └─────────────────────────────────────────────────────────────┘
 function showModalIfNeeded() {
@@ -1581,11 +1607,14 @@ document.addEventListener("DOMContentLoaded", () => {
           "[DEREWOL] Mode hors ligne détecté — modal d'activation masqué",
         );
         localStorage.setItem("derewol_offline_mode", "true");
+        showOfflineBanner(true);
         // Masquer le modal d'activation en mode offline
         const backdrop = document.getElementById("activation-backdrop");
         if (backdrop && backdrop.classList.contains("show")) {
           hideActivationModal();
         }
+      } else {
+        showOfflineBanner(false);
       }
     });
   }
@@ -1594,6 +1623,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.derewol?.onOfflineWarning) {
     window.derewol.onOfflineWarning?.((message) => {
       console.warn("[DEREWOL] Offline warning:", message);
+      showOfflineBanner(true);
       // En cas d'erreur réseau, l'app démarre quand même
       // Affichage d'un badge ou notification optionnel
     });
