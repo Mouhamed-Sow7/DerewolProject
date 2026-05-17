@@ -518,11 +518,19 @@ async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
   try {
     const buffer = fs.readFileSync(filePath);
 
-    const { data: fileData } = await supabase
+    const { data: fileData, error: fetchError } = await supabase
       .from("files")
-      .select("encrypted_key")
+      .select("encrypted_key, file_hash")
       .eq("id", fileId)
       .single();
+
+    if (fetchError) {
+      console.error(
+        "[WATCHER] ❌ Impossible de récupérer la clé:",
+        fetchError.message,
+      );
+      throw new Error("Récupération clé échouée: " + fetchError.message);
+    }
 
     const existingKey = fileData?.encrypted_key;
     const isPlaceholder =
@@ -601,11 +609,16 @@ async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
       }
     }
 
+    // Calculer le hash du nouveau contenu
+    const { createHash } = require("crypto");
+    const newHash = createHash("sha256").update(buffer).digest("hex");
+
     // ✅ FIX : Plus besoin de mettre à jour encrypted_key, elle reste la même
     const { error: dbError } = await supabase
       .from("files")
       .update({
         modified_at: new Date().toISOString(),
+        file_hash: newHash,
       })
       .eq("id", fileId);
 
@@ -621,7 +634,7 @@ async function autoUpload(filePath, fileId, storagePath, groupId, mainWindow) {
     }
 
     console.log(
-      `[WATCHER] ✅ DB updated — same key preserved for ${fileId}: ${fileData.encrypted_key?.substring(0, 8)}...`,
+      `[WATCHER] ✅ DB updated — same key preserved for ${fileId}: ${existingKey?.substring(0, 8)}... — hash: ${newHash?.substring(0, 8)}...`,
     );
 
     await supabase
@@ -1911,8 +1924,13 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         const outputNormalized = outputPdfPath.replace(/\\/g, "\\\\");
         const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
         await execShell(cmd, { windowsHide: true, timeout: 30000 });
+        if (!fs.existsSync(outputPdfPath)) {
+          throw new Error(
+            `Conversion Excel échouée : PDF non généré → ${outputPdfPath}`,
+          );
+        }
         console.log(
-          `[PRINT] Excel converti en PDF dans Mp-Pdf: ${outputPdfPath}`,
+          `[PRINT] ✅ Excel converti en PDF: ${outputPdfPath} (${fs.statSync(outputPdfPath).size} bytes)`,
         );
       } else {
         throw new Error(`Format non supporté pour Mp-Pdf: ${ext}`);
@@ -2019,6 +2037,12 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
     try {
       await pdfToPrinter.print(tmpPdf, pdfPrintOpts);
+      console.log(`[PRINT] ✅ pdfToPrinter.print réussi: ${tmpPdf}`);
+    } catch (printErr) {
+      console.error(
+        `[PRINT] ❌ pdfToPrinter.print échoué: ${printErr.message}`,
+      );
+      throw printErr;
     } finally {
       try {
         fs.unlinkSync(tmpPdf);
@@ -2026,42 +2050,59 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
     }
   }
 
-  for (let i = 0; i < copies; i++) {
-    await printFile(tmpPath, printerName, printOpts);
-    console.log(`[PRINT] ${file.file_name} copie ${i + 1}/${copies} ✅`);
+  try {
+    for (let i = 0; i < copies; i++) {
+      await Promise.race([
+        printFile(tmpPath, printerName, printOpts),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Timeout impression — 3 minutes dépassées")),
+            3 * 60 * 1000,
+          ),
+        ),
+      ]);
+      console.log(`[PRINT] ${file.file_name} copie ${i + 1}/${copies} ✅`);
+      await supabase
+        .from("print_jobs")
+        .update({ copies_remaining: copies - (i + 1) })
+        .eq("id", jobId);
+    }
+
+    const { error: jobUpdateError } = await supabase
+      .from("print_jobs")
+      .update({ status: "completed", copies_remaining: 0 })
+      .eq("id", jobId);
+    if (jobUpdateError) {
+      console.warn(
+        `[PRINT] update print_jobs failed for job ${jobId}: ${jobUpdateError.message}`,
+      );
+    }
+
+    // Marquer le fichier comme imprimé (filet de sécurité pour le calcul de statut groupe)
+    await supabase
+      .from("files")
+      .update({ hash_printed: "printed" })
+      .eq("id", data.file_id);
+
+    // ✅ Return cleanup info (cleanup scheduled separately, not here)
+    return {
+      jobId,
+      fileId: data.file_id,
+      fileName: file.file_name,
+      copies,
+      fileGroupId,
+      ownerId,
+      tmpPath,
+      storagePath: file.storage_path,
+    };
+  } catch (err) {
     await supabase
       .from("print_jobs")
-      .update({ copies_remaining: copies - (i + 1) })
+      .update({ status: "failed", error_message: err.message })
       .eq("id", jobId);
+    console.error(`[PRINT] ❌ Job ${jobId} failed: ${err.message}`);
+    throw err;
   }
-
-  const { error: jobUpdateError } = await supabase
-    .from("print_jobs")
-    .update({ status: "completed", copies_remaining: 0 })
-    .eq("id", jobId);
-  if (jobUpdateError) {
-    console.warn(
-      `[PRINT] update print_jobs failed for job ${jobId}: ${jobUpdateError.message}`,
-    );
-  }
-
-  // Marquer le fichier comme imprimé (filet de sécurité pour le calcul de statut groupe)
-  await supabase
-    .from("files")
-    .update({ hash_printed: "printed" })
-    .eq("id", data.file_id);
-
-  // ✅ Return cleanup info (cleanup scheduled separately, not here)
-  return {
-    jobId,
-    fileId: data.file_id,
-    fileName: file.file_name,
-    copies,
-    fileGroupId,
-    ownerId,
-    tmpPath,
-    storagePath: file.storage_path,
-  };
 }
 
 // ── Impression d'un seul fichier (avec délai intégré) ──────
