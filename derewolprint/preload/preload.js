@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld("derewol", {
   getHistory: () => ipcRenderer.invoke("history:get"),
   setPrintOptions: (opts) => ipcRenderer.invoke("print:set-options", opts),
   getPdfPages: (fileId) => ipcRenderer.invoke("pdf:get-pages", fileId),
+  getPdfOrientation: (fileId) =>
+    ipcRenderer.invoke("pdf:get-orientation", { fileId }),
 
   // ── Fusion modal ────────────────────────────────────────────
   getFusionPreview: (fileId) =>

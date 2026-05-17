@@ -856,6 +856,32 @@ function openPrintOptionsModal(jobId, fileId, fileName, ext, numPages = null) {
     aiApplied: savedOpts?.aiApplied || false,
   };
 
+  if (isPdf && !savedOpts?.orientation && window.derewol?.getPdfOrientation) {
+    window.derewol
+      .getPdfOrientation(fileId)
+      .then((result) => {
+        if (!result?.orientation || !window._printOptions) return;
+        window._printOptions.orientation = result.orientation;
+        setOptOri(result.orientation);
+        const aiSection = modal.querySelector("#derewol-ai-section");
+        if (aiSection) {
+          const label =
+            result.orientation === "landscape" ? "paysage" : "portrait";
+          aiSection.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="font-size:18px;">✨</span>
+          <div style="flex:1;">
+            <p style="font-size:11px;font-weight:600;color:#1B5E35;margin:0 0 3px;">Derewol AI détecte</p>
+            <p style="font-size:11px;color:#555;margin:0;line-height:1.4;">
+              PDF ${label} natif — orientation pré-sélectionnée automatiquement
+            </p>
+          </div>
+        </div>`;
+        }
+      })
+      .catch(() => {});
+  }
+
   // Limiter le champ "à" au nombre de pages réel
   const pageToInput = document.getElementById("opt-page-to");
   if (pageToInput && numPages) {

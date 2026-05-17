@@ -1015,6 +1015,45 @@ ipcMain.handle("print:set-options", (_event, opts) => {
   global._filesPrintOptions = { ...global._filesPrintOptions, ...opts };
 });
 
+// IPC: détecter l'orientation d'un PDF (exposé au renderer)
+ipcMain.handle("pdf:get-orientation", async (_, { fileId }) => {
+  try {
+    const { PDFDocument } = require("pdf-lib");
+
+    const cached = decryptedFileCache.get(fileId);
+    const filePath =
+      cached?.pdfTmpPath && fs.existsSync(cached.pdfTmpPath)
+        ? cached.pdfTmpPath
+        : cached?.tmpPath && fs.existsSync(cached.tmpPath)
+          ? cached.tmpPath
+          : null;
+
+    if (!filePath) {
+      console.warn(
+        `[PDF] Orientation: fichier non trouvé en cache pour fileId: ${fileId}`,
+      );
+      return { orientation: null };
+    }
+
+    const pdfBytes = fs.readFileSync(filePath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const page = pdfDoc.getPages()[0];
+    const { width, height } = page.getSize();
+    const rotation = page.getRotation().angle;
+    const isRotated = rotation === 90 || rotation === 270;
+    const visualWidth = isRotated ? height : width;
+    const visualHeight = isRotated ? width : height;
+    const orientation = visualWidth > visualHeight ? "landscape" : "portrait";
+    console.log(
+      `[PDF] Orientation: ${orientation} (${width}x${height}, rot:${rotation}°) — fileId: ${fileId}`,
+    );
+    return { orientation, width, height, rotation };
+  } catch (err) {
+    console.warn("[PDF] Erreur détection orientation:", err.message);
+    return { orientation: null };
+  }
+});
+
 // ── Viewer : helpers ────────────────────────────────────────────
 function getFileType(fileName) {
   const ext = path.extname(fileName).toLowerCase();
@@ -1977,16 +2016,63 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       const outputPdfPath = path.join(mpPdfFolder, `${fileName}.pdf`);
 
       if (ext === ".pdf") {
-        const pageRange =
-          printOpts.pages === "range"
-            ? { from: printOpts.pageFrom || 1, to: printOpts.pageTo || 9999 }
-            : null;
-        if (pageRange) {
-          await pdfToPrinter.print(filePath, {
-            printer: "Mp-Pdf",
-            pages: `${pageRange.from}-${pageRange.to}`,
+        try {
+          const { PDFDocument, degrees } = require("pdf-lib");
+          const pdfBytes = fs.readFileSync(filePath);
+          const pdfDoc = await PDFDocument.load(pdfBytes);
+          const pages = pdfDoc.getPages();
+          const wantsLandscape = printOpts.orientation === "landscape";
+          let rotationApplied = false;
+
+          pages.forEach((page) => {
+            const { width, height } = page.getSize();
+            const currentRotation = page.getRotation().angle;
+            const isRotated90or270 =
+              currentRotation === 90 || currentRotation === 270;
+            const visualWidth = isRotated90or270 ? height : width;
+            const visualHeight = isRotated90or270 ? width : height;
+            const isVisuallyLandscape = visualWidth > visualHeight;
+
+            console.log(
+              `[PRINT] Page size: ${width}x${height}, rotation: ${currentRotation}°, visually: ${isVisuallyLandscape ? "landscape" : "portrait"}, wants: ${printOpts.orientation || "none"}`,
+            );
+
+            // Si pas de préférence → détecter automatiquement depuis les métadonnées
+            if (!printOpts.orientation) {
+              // On laisse le PDF tel quel — l'orientation native est respectée
+              console.log(
+                `[PRINT] Pas d'orientation définie — PDF conservé tel quel (${isVisuallyLandscape ? "landscape" : "portrait"} natif)`,
+              );
+              return;
+            }
+
+            const wantsLandscape = printOpts.orientation === "landscape";
+
+            // Ne rien faire si déjà dans le bon sens
+            if (isVisuallyLandscape === wantsLandscape) {
+              console.log(
+                `[PRINT] PDF déjà dans le bon sens — aucune rotation`,
+              );
+              return;
+            }
+
+            // Corriger seulement si nécessaire
+            if (isVisuallyLandscape && !wantsLandscape) {
+              page.setRotation(degrees(90)); // paysage → portrait
+            } else if (!isVisuallyLandscape && wantsLandscape) {
+              page.setRotation(degrees(270)); // portrait → paysage
+            }
           });
-        } else {
+
+          const finalBytes = await pdfDoc.save();
+          fs.writeFileSync(outputPdfPath, finalBytes);
+          if (rotationApplied) {
+            console.log(
+              `[PRINT] PDF rotation appliquée → ${printOpts.orientation}`,
+            );
+          }
+        } catch (err) {
+          console.warn("[PRINT] pdf-lib échoué, copie directe:", err.message);
           fs.copyFileSync(filePath, outputPdfPath);
         }
         console.log(`[PRINT] PDF copié dans Mp-Pdf: ${outputPdfPath}`);
@@ -2028,7 +2114,6 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
 
       let printPath = filePath;
 
-      // Appliquer la rotation si orientation demandée
       if (printOpts.orientation) {
         try {
           const { PDFDocument, degrees } = require("pdf-lib");
@@ -2036,32 +2121,65 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
           const pdfBytes = fs.readFileSync(filePath);
           const pdfDoc = await PDFDocument.load(pdfBytes);
           const pages = pdfDoc.getPages();
+          const wantsLandscape = printOpts.orientation === "landscape";
+          let rotationApplied = false;
 
           pages.forEach((page) => {
             const { width, height } = page.getSize();
-            const isLandscape = width > height;
+            const currentRotation = page.getRotation().angle;
+            const isRotated90or270 =
+              currentRotation === 90 || currentRotation === 270;
+            const visualWidth = isRotated90or270 ? height : width;
+            const visualHeight = isRotated90or270 ? width : height;
+            const isVisuallyLandscape = visualWidth > visualHeight;
+
+            console.log(
+              `[PRINT] Page — size: ${width}x${height}, rotation: ${currentRotation}°, visually: ${isVisuallyLandscape ? "landscape" : "portrait"}, wants: ${printOpts.orientation}`,
+            );
+
+            // Si pas de préférence → détecter automatiquement depuis les métadonnées
+            if (!printOpts.orientation) {
+              // On laisse le PDF tel quel — l'orientation native est respectée
+              console.log(
+                `[PRINT] Pas d'orientation définie — PDF conservé tel quel (${isVisuallyLandscape ? "landscape" : "portrait"} natif)`,
+              );
+              return;
+            }
+
             const wantsLandscape = printOpts.orientation === "landscape";
 
-            // Corriger seulement si l'orientation ne correspond pas
-            if (isLandscape && !wantsLandscape) {
-              page.setRotation(degrees(270));
-            } else if (!isLandscape && wantsLandscape) {
-              page.setRotation(degrees(90));
+            // Ne rien faire si déjà dans le bon sens
+            if (isVisuallyLandscape === wantsLandscape) {
+              console.log(
+                `[PRINT] PDF déjà dans le bon sens — aucune rotation`,
+              );
+              return;
+            }
+
+            // Corriger seulement si nécessaire
+            if (isVisuallyLandscape && !wantsLandscape) {
+              page.setRotation(degrees(90)); // paysage → portrait
+              rotationApplied = true;
+            } else if (!isVisuallyLandscape && wantsLandscape) {
+              page.setRotation(degrees(270)); // portrait → paysage
+              rotationApplied = true;
             }
           });
 
           const rotatedBytes = await pdfDoc.save();
-          const tmpPath = filePath.replace(".pdf", "_rotated_tmp.pdf");
+          const tmpPath = filePath.replace(
+            ".pdf",
+            `_rotated_tmp_${Date.now()}.pdf`,
+          );
           fs.writeFileSync(tmpPath, rotatedBytes);
           printPath = tmpPath;
-          console.log(
-            `[PRINT] PDF rotation appliquée → ${printOpts.orientation}`,
-          );
+          if (rotationApplied) {
+            console.log(
+              `[PRINT] PDF rotation corrigée → ${printOpts.orientation}`,
+            );
+          }
         } catch (err) {
-          console.warn(
-            "[PRINT] Rotation PDF échouée, impression sans rotation:",
-            err.message,
-          );
+          console.warn("[PRINT] Rotation PDF échouée:", err.message);
           printPath = filePath;
         }
       }
@@ -2071,7 +2189,6 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
         ...(pageRange && { pages: pageRange }),
       });
 
-      // Nettoyer le fichier temporaire
       if (printPath !== filePath) {
         try {
           require("fs").unlinkSync(printPath);
