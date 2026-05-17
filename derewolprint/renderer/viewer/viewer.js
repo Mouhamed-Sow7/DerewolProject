@@ -45,7 +45,12 @@ const state = {
   xlsxActiveSheet: null,
   pdfDoc: null,
   pdfPage: 1,
-  pdfZoom: 1.2,
+  pdfRenderZoom: 1.2,
+  pdfScale: 1,
+  pdfPanX: 0,
+  pdfPanY: 0,
+  pdfDragging: false,
+  pdfDragStart: null,
   // TTL
   ttlSeconds: 30 * 60,
   ttlInterval: null,
@@ -171,6 +176,14 @@ async function initViewerBridge() {
   }
 }
 
+function applyTransform() {
+  const wrapper =
+    document.getElementById("pdf-canvas-wrapper") ||
+    document.getElementById("pdf-canvas").parentElement;
+  if (!wrapper) return;
+  wrapper.style.transform = `translate(${state.pdfPanX}px, ${state.pdfPanY}px) scale(${state.pdfScale})`;
+}
+
 initViewerBridge();
 
 // -- TTL countdown ---------------------------------------------------------
@@ -233,45 +246,115 @@ async function initPDF() {
     window._currentPdfNumPages = pdfDoc.numPages;
     state.pdfPage = 1;
 
-    // ✅ Zoom auto-fit à la largeur du conteneur
+    // ✅ Render at a reasonable base resolution (PDF.js render zoom)
     const firstPage = await pdfDoc.getPage(1);
     const rawViewport = firstPage.getViewport({ scale: 1.0 });
-    const container = canvas.parentElement;
+    const container = canvas.parentElement.parentElement; // pdf-scroll container
     const containerWidth = container.clientWidth || window.innerWidth - 40;
-    state.pdfZoom = Math.min((containerWidth - 32) / rawViewport.width, 2.5);
-    state.pdfZoom = Math.max(state.pdfZoom, 0.5);
+    state.pdfRenderZoom = Math.min(
+      (containerWidth - 32) / rawViewport.width,
+      2.5,
+    );
+    state.pdfRenderZoom = Math.max(state.pdfRenderZoom, 0.5);
+
+    // Visual scale (CSS) separate from render resolution
+    state.pdfScale = 1;
 
     $("pdf-page-info").textContent = `1 / ${pdfDoc.numPages}`;
-    $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
+    $("pdf-zoom-val").textContent = Math.round(state.pdfScale * 100) + "%";
 
-    await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom);
+    await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfRenderZoom);
+    applyTransform();
 
+    // --- Pan (click+drag) and wheel zoom handlers ---
+    // Wheel zoom (mouse wheel) + buttons both supported (apply CSS scale)
     let pdfRotation = 0;
+
+    canvas.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        const step = 0.1;
+        if (e.deltaY < 0) {
+          state.pdfScale = Math.min(state.pdfScale + step, 5.0);
+        } else {
+          state.pdfScale = Math.max(state.pdfScale - step, 0.3);
+        }
+        $("pdf-zoom-val").textContent = Math.round(state.pdfScale * 100) + "%";
+        applyTransform();
+      },
+      { passive: false },
+    );
+
+    // Pan: click + drag (on wrapper)
+    const wrapper =
+      document.getElementById("pdf-canvas-wrapper") || canvas.parentElement;
+    wrapper.addEventListener("mousedown", (e) => {
+      state.pdfDragging = true;
+      state.pdfDragStart = { x: e.clientX, y: e.clientY };
+      wrapper.classList.add("panning");
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!state.pdfDragging) return;
+      const dx = e.clientX - state.pdfDragStart.x;
+      const dy = e.clientY - state.pdfDragStart.y;
+      state.pdfDragStart = { x: e.clientX, y: e.clientY };
+      state.pdfPanX += dx;
+      state.pdfPanY += dy;
+      applyTransform();
+    });
+    window.addEventListener("mouseup", () => {
+      if (!state.pdfDragging) return;
+      state.pdfDragging = false;
+      wrapper.classList.remove("panning");
+    });
+
     $("pdf-prev").onclick = async () => {
       if (state.pdfPage <= 1) return;
       state.pdfPage--;
       $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
+      await renderPDFPage(
+        pdfDoc,
+        state.pdfPage,
+        canvas,
+        state.pdfRenderZoom,
+        pdfRotation,
+      );
+      applyTransform();
     };
     $("pdf-next").onclick = async () => {
       if (state.pdfPage >= pdfDoc.numPages) return;
       state.pdfPage++;
       $("pdf-page-info").textContent = `${state.pdfPage} / ${pdfDoc.numPages}`;
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
+      await renderPDFPage(
+        pdfDoc,
+        state.pdfPage,
+        canvas,
+        state.pdfRenderZoom,
+        pdfRotation,
+      );
+      applyTransform();
     };
     $("pdf-zoom-in").onclick = async () => {
-      state.pdfZoom = Math.min(state.pdfZoom + 0.2, 3.0);
-      $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
+      state.pdfScale = Math.min(state.pdfScale + 0.25, 5.0);
+      $("pdf-zoom-val").textContent = Math.round(state.pdfScale * 100) + "%";
+      applyTransform();
     };
     $("pdf-zoom-out").onclick = async () => {
-      state.pdfZoom = Math.max(state.pdfZoom - 0.2, 0.5);
-      $("pdf-zoom-val").textContent = Math.round(state.pdfZoom * 100) + "%";
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
+      state.pdfScale = Math.max(state.pdfScale - 0.25, 0.3);
+      $("pdf-zoom-val").textContent = Math.round(state.pdfScale * 100) + "%";
+      applyTransform();
     };
     $("pdf-rotate").onclick = async () => {
       pdfRotation = (pdfRotation + 90) % 360;
-      await renderPDFPage(pdfDoc, state.pdfPage, canvas, state.pdfZoom, pdfRotation);
+      await renderPDFPage(
+        pdfDoc,
+        state.pdfPage,
+        canvas,
+        state.pdfRenderZoom,
+        pdfRotation,
+      );
+      applyTransform();
     };
   } catch (err) {
     console.error("[PDF ERROR]", err);
@@ -291,6 +374,8 @@ async function renderPDFPage(pdfDoc, pageNum, canvas, zoom, rotation = 0) {
   canvas.height = viewport.height;
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
+  // Keep rendering independent; visual transform applied by applyTransform()
+  applyTransform();
 }
 
 // -- Image -----------------------------------------------------------------

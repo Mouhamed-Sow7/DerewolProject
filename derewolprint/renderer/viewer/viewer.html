@@ -140,7 +140,11 @@
 
       <!-- PDF: custom PDF.js renderer -->
       <div id="pdf-container" class="viewer-pane hidden">
-        <canvas id="pdf-canvas"></canvas>
+        <div id="pdf-scroll" class="pdf-scroll-container">
+          <div id="pdf-canvas-wrapper">
+            <canvas id="pdf-canvas"></canvas>
+          </div>
+        </div>
       </div>
 
       <!-- Image: canvas -->

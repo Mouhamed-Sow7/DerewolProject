@@ -260,6 +260,34 @@ body {
   margin: 0 auto;
 }
 
+/* Pan/zoom helpers */
+#pdf-canvas {
+  cursor: grab;
+  will-change: transform;
+}
+#pdf-canvas.grabbing {
+  cursor: grabbing;
+}
+
+/* Wrapper for transform-based zoom/pan */
+#pdf-canvas-wrapper {
+  transform-origin: top center;
+  transition: transform 0.08s ease;
+  cursor: grab;
+  will-change: transform;
+}
+#pdf-canvas-wrapper.panning {
+  cursor: grabbing;
+}
+
+.pdf-scroll-container {
+  overflow: auto !important;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+}
+
 /* ── Image ───────────────────────────────────────────────────────────── */
 .image-container {
   display: flex;

@@ -311,6 +311,9 @@ function getPrinterWindowsName() {
 // ── Viewer sessions ─────────────────────────────────────────────
 // key = "${jobId}_${fileId}", value = { win, tmpPath, timer }
 const viewerSessions = new Map();
+// Cache des fichiers déchiffrés — persist 30min indépendamment de la fenêtre
+// Structure : fileId → { tmpPath, pdfTmpPath, expiresAt, cacheTimer, fileName, ext }
+const decryptedFileCache = new Map();
 // ── File watchers for automatic re-upload ───────────────────────
 // key = filePath, value = { watcher, debounceTimer, fileId, storagePath, groupId }
 const fileWatchers = new Map();
@@ -953,7 +956,7 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const { data, error } = await supabase
       .from("print_jobs")
       .select(
-        `id, file_id, file_groups ( id, owner_id, files ( id, storage_path, encrypted_key, file_name ) )`,
+        `id, file_id, file_groups ( id, owner_id, files ( id, storage_path, encrypted_key, file_name, file_hash ) )`,
       )
       .eq("id", jobId)
       .single();
@@ -963,6 +966,114 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const files = data.file_groups?.files || [];
     const file = files.find((f) => f.id === fileId) || files[0];
     if (!file) return { success: false, error: "Fichier introuvable" };
+
+    // ── Vérifier le cache déchiffré ──────────────────────────
+    const cached = decryptedFileCache.get(fileId);
+    const now = Date.now();
+    const cacheFileValid =
+      (cached?.pdfTmpPath && fs.existsSync(cached.pdfTmpPath)) ||
+      (cached?.tmpPath && fs.existsSync(cached.tmpPath));
+
+    // Vérifier si le fichier a été modifié depuis la mise en cache
+    if (
+      cached &&
+      file?.file_hash &&
+      cached.fileHash &&
+      cached.fileHash !== file.file_hash
+    ) {
+      console.log(
+        "[VIEWER] Fichier modifié détecté — invalidation cache:",
+        fileId,
+      );
+      // Nettoyer l'ancien cache
+      clearTimeout(cached.cacheTimer);
+      try {
+        if (fs.existsSync(cached.tmpPath)) secureDelete(cached.tmpPath);
+      } catch (_) {}
+      try {
+        if (cached.pdfTmpPath && fs.existsSync(cached.pdfTmpPath))
+          secureDelete(cached.pdfTmpPath);
+      } catch (_) {}
+      decryptedFileCache.delete(fileId);
+    }
+
+    if (cached && cached.expiresAt > now && cacheFileValid) {
+      console.log("[VIEWER] Cache hit — pas de téléchargement:", fileId);
+
+      // Ouvrir directement la fenêtre avec le fichier déjà en cache
+      const win = new BrowserWindow({
+        width: 1020,
+        height: 760,
+        minWidth: 720,
+        minHeight: 500,
+        title: cached.fileName,
+        autoHideMenuBar: true,
+        parent: mainWindow,
+        modal: false,
+        webPreferences: {
+          preload: path.join(__dirname, "../preload/viewerPreload.js"),
+          nodeIntegration: false,
+          contextIsolation: true,
+          devTools: false,
+          webSecurity: false,
+          sandbox: false,
+        },
+      });
+
+      const viewerReadyHandler = async (event) => {
+        if (event.sender !== win.webContents) return;
+        ipcMain.removeListener("viewer:ready", viewerReadyHandler);
+        try {
+          const isPdf = !!(
+            cached.pdfTmpPath && fs.existsSync(cached.pdfTmpPath)
+          );
+          const filePath = isPdf ? cached.pdfTmpPath : cached.tmpPath;
+          const finalType = isPdf ? "pdf" : getFileType(cached.fileName);
+          const viewerBytes = fs.readFileSync(filePath);
+          event.sender.send("viewer:data", {
+            name: cached.fileName,
+            displayName: cached.fileName,
+            jobId,
+            fileId,
+            type: finalType,
+            bytesArray: Array.from(viewerBytes),
+          });
+        } catch (err) {
+          if (!win.isDestroyed())
+            event.sender.send("viewer:error", err.message);
+        }
+      };
+
+      ipcMain.on("viewer:ready", viewerReadyHandler);
+      win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
+
+      // Utiliser le temps restant du cache au lieu de 30min fixes
+      const remainingMs = cached.expiresAt - Date.now();
+      const ttlTimer = setTimeout(() => {
+        if (!win.isDestroyed()) {
+          win.webContents.send("viewer:ttl-expired");
+          setTimeout(() => {
+            if (!win.isDestroyed()) win.close();
+          }, 3500);
+        }
+      }, remainingMs);
+
+      viewerSessions.set(sessionKey, {
+        win,
+        tmpPath: cached.tmpPath,
+        pdfTmpPath: cached.pdfTmpPath,
+        timer: ttlTimer,
+      });
+
+      win.on("closed", () => {
+        clearTimeout(ttlTimer);
+        // Les fichiers tmp sont gérés par decryptedFileCache (30min)
+        // Ne pas supprimer ici — suppression différée pour cache
+        viewerSessions.delete(sessionKey);
+      });
+
+      return { success: true };
+    }
 
     // 2. Download + decrypt from derewol-files
     const { data: fileData, error: dlError } = await supabase.storage
@@ -989,6 +1100,39 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     const tmpName = `dw-view-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
     const tmpPath = path.join(os.tmpdir(), tmpName);
     fs.writeFileSync(tmpPath, decrypted);
+
+    // ── Mettre en cache le fichier déchiffré 30min ───────────
+    if (decryptedFileCache.has(fileId)) {
+      // Nettoyer l'ancien cache timer
+      clearTimeout(decryptedFileCache.get(fileId).cacheTimer);
+    }
+    const cacheTimer = setTimeout(
+      () => {
+        const c = decryptedFileCache.get(fileId);
+        if (c) {
+          try {
+            if (fs.existsSync(c.tmpPath)) secureDelete(c.tmpPath);
+          } catch (_) {}
+          try {
+            if (c.pdfTmpPath && fs.existsSync(c.pdfTmpPath))
+              secureDelete(c.pdfTmpPath);
+          } catch (_) {}
+          decryptedFileCache.delete(fileId);
+          console.log("[VIEWER] Cache expiré — fichier supprimé:", fileId);
+        }
+      },
+      30 * 60 * 1000,
+    );
+
+    decryptedFileCache.set(fileId, {
+      tmpPath,
+      pdfTmpPath: null,
+      expiresAt: Date.now() + 30 * 60 * 1000,
+      cacheTimer,
+      fileName: file.file_name,
+      ext,
+      fileHash: file.file_hash,
+    });
 
     // 4. Ouvrir la fenêtre IMMÉDIATEMENT
     const win = new BrowserWindow({
@@ -1059,6 +1203,10 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
           await convertOfficeToPdfForViewer(tmpPath, pdfTmpPath);
 
+          // Mettre à jour pdfTmpPath dans le cache
+          const cacheEntry = decryptedFileCache.get(fileId);
+          if (cacheEntry) cacheEntry.pdfTmpPath = pdfTmpPath;
+
           // ✅ Re-vérifier après l'await long
           if (win.isDestroyed()) return;
 
@@ -1105,7 +1253,6 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
     win.loadFile(path.join(__dirname, "../renderer/viewer/viewer.html"));
     win.webContents.openDevTools();
 
-    const sessionKey = viewerSessionKey(jobId, fileId);
     const ttlTimer = setTimeout(
       () => {
         if (!win.isDestroyed()) {
@@ -1127,10 +1274,7 @@ ipcMain.handle("viewer:open", async (_event, jobId, fileId) => {
 
     win.on("closed", () => {
       clearTimeout(ttlTimer);
-      const s = viewerSessions.get(sessionKey);
-      if (s?.tmpPath && fs.existsSync(s.tmpPath)) secureDelete(s.tmpPath);
-      if (s?.pdfTmpPath && fs.existsSync(s.pdfTmpPath))
-        secureDelete(s.pdfTmpPath);
+      // Fichiers gérés par decryptedFileCache — pas de suppression ici
       viewerSessions.delete(sessionKey);
     });
 
