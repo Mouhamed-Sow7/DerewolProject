@@ -753,21 +753,36 @@ function GroupCard({ group, onPreview, C, t, history = false }) {
         )}
         {uiStatus === "completed" && (
           <div>
-            {historyFiles.length > 0 && historyFiles.map((f) => (
-              <div key={f.id} style={{ 
-                display: "flex", justifyContent: "space-between",
-                padding: "4px 0", borderBottom: "1px solid #dcfce7",
-                fontSize: 13 
-              }}>
-                <span style={{ color: "#166534", textDecoration: "line-through" }}>
-                  {f.file_name || f.name}
-                </span>
-                <span style={{ color: "#166534", fontWeight: 500 }}>
-                  <i className="fa-solid fa-check" /> Terminé — supprimé
-                </span>
-              </div>
-            ))}
-            <p style={{ color: "#166534", fontSize: 13, fontWeight: 500, marginTop: 6 }}>
+            {historyFiles.length > 0 &&
+              historyFiles.map((f) => (
+                <div
+                  key={f.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                    borderBottom: "1px solid #dcfce7",
+                    fontSize: 13,
+                  }}
+                >
+                  <span
+                    style={{ color: "#166534", textDecoration: "line-through" }}
+                  >
+                    {f.file_name || f.name}
+                  </span>
+                  <span style={{ color: "#166534", fontWeight: 500 }}>
+                    <i className="fa-solid fa-check" /> Terminé — supprimé
+                  </span>
+                </div>
+              ))}
+            <p
+              style={{
+                color: "#166534",
+                fontSize: 13,
+                fontWeight: 500,
+                marginTop: 6,
+              }}
+            >
               <i className="fa-solid fa-check" /> Terminé — fichiers supprimés
             </p>
           </div>
