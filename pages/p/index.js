@@ -1,5 +1,6 @@
 ﻿// pages/p/index.js - Print SPA Refacto Complete
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/router";
 import supabase, {
   getPrinterBySlug,
   getOrCreateActiveFileGroup,
@@ -117,6 +118,31 @@ function extractSlug() {
   if (typeof window === "undefined") return null;
   const parts = window.location.pathname.split("/").filter(Boolean);
   return parts[1] || null;
+}
+
+async function verifyQRToken(slug, token) {
+  if (!token) return false;
+
+  const { data, error } = await supabase
+    .from("anon_sessions")
+    .select("id, token_expires_at, printer_slug")
+    .eq("qr_token", token)
+    .eq("printer_slug", slug)
+    .single();
+
+  if (error || !data) return false;
+
+  if (new Date(data.token_expires_at) < new Date()) return false;
+
+  await supabase
+    .from("anon_sessions")
+    .update({
+      last_seen_at: new Date().toISOString(),
+      token_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    })
+    .eq("id", data.id);
+
+  return true;
 }
 
 function usePrintStatus(ownerId, showToast) {
@@ -1176,6 +1202,7 @@ function DownloadRequestNotif({ req, onRespond, C }) {
 }
 
 export default function PrinterSPA({ showToast }) {
+  const router = useRouter();
   const [slug, setSlug] = useState(null);
   const [page, setPage] = useState("loading");
   const [printer, setPrinter] = useState(null);
@@ -1236,6 +1263,8 @@ export default function PrinterSPA({ showToast }) {
   }
 
   useEffect(() => {
+    if (!router.isReady) return;
+
     let mounted = true;
     const s = extractSlug();
     if (!s) {
@@ -1244,7 +1273,33 @@ export default function PrinterSPA({ showToast }) {
         mounted = false;
       };
     }
-    getPrinterBySlug(s).then((printerData) => {
+
+    const token =
+      router.query.token ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("dw_qr_token")
+        : null);
+
+    async function init() {
+      if (!token) {
+        router.replace(`/scan/${s}`);
+        return;
+      }
+
+      const valid = await verifyQRToken(s, token);
+      if (!valid) {
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem("dw_qr_token");
+        }
+        router.replace(`/scan/${s}?expired=true`);
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("dw_qr_token", token);
+      }
+
+      const printerData = await getPrinterBySlug(s);
       if (!mounted) return;
       if (!printerData) {
         setPage("notfound");
@@ -1262,11 +1317,14 @@ export default function PrinterSPA({ showToast }) {
       }
       setSession(sess);
       setPage("home");
-    });
+    }
+
+    init();
+
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [router.isReady, router.query.token]);
 
   // ═══════════════════════════════════════════════════════════════
   // SECURITY PROTECTIONS FOR SECURE PRINTING SaaS
