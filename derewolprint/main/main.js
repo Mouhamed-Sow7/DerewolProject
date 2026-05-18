@@ -1924,6 +1924,47 @@ ipcMain.handle("history:get", async () => {
   return data;
 });
 
+// Delete specific history rows by id (array of ids)
+ipcMain.handle("history:delete", async (_, ids) => {
+  try {
+    if (!printerCfg?.id) return { success: false, error: "Non configuré" };
+    if (!Array.isArray(ids) || ids.length === 0)
+      return { success: false, error: "Aucun id fourni" };
+    const { error } = await supabase
+      .from("history")
+      .delete()
+      .in("id", ids)
+      .eq("printer_id", printerCfg.id);
+    if (error) {
+      console.error("[HISTORY] delete error:", error.message || error);
+      return { success: false, error: error.message || String(error) };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("[HISTORY] delete exception:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// Delete all history for current printer
+ipcMain.handle("history:delete-all", async () => {
+  try {
+    if (!printerCfg?.id) return { success: false, error: "Non configuré" };
+    const { error } = await supabase
+      .from("history")
+      .delete()
+      .eq("printer_id", printerCfg.id);
+    if (error) {
+      console.error("[HISTORY] delete-all error:", error.message || error);
+      return { success: false, error: error.message || String(error) };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("[HISTORY] delete-all exception:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
 // ── Insert historique ───────────────────────────────────────────
 async function insertHistory({
   ownerId,

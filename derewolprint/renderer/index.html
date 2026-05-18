@@ -117,9 +117,22 @@
             <option value="rejected">Rejetés</option>
             <option value="expired">Expirés</option>
           </select>
-          <button class="btn-filter-clear" id="btn-filter-clear">
-            <i class="fa-solid fa-xmark"></i>
-            Effacer
+          <!-- 'Effacer' button removed — use Effacer sélection / Effacer tout -->
+          <button
+            class="btn-filter-clear"
+            id="btn-history-delete-selected"
+            title="Effacer la sélection"
+          >
+            <i class="fa-solid fa-trash-can"></i>
+            Effacer sélection
+          </button>
+          <button
+            class="btn-filter-clear"
+            id="btn-history-delete-all"
+            title="Effacer tout"
+          >
+            <i class="fa-solid fa-trash"></i>
+            Effacer tout
           </button>
         </div>
 

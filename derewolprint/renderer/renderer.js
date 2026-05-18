@@ -816,6 +816,18 @@ document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
 // ── Historique ────────────────────────────────────────────────
 let historyData = [];
 let historyFilters = { client: "", date: "", status: "" };
+let selectedHistoryIds = new Set();
+let historyRenderTimeoutId = null;
+
+function scheduleRenderHistory() {
+  if (historyRenderTimeoutId) {
+    clearTimeout(historyRenderTimeoutId);
+  }
+  historyRenderTimeoutId = window.setTimeout(() => {
+    historyRenderTimeoutId = null;
+    renderHistory();
+  }, 120);
+}
 
 async function loadHistory() {
   const list = document.getElementById("history-list");
@@ -880,6 +892,7 @@ function renderHistory() {
       });
       return `
     <div class="history-item">
+      <div class="history-select"><input type="checkbox" data-id="${h.id}" class="history-checkbox" ${selectedHistoryIds.has(String(h.id)) ? "checked" : ""}></div>
       <div class="history-item-left">
         <div class="history-file-name" title="${h.file_name}">${h.file_name}</div>
         <div class="history-meta">
@@ -897,7 +910,7 @@ function renderHistory() {
 
 document.getElementById("filter-client").addEventListener("input", (e) => {
   historyFilters.client = e.target.value;
-  renderHistory();
+  scheduleRenderHistory();
 });
 document.getElementById("filter-date").addEventListener("change", (e) => {
   historyFilters.date = e.target.value;
@@ -907,13 +920,84 @@ document.getElementById("filter-status").addEventListener("change", (e) => {
   historyFilters.status = e.target.value;
   renderHistory();
 });
-document.getElementById("btn-filter-clear").addEventListener("click", () => {
-  historyFilters = { client: "", date: "", status: "" };
-  document.getElementById("filter-client").value = "";
-  document.getElementById("filter-date").value = "";
-  document.getElementById("filter-status").value = "";
-  renderHistory();
-});
+const btnFilterClearEl = document.getElementById("btn-filter-clear");
+if (btnFilterClearEl) {
+  btnFilterClearEl.addEventListener("click", () => {
+    historyFilters = { client: "", date: "", status: "" };
+    const fc = document.getElementById("filter-client");
+    const fd = document.getElementById("filter-date");
+    const fs = document.getElementById("filter-status");
+    if (fc) fc.value = "";
+    if (fd) fd.value = "";
+    if (fs) fs.value = "";
+    renderHistory();
+  });
+}
+
+const historyListEl = document.getElementById("history-list");
+if (historyListEl) {
+  historyListEl.addEventListener("change", (e) => {
+    const target = e.target;
+    if (!target || !target.classList.contains("history-checkbox")) return;
+    const id = String(target.dataset.id);
+    if (!id) return;
+    if (target.checked) selectedHistoryIds.add(id);
+    else selectedHistoryIds.delete(id);
+  });
+}
+
+// Delete selected history items
+const deleteSelectedBtn = document.getElementById(
+  "btn-history-delete-selected",
+);
+if (deleteSelectedBtn) {
+  deleteSelectedBtn.addEventListener("click", async () => {
+    if (selectedHistoryIds.size === 0) {
+      alert("Aucune entrée sélectionnée.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Supprimer les entrées sélectionnées ? Cette action est irréversible.",
+    );
+    if (!confirmed) return;
+    try {
+      const ids = Array.from(selectedHistoryIds);
+      const res = await window.derewol.invoke("history:delete", ids);
+      if (res?.success) {
+        selectedHistoryIds.clear();
+        await loadHistory();
+      } else {
+        alert("Suppression échouée: " + (res?.error || "Erreur inconnue"));
+      }
+    } catch (err) {
+      console.error("Erreur suppression historique:", err);
+      alert("Erreur suppression: " + err.message);
+    }
+  });
+}
+
+// Delete all history for this printer
+const deleteAllBtn = document.getElementById("btn-history-delete-all");
+if (deleteAllBtn) {
+  deleteAllBtn.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "Supprimer tout l'historique local serveur pour cette boutique ? Cette action est irréversible.",
+    );
+    if (!confirmed) return;
+    try {
+      const res = await window.derewol.invoke("history:delete-all");
+      if (res?.success) {
+        selectedHistoryIds.clear();
+        await loadHistory();
+      } else {
+        alert("Suppression échouée: " + (res?.error || "Erreur inconnue"));
+      }
+    } catch (err) {
+      console.error("Erreur suppression tout historique:", err);
+      alert("Erreur suppression: " + err.message);
+    }
+  });
+}
 
 // ── Paramètres ────────────────────────────────────────────────
 const ALWAYS_HIDDEN_PRINTERS = [
