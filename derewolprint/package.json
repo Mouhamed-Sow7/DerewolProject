@@ -2,6 +2,11 @@
   "name": "derewolprint",
   "version": "1.0.0",
   "description": "DerewolPrint — Impression intelligente",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mouhamed-Sow7/DerewolProject.git"
+  },
+  "author": "Mouhamed Sow",
   "main": "main/main.js",
   "scripts": {
     "start": "cross-env NODE_ENV=development electron .",
@@ -49,10 +54,6 @@
       "!node_modules/.cache"
     ],
     "extraResources": [
-      {
-        "from": "config.json",
-        "to": "config.json"
-      },
       {
         "from": "node_modules/pdfjs-dist/build/pdf.min.mjs",
         "to": "../renderer/pdf.min.js"
