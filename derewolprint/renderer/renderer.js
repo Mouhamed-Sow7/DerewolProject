@@ -1927,3 +1927,71 @@ document.getElementById("modal-cancel").addEventListener("click", closeModal);
 document
   .getElementById("modal-confirm")
   .addEventListener("click", confirmReject);
+
+// ===== AUTO-UPDATE NOTIFICATIONS =====
+if (window.electronAPI?.onUpdateAvailable) {
+  window.electronAPI.onUpdateAvailable((data) => {
+    showUpdateToast(
+      `Mise à jour ${data.version} disponible — téléchargement...`,
+    );
+  });
+}
+
+if (window.electronAPI?.onUpdateDownloaded) {
+  window.electronAPI.onUpdateDownloaded((data) => {
+    showUpdateToast(
+      `✅ Version ${data.version} prête — Redémarrer maintenant ?`,
+      true,
+    );
+  });
+}
+
+if (window.electronAPI?.onUpdateProgress) {
+  window.electronAPI.onUpdateProgress((data) => {
+    console.log(`[UPDATE] ${data.percent}%`);
+  });
+}
+
+function showUpdateToast(message, withButton = false) {
+  const existing = document.getElementById("update-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "update-toast";
+  toast.style.cssText = `
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: #1a3a2a; color: white; border-radius: 12px;
+    padding: 16px 20px; max-width: 320px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    font-family: system-ui, sans-serif; font-size: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    animation: slideIn 0.3s ease;
+  `;
+
+  toast.innerHTML = `
+    <span>${message}</span>
+    ${
+      withButton
+        ? `
+      <div style="display:flex; gap:8px;">
+        <button onclick="window.electronAPI.installUpdate()" style="
+          background:#f5c842; color:#1a3a2a; border:none;
+          border-radius:8px; padding:8px 16px; font-weight:700;
+          cursor:pointer; flex:1;
+        ">Redémarrer</button>
+        <button onclick="document.getElementById('update-toast').remove()" style="
+          background:transparent; color:#9ca3af; border:1px solid #374151;
+          border-radius:8px; padding:8px 12px; cursor:pointer;
+        ">Plus tard</button>
+      </div>
+    `
+        : ""
+    }
+  `;
+
+  document.body.appendChild(toast);
+
+  if (!withButton) {
+    setTimeout(() => toast?.remove(), 6000);
+  }
+}

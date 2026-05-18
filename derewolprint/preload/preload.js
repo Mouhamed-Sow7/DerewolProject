@@ -100,6 +100,12 @@ contextBridge.exposeInMainWorld("derewol", {
 
   // ── QR code (Main process, works offline) ──────────────────────
   generateQR: async (data) => ipcRenderer.invoke("qr:generate", data),
+  onUpdateAvailable: (cb) =>
+    ipcRenderer.on("update:available", (_, d) => cb(d)),
+  onUpdateDownloaded: (cb) =>
+    ipcRenderer.on("update:downloaded", (_, d) => cb(d)),
+  onUpdateProgress: (cb) => ipcRenderer.on("update:progress", (_, d) => cb(d)),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
 
   // ── Download authorization ────────────────────────────────────
   requestFileDownload: (data) =>
@@ -143,4 +149,13 @@ contextBridge.exposeInMainWorld("derewol", {
   dev: {
     logout: () => ipcRenderer.invoke("dev:logout"),
   },
+});
+
+contextBridge.exposeInMainWorld("electronAPI", {
+  onUpdateAvailable: (cb) =>
+    ipcRenderer.on("update:available", (_, d) => cb(d)),
+  onUpdateDownloaded: (cb) =>
+    ipcRenderer.on("update:downloaded", (_, d) => cb(d)),
+  onUpdateProgress: (cb) => ipcRenderer.on("update:progress", (_, d) => cb(d)),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
 });

@@ -71,6 +71,66 @@ const {
   checkPrinterStatus,
   debugListPrinters,
 } = require("../services/printerStatusCheck");
+const { autoUpdater } = require("electron-updater");
+const electronLog = require("electron-log");
+
+// Config logs auto-updater
+autoUpdater.logger = electronLog;
+autoUpdater.logger.transports.file.level = "info";
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function setupAutoUpdater() {
+  // Vérifier les mises à jour au démarrage (seulement en prod)
+  if (process.env.NODE_ENV === "development") {
+    console.log("[UPDATE] Mode dev — auto-update désactivé");
+    return;
+  }
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("[UPDATE] Vérification des mises à jour...");
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    console.log("[UPDATE] Mise à jour disponible:", info.version);
+    mainWindow?.webContents.send("update:available", { version: info.version });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("[UPDATE] Application à jour ✅");
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    console.log(`[UPDATE] Téléchargement: ${Math.round(progress.percent)}%`);
+    mainWindow?.webContents.send("update:progress", {
+      percent: Math.round(progress.percent),
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("[UPDATE] Mise à jour téléchargée:", info.version);
+    mainWindow?.webContents.send("update:downloaded", {
+      version: info.version,
+    });
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("[UPDATE] Erreur:", err.message);
+  });
+
+  // Vérifier au démarrage
+  setTimeout(() => {
+    autoUpdater.checkForUpdates();
+  }, 10000); // Attendre 10s après le boot
+
+  // Vérifier toutes les 4 heures
+  setInterval(
+    () => {
+      autoUpdater.checkForUpdates();
+    },
+    4 * 60 * 60 * 1000,
+  );
+}
 
 function getPdfPageCount(filePath) {
   try {
@@ -3130,6 +3190,14 @@ ipcMain.handle("qr:generate", async (_, data) => {
   }
 });
 
+ipcMain.handle("update:install", () => {
+  autoUpdater.quitAndInstall();
+});
+
+ipcMain.handle("update:check", () => {
+  autoUpdater.checkForUpdates();
+});
+
 // ── IPC : Téléchargement avec autorisation ────────────────────────
 
 // ── Demande d'autorisation de téléchargement ─────────────
@@ -3543,7 +3611,7 @@ ipcMain.handle("recovery:verify", async (_, { emailOrPhone, code }) => {
       id: printer.id,
       slug: printer.slug,
       name: printer.name,
-      url: `${BASE_URL}/p/${printer.slug}`,
+      url: `${BASE_URL}/scan/${printer.slug}`,
       owner_phone: printer.owner_phone,
     };
     console.log("[RECOVERY] saveConfig appelé avec:", cfg);
@@ -4113,6 +4181,7 @@ app.whenReady().then(async () => {
           "[BOOT] Erreur réseau — mode hors ligne, vérification impossible",
         );
         launchApp(false, true); // Mode offline
+        setupAutoUpdater();
         startOfflineRetry();
       } else {
         // Erreur Supabase (pas réseau) — probablement compte supprimé
@@ -4142,11 +4211,7 @@ app.whenReady().then(async () => {
         "[BOOT] Imprimeur révoqué — accès suspendu, maintien de la config locale",
       );
       launchApp(false, false, true);
-      return;
-    }
-
-    // Imprimeur trouvé — synchroniser le nom si nécessaire
-    if (data.name !== printerCfg.name) {
+      setupAutoUpdater();
       printerCfg.name = data.name;
       saveConfig(printerCfg);
       console.log(`[BOOT] Nom synchronisé : ${data.name}`);
@@ -4154,6 +4219,7 @@ app.whenReady().then(async () => {
 
     console.log(`[BOOT] Imprimeur vérifié ✅ → ${printerCfg.name}`);
     launchApp();
+    setupAutoUpdater();
   } catch (err) {
     if (isNetworkError(err)) {
       // Exception réseau — mode hors ligne
