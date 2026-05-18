@@ -1,0 +1,140 @@
+# Conditions Générales d'Utilisation
+## DerewolPrint — Application de gestion d'impression
+**Éditeur :** Entreprise Sow et Frères  
+**Siège social :** Saint-Louis, Sénégal  
+**Contact :** entreprisesowetfreres@gmail.com  
+**Version :** 1.0 — Mai 2026
+ 
+---
+ 
+## Article 1 — Objet
+ 
+Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de l'application **DerewolPrint**, logiciel de gestion d'impression destiné aux professionnels (imprimeries, centres de copie, boutiques d'impression) au Sénégal et en Afrique de l'Ouest.
+ 
+En installant ou en utilisant DerewolPrint, vous acceptez sans réserve les présentes CGU.
+ 
+---
+ 
+## Article 2 — Description du service
+ 
+DerewolPrint est une application de bureau (Windows) qui permet à un imprimeur professionnel de :
+ 
+- Recevoir les fichiers de ses clients via QR code sécurisé
+- Gérer et organiser les jobs d'impression en attente
+- Imprimer les fichiers avec des options avancées (orientation, recto-verso, pages)
+- Accéder à des fonctionnalités d'intelligence artificielle (analyse de documents, OCR, suggestions d'impression) via **Derewol AI**
+- Suivre l'historique des impressions
+---
+ 
+## Article 3 — Accès et abonnement
+ 
+### 3.1 Activation
+L'accès à DerewolPrint est conditionné à la souscription d'un abonnement actif auprès de l'entreprise Sow et Frères. L'application est liée à votre boutique via un identifiant unique.
+ 
+### 3.2 Plans disponibles
+| Plan | Durée | Prix | Crédits IA inclus |
+|------|-------|------|-------------------|
+| Mensuel | 1 mois | 5 000 XOF | 5 crédits |
+| Trimestriel | 3 mois | 12 500 XOF | 8 crédits |
+| Semestriel | 6 mois | 25 500 XOF | 10 crédits |
+ 
+### 3.3 Recharge de crédits IA
+Des crédits supplémentaires peuvent être achetés à tout moment directement depuis l'application. Toute recharge est validée manuellement par l'éditeur. Les crédits achetés ne sont ni remboursables ni transférables.
+ 
+### 3.4 Expiration
+À l'expiration de l'abonnement, l'accès à l'application est suspendu automatiquement. Les données de l'imprimeur restent conservées pendant 30 jours après expiration, puis peuvent être supprimées.
+ 
+---
+ 
+## Article 4 — Obligations de l'utilisateur
+ 
+En utilisant DerewolPrint, vous vous engagez à :
+ 
+- Utiliser l'application uniquement dans le cadre d'une activité professionnelle légale
+- Ne pas tenter de contourner le système de sécurité, de licences ou de crédits
+- Ne pas redistribuer, revendre ou prêter votre accès à des tiers non autorisés
+- Informer vos clients (déposants de fichiers) que leurs fichiers sont traités via DerewolPrint
+- Respecter la confidentialité des fichiers de vos clients et ne pas les utiliser à d'autres fins que l'impression demandée
+- Signaler tout bug ou comportement anormal à l'éditeur
+---
+ 
+## Article 5 — Derewol AI et crédits
+ 
+### 5.1 Fonctionnement
+Derewol AI utilise l'intelligence artificielle (Claude d'Anthropic) pour analyser les documents, effectuer des OCR et suggérer des options d'impression optimales. Chaque analyse consomme **1 crédit IA**.
+ 
+### 5.2 Garantie de résultat
+Les suggestions de Derewol AI sont fournies à titre indicatif. L'éditeur ne garantit pas l'exactitude absolue des analyses. La décision finale d'impression reste à la discrétion de l'imprimeur.
+ 
+### 5.3 Données analysées
+Les fichiers envoyés à Derewol AI sont traités de manière temporaire uniquement pour la durée de l'analyse. Ils ne sont pas stockés par l'IA ni utilisés pour entraîner des modèles.
+ 
+---
+ 
+## Article 6 — Confidentialité et données personnelles
+ 
+### 6.1 Données collectées
+DerewolPrint collecte et traite les données suivantes :
+- Informations de la boutique (nom, slug, téléphone)
+- Fichiers déposés par les clients (stockés temporairement)
+- Historique des impressions
+- Données d'utilisation des crédits IA
+### 6.2 Hébergement
+Les données sont hébergées sur **Supabase** (infrastructure sécurisée). Les fichiers sont chiffrés lors du stockage et supprimés automatiquement après traitement.
+ 
+### 6.3 Partage de données
+Aucune donnée personnelle n'est vendue ou partagée avec des tiers, à l'exception des prestataires techniques nécessaires au fonctionnement du service (Supabase, Anthropic pour l'IA).
+ 
+### 6.4 Droit d'accès
+Vous pouvez demander la suppression de vos données à tout moment en contactant l'éditeur.
+ 
+---
+ 
+## Article 7 — Disponibilité et maintenance
+ 
+L'éditeur s'engage à maintenir l'application disponible dans des conditions normales d'utilisation. Des interruptions peuvent survenir pour maintenance, mises à jour ou cas de force majeure. L'éditeur ne saurait être tenu responsable des interruptions de service liées à une connexion internet défaillante ou à une panne matérielle côté utilisateur.
+ 
+Les mises à jour de l'application sont automatiques et gratuites pendant la durée de l'abonnement actif.
+ 
+---
+ 
+## Article 8 — Limitation de responsabilité
+ 
+L'entreprise Sow et Frères ne saurait être tenue responsable :
+ 
+- Des pertes de données causées par une mauvaise utilisation de l'application
+- Des erreurs d'impression résultant d'un fichier mal formaté fourni par le client final
+- De tout préjudice indirect lié à l'utilisation ou à l'indisponibilité temporaire du service
+- Des suggestions d'impression de Derewol AI non vérifiées par l'imprimeur avant impression
+---
+ 
+## Article 9 — Propriété intellectuelle
+ 
+DerewolPrint, son interface, son code, son nom commercial et sa marque sont la propriété exclusive de l'entreprise Sow et Frères. Toute reproduction, copie, modification ou distribution non autorisée est strictement interdite.
+ 
+---
+ 
+## Article 10 — Résiliation
+ 
+L'éditeur se réserve le droit de suspendre ou résilier un compte en cas de :
+- Non-paiement de l'abonnement
+- Violation des présentes CGU
+- Utilisation frauduleuse ou abusive de l'application
+En cas de résiliation à l'initiative de l'utilisateur, aucun remboursement des crédits ou abonnements en cours n'est dû.
+ 
+---
+ 
+## Article 11 — Modification des CGU
+ 
+L'éditeur se réserve le droit de modifier les présentes CGU à tout moment. Les utilisateurs seront informés de toute modification significative via une notification dans l'application. La poursuite de l'utilisation après modification vaut acceptation des nouvelles conditions.
+ 
+---
+ 
+## Article 12 — Droit applicable
+ 
+Les présentes CGU sont soumises au droit sénégalais. En cas de litige, et à défaut de résolution amiable, les tribunaux compétents de Dakar seront seuls compétents.
+ 
+---
+ 
+*Entreprise Sow et Frères — Dakar, Sénégal*  
+*DerewolPrint v1.0 — Mai 2026*

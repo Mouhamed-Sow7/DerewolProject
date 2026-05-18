@@ -1889,6 +1889,28 @@ ipcMain.handle("trial:activate", async () => {
   }
 });
 
+ipcMain.handle("cgu:get-text", async () => {
+  try {
+    const cguPath = path.join(__dirname, "..", "cgu", "cgu.txt");
+    if (fs.existsSync(cguPath)) {
+      return fs.readFileSync(cguPath, "utf8");
+    }
+    return "Conditions Générales d'Utilisation indisponibles.";
+  } catch (err) {
+    console.error("[CGU] Erreur lecture cgu.txt :", err.message);
+    return "Conditions Générales d'Utilisation indisponibles.";
+  }
+});
+
+ipcMain.handle("app:clear-data-and-quit", async () => {
+  try {
+    clearConfig();
+  } catch (err) {
+    console.error("[APP] Erreur clearConfig avant fermeture :", err.message);
+  }
+  app.exit(0);
+});
+
 // ── IPC : Historique ────────────────────────────────────────────
 ipcMain.handle("history:get", async () => {
   if (!printerCfg?.id) return [];

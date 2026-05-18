@@ -91,6 +91,7 @@ const MODAL_Z_INDEXES = {
   backdrop: "99999",
   activation: "100000",
   acceptance: "100001",
+  cgu: "100002",
 };
 
 // 🔥 STATE MANAGER: Prevent variable conflicts from double loads
@@ -248,7 +249,10 @@ function bindActivationModal() {
             trialNotice.style.display = "block";
           }
           localStorage.setItem("trialStarted", "true");
-          setTimeout(() => hideActivationModal(), 1500);
+          setTimeout(() => {
+            hideActivationModal();
+            showCguModal();
+          }, 1500);
         } else {
           showTrialNotice(res?.error || "Erreur activation essai", "error");
           trialBtn.disabled = false;
@@ -297,7 +301,10 @@ function bindActivationModal() {
         if (res?.success) {
           codeBtn.innerHTML = '<i class="fa-solid fa-check"></i> Activé!';
           localStorage.setItem("trialStarted", "true");
-          setTimeout(() => hideActivationModal(), 1500);
+          setTimeout(() => {
+            hideActivationModal();
+            showCguModal();
+          }, 1500);
         } else {
           if (errorEl) {
             errorEl.innerHTML = `<i class="fa-solid fa-exclamation"></i> ${res?.error || "Code invalide"}`;
@@ -523,6 +530,107 @@ function hideAcceptanceModal() {
   if (backdrop) backdrop.classList.remove("show");
 }
 
+let cguTextCache = null;
+let cguLoaded = false;
+
+async function loadCguText() {
+  if (cguLoaded && cguTextCache) return cguTextCache;
+  try {
+    cguTextCache = await window.derewol.invoke("cgu:get-text");
+    cguLoaded = true;
+  } catch (err) {
+    console.warn("[CGU] Impossible de charger le texte des CGU :", err.message);
+    cguTextCache =
+      "Impossible de charger les conditions générales. Veuillez réessayer plus tard.";
+    cguLoaded = true;
+  }
+  return cguTextCache;
+}
+
+function clearRegistrationData() {
+  try {
+    localStorage.removeItem("trialStarted");
+    localStorage.removeItem("derewol_subscription_status");
+    localStorage.removeItem("skipActivationModalOnce");
+  } catch (err) {
+    console.warn(
+      "[CGU] Erreur lors de la suppression des données locales :",
+      err.message,
+    );
+  }
+}
+
+function hideCguModal() {
+  const backdrop = document.getElementById("cgu-backdrop");
+  if (backdrop) backdrop.classList.remove("show");
+}
+
+async function showCguModal() {
+  const backdrop = document.getElementById("cgu-backdrop");
+  const modal = document.getElementById("cgu-modal");
+  const cguText = document.getElementById("cgu-text");
+
+  if (!backdrop || !modal || !cguText) {
+    console.error("[CGU] Modal elements not found!");
+    return;
+  }
+
+  if (!cguLoaded) {
+    cguText.textContent = "Chargement des CGU...";
+    const text = await loadCguText();
+    cguText.textContent = text;
+  } else {
+    cguText.textContent = cguTextCache || "Aucune CGU disponible.";
+  }
+
+  modal.style.zIndex = MODAL_Z_INDEXES.cgu;
+  backdrop.style.zIndex = MODAL_Z_INDEXES.backdrop;
+  backdrop.classList.add("show");
+  backdrop.onclick = null;
+  backdrop.style.pointerEvents = "auto";
+}
+
+function bindCguModal() {
+  const backdrop = document.getElementById("cgu-backdrop");
+  const modal = document.getElementById("cgu-modal");
+  const acceptBtn = document.getElementById("cgu-btn-accept");
+  const refuseBtn = document.getElementById("cgu-btn-refuse");
+
+  if (!backdrop || !modal || !acceptBtn || !refuseBtn) {
+    console.error("[CGU] Modal binding failed — missing elements");
+    return;
+  }
+
+  modal.style.zIndex = MODAL_Z_INDEXES.cgu;
+  backdrop.style.zIndex = MODAL_Z_INDEXES.backdrop;
+
+  const cguEscHandler = (e) => {
+    if (e.key === "Escape" && backdrop?.classList.contains("show")) {
+      e.preventDefault();
+      console.log("[CGU] ESC prevented while CGU modal is open");
+    }
+  };
+  document.addEventListener("keydown", cguEscHandler);
+
+  acceptBtn.addEventListener("click", () => {
+    hideCguModal();
+  });
+
+  refuseBtn.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "Si vous refusez les CGU, l'activation sera annulée et l'application se fermera. Continuer?",
+    );
+    if (!confirmed) return;
+
+    clearRegistrationData();
+    try {
+      await window.derewol.invoke("app:clear-data-and-quit");
+    } catch (err) {
+      console.error("[CGU] Impossible de quitter l'application :", err.message);
+    }
+  });
+}
+
 function bindAcceptanceModal() {
   if (acceptanceInitialized) {
     console.log("[MODAL] bindAcceptanceModal already called — skipping");
@@ -598,6 +706,7 @@ function bindAcceptanceModal() {
             acceptBtn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmé!';
             setTimeout(() => {
               hideAcceptanceModal();
+              showCguModal();
             }, 1500);
           } else {
             showAcceptanceNotice(
@@ -618,6 +727,7 @@ function bindAcceptanceModal() {
             acceptBtn.innerHTML = '<i class="fa-solid fa-check"></i> Confirmé!';
             setTimeout(() => {
               hideAcceptanceModal();
+              showCguModal();
             }, 1500);
           } else {
             showAcceptanceNotice(
@@ -1449,6 +1559,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize acceptance modal for trial & payment conditions
   bindAcceptanceModal();
+
+  // Initialize CGU modal
+  bindCguModal();
 
   // Initialize activation modal
   bindActivationModal();
