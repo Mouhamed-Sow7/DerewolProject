@@ -265,8 +265,14 @@ function getFileIconClass(fileName) {
     case "xls":
     case "xlsx":
       return "fa-file-excel";
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "webp":
+      return "fa-file-image";
     default:
-      return "fa-file-lines";
+      return "fa-file";
   }
 }
 
@@ -278,52 +284,69 @@ function FileList({ files, fileCopies, onSetCopies, onRemove, C, t }) {
 
   return (
     <div style={{ marginBottom: 12 }}>
-      {visible.map((file, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "10px 12px",
-            background: "#fff",
-            borderRadius: 8,
-            marginBottom: 6,
-            border: `1px solid ${C.border}`,
-          }}
-        >
-          <span style={{ fontSize: 16, color: "#3b82f6", flexShrink: 0 }}>
-            <i className={`fa-solid ${getFileIconClass(file.name)}`} />
-          </span>
-          <span
+      {visible.map((file, i) => {
+        const ext = (file.name || "").split(".").pop().toUpperCase();
+        return (
+          <div
+            key={i}
             style={{
-              flex: 1,
-              fontSize: 13,
-              color: C.text,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={file.name}
-          >
-            {file.name}
-          </span>
-          <button
-            onClick={() => onRemove(i)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#9ca3af",
-              fontSize: 16,
-              padding: "2px 4px",
-              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              background: "#fff",
+              borderRadius: 8,
+              marginBottom: 6,
+              border: `1px solid ${C.border}`,
             }}
           >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-      ))}
+            <span style={{ fontSize: 16, color: "#3b82f6", flexShrink: 0 }}>
+              <i className={`fa-solid ${getFileIconClass(file.name)}`} />
+            </span>
+            <span
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: C.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={file.name}
+            >
+              {file.name}
+            </span>
+            <span
+              style={{
+                background: "#f3f4f6",
+                color: "#374151",
+                padding: "4px 6px",
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
+                marginRight: 4,
+              }}
+            >
+              {ext}
+            </span>
+            <button
+              onClick={() => onRemove(i)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#9ca3af",
+                fontSize: 16,
+                padding: "2px 4px",
+                flexShrink: 0,
+              }}
+            >
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+        );
+      })}
       {files.length > THRESHOLD && (
         <button
           onClick={() => setExpanded(!expanded)}
@@ -450,7 +473,9 @@ function FileIcon({ fileName }) {
     .pop()
     .trim()
     .toLowerCase();
+
   const icons = {
+    pdf: { icon: "fa-file-pdf", color: "#dc2626" },
     docx: { icon: "fa-file-word", color: "#2563eb" },
     doc: { icon: "fa-file-word", color: "#2563eb" },
     xlsx: { icon: "fa-file-excel", color: "#16a34a" },
@@ -458,30 +483,10 @@ function FileIcon({ fileName }) {
     png: { icon: "fa-file-image", color: "#7c3aed" },
     jpg: { icon: "fa-file-image", color: "#7c3aed" },
     jpeg: { icon: "fa-file-image", color: "#7c3aed" },
-    txt: { icon: "fa-file-lines", color: "#6b7280" },
+    gif: { icon: "fa-file-image", color: "#7c3aed" },
+    webp: { icon: "fa-file-image", color: "#7c3aed" },
+    txt: { icon: "fa-file", color: "#6b7280" },
   };
-
-  if (ext === "pdf") {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        style={{ marginRight: 6, flexShrink: 0 }}
-        aria-hidden="true"
-      >
-        <path
-          fill="#dc2626"
-          d="M6 2h7.5L18 6.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"
-        />
-        <path fill="#fff" d="M14 2v4h4.5L14 2Z" />
-        <path
-          fill="#fff"
-          d="M8 16h2.4l1.1-2.8 1 2.8H15l-2.2-5h-1.3L8 16Zm4.8 0h1.8V11h-1.8V16Zm4.2 0h1.2V11h-1.2v3.4l-1.7-1.7h-1.2l1.8 1.8-1.8 1.8h1.2l1.7-1.7V16Z"
-        />
-      </svg>
-    );
-  }
 
   const { icon, color } = icons[ext] || { icon: "fa-file", color: "#6b7280" };
   return (

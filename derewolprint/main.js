@@ -1390,7 +1390,7 @@ ipcMain.handle(
       }
 
       const BASE_URL =
-        process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
+        process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
       const cfg = {
         id: data.id,
         slug: data.slug,
@@ -3133,7 +3133,7 @@ ipcMain.handle("recovery:verify", async (_, { emailOrPhone, code }) => {
     console.log("[RECOVERY] printer reçu:", printer);
     const { saveConfig } = require("../services/printerConfig");
     const BASE_URL =
-      process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
+      process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
     const cfg = {
       id: printer.id,
       slug: printer.slug,

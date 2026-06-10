@@ -75,20 +75,20 @@ function formatClientId(id) {
   return id.slice(0, 8).toUpperCase();
 }
 
-function getFileIconClass(fileName) {
-  const ext = fileName?.split(".")?.pop()?.toLowerCase() || "";
-  switch (ext) {
-    case "pdf":
-      return "fa-file-pdf";
-    case "doc":
-    case "docx":
-      return "fa-file-word";
-    case "xls":
-    case "xlsx":
-      return "fa-file-excel";
-    default:
-      return "fa-file-lines";
-  }
+function getFileIcon(fileName, size = 16) {
+  const ext = (fileName || "").split(".").pop().toLowerCase();
+  const icons = {
+    pdf: { icon: "fa-file-pdf", color: "#dc2626" },
+    docx: { icon: "fa-file-word", color: "#2563eb" },
+    doc: { icon: "fa-file-word", color: "#2563eb" },
+    xlsx: { icon: "fa-file-excel", color: "#16a34a" },
+    xls: { icon: "fa-file-excel", color: "#16a34a" },
+    png: { icon: "fa-file-image", color: "#7c3aed" },
+    jpg: { icon: "fa-file-image", color: "#7c3aed" },
+    jpeg: { icon: "fa-file-image", color: "#7c3aed" },
+  };
+  const { icon, color } = icons[ext] || { icon: "fa-file", color: "#6b7280" };
+  return `<i class="fa-solid ${icon}" style="color:${color};font-size:${size}px;"></i>`;
 }
 
 function getStatusConfig(status) {
@@ -179,7 +179,16 @@ export default function renderJobs(
               style="width:15px;height:15px;cursor:pointer;accent-color:#1B5E35;flex-shrink:0;margin-right:8px;"
             />
             <span class="file-row-icon">
-              ${rejected ? '<i class="fa-solid fa-xmark" style="color:var(--danger)"></i>' : '<i class="fa-solid ' + getFileIconClass(item.fileName) + '"></i>'}
+              ${(() => {
+                const ext = (item.fileName || "")
+                  .split(".")
+                  .pop()
+                  .toUpperCase();
+                const iconHtml = rejected
+                  ? '<i class="fa-solid fa-xmark" style="color:var(--danger)"></i>'
+                  : getFileIcon(item.fileName, 18);
+                return iconHtml;
+              })()}
             </span>
             <span class="file-row-name" title="${item.fileName}">${item.fileName}</span>
             ${rejected ? '<span class="file-row-rejected-label">Rejeté</span>' : ""}
@@ -267,7 +276,13 @@ export default function renderJobs(
             (item) => `
             <div class="file-row-done">
               <span class="file-row-icon">
-                <i class="fa-solid ${getFileIconClass(item.fileName)}" style="color:var(--text-muted);font-size:13px"></i>
+                ${(() => {
+                  const ext = (item.fileName || "")
+                    .split(".")
+                    .pop()
+                    .toUpperCase();
+                  return getFileIcon(item.fileName, 13);
+                })()}
               </span>
               <span class="file-row-name file-row-name--done" title="${item.fileName}">
                 ${item.fileName}
@@ -330,8 +345,13 @@ export default function renderJobs(
             (item) => `
             <div class="file-row-done">
               <span class="file-row-icon">
-                <i class="fa-solid ${getFileIconClass(item.fileName)}"
-                   style="color:var(--text-muted);font-size:13px"></i>
+                ${(() => {
+                  const ext = (item.fileName || "")
+                    .split(".")
+                    .pop()
+                    .toUpperCase();
+                  return getFileIcon(item.fileName, 13);
+                })()}
               </span>
               <span class="file-row-name file-row-name--done" title="${item.fileName}">
                 ${item.fileName}

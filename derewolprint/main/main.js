@@ -1696,7 +1696,7 @@ ipcMain.handle(
       }
 
       const BASE_URL =
-        process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
+        process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
       const cfg = {
         id: data.id,
         slug: data.slug,
@@ -1736,6 +1736,14 @@ ipcMain.handle("printer:config", () => {
     const localConfig = loadConfig();
     if (localConfig) {
       printerCfg = localConfig;
+
+      // Toujours mettre à jour l'URL depuis l'env au boot
+      if (printerCfg && printerCfg.slug) {
+        const BASE_URL =
+          process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
+        printerCfg.url = `${BASE_URL}/scan/${printerCfg.slug}`;
+        saveConfig(printerCfg);
+      }
     }
     return localConfig;
   }
@@ -3669,7 +3677,7 @@ ipcMain.handle("recovery:verify", async (_, { emailOrPhone, code }) => {
     console.log("[RECOVERY] printer reçu:", printer);
     const { saveConfig } = require("../services/printerConfig");
     const BASE_URL =
-      process.env.DEREWOL_PWA_URL || "https://testpwa.nom-de-domaine.xyz";
+      process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
     const cfg = {
       id: printer.id,
       slug: printer.slug,
