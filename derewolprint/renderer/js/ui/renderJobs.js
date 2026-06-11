@@ -12,6 +12,9 @@ function setFileCopies(jobId, fileId, val) {
   copiesPerFile[`${jobId}_${fileId}`] = val;
 }
 
+// Set from renderer.js to share orientation data
+let getJobOrientationData = () => new Map();
+
 // Importer le statut de l'imprimante depuis renderer.js
 let currentPrinterStatus = { online: true };
 
@@ -192,6 +195,14 @@ export default function renderJobs(
             </span>
             <span class="file-row-name" title="${item.fileName}">${item.fileName}</span>
             ${rejected ? '<span class="file-row-rejected-label">Rejeté</span>' : ""}
+            ${
+              (() => {
+                const orientData = getJobOrientationData()?.get(item.jobId);
+                return orientData?.needsWarning
+                  ? `<span class="rotation-warning" title="Rotation ${orientData.rotation}°">⚠️ ${orientData.rotation}°</span>`
+                  : "";
+              })()
+            }
             ${item.status === "printing" ? '<span class="file-status-dot file-status-dot--printing" title="Impression en cours"><i class="fa-solid fa-spinner fa-spin"></i></span>' : ""}
           </div>
 
@@ -1258,4 +1269,8 @@ function setStoreRef(fn) {
   jobStore_getGroup = fn;
 }
 
-export { setStoreRef, getFileCopies };
+function setJobOrientationDataRef(fn) {
+  getJobOrientationData = fn;
+}
+
+export { setStoreRef, getFileCopies, setJobOrientationDataRef };

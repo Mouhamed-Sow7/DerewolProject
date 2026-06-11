@@ -5,6 +5,7 @@ import renderJobs, {
   getFileCopies,
   setStoreRef,
   setPrinterStatus,
+  setJobOrientationDataRef,
 } from "./js/ui/renderJobs.js";
 import { initBridge } from "./js/bridge/derewolBridge.js";
 import { initLang, setLang, t } from "./i18n.js";
@@ -1855,6 +1856,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ── Orientation analysis results ───────────────────────────
+  if (window.derewol?.onJobOrientationAnalyzed) {
+    window.derewol.onJobOrientationAnalyzed((data) => {
+      console.log("[JOBS] Orientation analyzed:", data);
+      if (data?.jobId) {
+        jobOrientationData.set(data.jobId, {
+          rotation: data.rotation,
+          needsWarning: data.needsWarning,
+        });
+        window.derewol.requestJobRefresh?.();
+      }
+    });
+  }
+
   // ── Realtime jobs ────────────────────────────────────────
   if (window.derewol?.onJobsNew) {
     window.derewol.onJobsNew((job) => {
@@ -1954,6 +1969,12 @@ let currentPrinterStatus = { online: true, reason: "Initialisation..." };
 
 const PRINTER_POLL_MS = 30_000;
 let _printerPollTimer = null;
+
+// ── Données d'orientation des jobs ───────────────────────────
+const jobOrientationData = new Map();
+
+// Passer la map d'orientation à renderJobs
+setJobOrientationDataRef(() => jobOrientationData);
 
 function setPrinterDotState(state, tooltip = "") {
   const dot = document.getElementById("printer-status-dot");

@@ -7,11 +7,22 @@ const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 );
 
+function extractSlug() {
+  if (typeof window === "undefined") return null;
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  return parts[1] || null; // ["scan", "<slug>"]
+}
+
 export default function ScanPage() {
   const router = useRouter();
-  const { slug, expired } = router.query;
+  const { expired } = router.query;
+  const [slug, setSlug] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setSlug(extractSlug());
+  }, []);
 
   useEffect(() => {
     if (!slug) return;

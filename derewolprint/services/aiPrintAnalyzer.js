@@ -27,8 +27,33 @@ function getAnthropicKey() {
     return process.env.ANTHROPIC_API_KEY;
   }
 
-  // 2. Fallback hardcodé (production embarquée)
-  // ⚠️  IMPORTANT : Remplacer la valeur par votre vraie clé API
+  // 2. config.json local (production packagée) — même logique que supabase.js
+  try {
+    const isPackaged = (() => {
+      try {
+        const { app } = require("electron");
+        return app && app.isPackaged;
+      } catch {
+        return false;
+      }
+    })();
+
+    const cfgPath = isPackaged
+      ? path.join(process.resourcesPath, "config.json")
+      : path.join(__dirname, "../config.json");
+
+    if (fs.existsSync(cfgPath)) {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+      if (cfg.anthropicApiKey) {
+        console.warn("[DEREWOL AI] Clé Anthropic lue depuis config.json");
+        return cfg.anthropicApiKey;
+      }
+    }
+  } catch (e) {
+    console.error("[DEREWOL AI] Erreur lecture config.json:", e.message);
+  }
+
+  // 3. Fallback variable d'environnement de production
   const fallbackKey = process.env.ANTHROPIC_API_KEY_PROD || "";
   if (fallbackKey) {
     console.warn("[DEREWOL AI] Utilisation de la clé Anthropic embarquée");
@@ -36,7 +61,7 @@ function getAnthropicKey() {
   }
 
   throw new Error(
-    "ANTHROPIC_API_KEY manquante — configurez process.env.ANTHROPIC_API_KEY ou process.env.ANTHROPIC_API_KEY_PROD",
+    "ANTHROPIC_API_KEY manquante — configurez .env, config.json (anthropicApiKey) ou process.env.ANTHROPIC_API_KEY_PROD",
   );
 }
 
@@ -252,12 +277,27 @@ async function callClaude(
   const key = getAnthropicKey();
 
   // Construction du message
+  // ⚠️ Les PDF doivent être envoyés dans un bloc "document", pas "image"
+  // (l'API Anthropic rejette media_type "application/pdf" sur une source image → 400).
   const userContent = imageBase64
     ? [
-        {
-          type: "image",
-          source: { type: "base64", media_type: mediaType, data: imageBase64 },
-        },
+        mediaType === "application/pdf"
+          ? {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: mediaType,
+                data: imageBase64,
+              },
+            }
+          : {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType,
+                data: imageBase64,
+              },
+            },
         { type: "text", text: prompt },
       ]
     : prompt;
@@ -564,6 +604,219 @@ Retourne ce JSON :
 }
 
 // ═══════════════════════════════════════════════════════════════
+// FONCTION 4 : analyzeOrientation
+// PDF ou image → détection de rotation (0/90/180/270) via Claude Vision
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Détecte si un document est mal orienté avant impression.
+ * @param {string} filePath  - Chemin local du fichier (PDF ou image)
+ * @param {string} printerId - UUID de l'imprimante
+ * @returns {Object} { rotation: 0|90|180|270, confidence, reason, credits }
+ */
+async function analyzeOrientation(filePath, printerId) {
+  const FALLBACK = {
+    rotation: 0,
+    confidence: "faible",
+    reason: "Analyse d'orientation indisponible",
+    error: "orientation_unavailable",
+    credits: null,
+  };
+
+  try {
+    // 1. Vérifier les crédits
+    const creditCheck = await checkAICredits(printerId);
+    if (!creditCheck.hasCredits) {
+      return { ...FALLBACK, error: "credits_epuises", showRecharge: true };
+    }
+
+    // 2. Lire le fichier → base64
+    if (!fs.existsSync(filePath))
+      throw new Error(`Fichier introuvable: ${filePath}`);
+    const base64Data = fs.readFileSync(filePath).toString("base64");
+    const ext = path.extname(filePath).toLowerCase();
+    const fileName = path.basename(filePath);
+    const mediaType =
+      ext === ".png"
+        ? "image/png"
+        : ext === ".pdf"
+          ? "application/pdf"
+          : "image/jpeg";
+
+    // 3. Prompt orientation
+    const prompt = `Tu es un expert en préparation de documents pour l'impression.
+Observe l'orientation du contenu (texte, images, tableaux) de ce document.
+Détermine de combien de degrés il faut le faire pivoter dans le sens horaire pour qu'il soit lu correctement (bien droit).
+- 0 = déjà bien orienté
+- 90 / 180 / 270 = mal orienté, rotation nécessaire
+Retourne UNIQUEMENT ce JSON :
+{
+  "rotation": 0 ou 90 ou 180 ou 270,
+  "confidence": "élevée" ou "moyenne" ou "faible",
+  "reason": "explication courte en français"
+}`;
+
+    // 4. Appel Claude Vision
+    const result = await callClaude(prompt, base64Data, mediaType);
+
+    // 5. Consommer le crédit
+    const creditConsume = await consumeAICredit(printerId);
+
+    // 6. Logger
+    await logAIUsage(
+      printerId,
+      "analyze_document",
+      fileName,
+      creditConsume.source,
+    );
+
+    // Normaliser la rotation à une valeur autorisée
+    const allowed = [0, 90, 180, 270];
+    const rotation = allowed.includes(Number(result.rotation))
+      ? Number(result.rotation)
+      : 0;
+
+    return {
+      rotation,
+      confidence: result.confidence || "moyenne",
+      reason: result.reason || "",
+      credits: {
+        source: creditConsume.source,
+        remainingMonthly: creditConsume.remaining_after,
+        remainingPurchased: creditConsume.purchased_after,
+      },
+    };
+  } catch (err) {
+    console.error("[DEREWOL AI] analyzeOrientation error:", err.message);
+    await logAIUsage(
+      printerId,
+      "analyze_document",
+      path.basename(filePath),
+      null,
+      "error",
+      err.message,
+    );
+    return FALLBACK;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FONCTION 5 : analyzeJobOrientation
+// Rasterise page 1 d'un PDF et analyse rapidement la rotation
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Analyse rapide d'orientation pour un job arrivant
+ * Rasterise UNIQUEMENT la page 1 en image et envoie à Claude Vision
+ * @param {string} filePath  - Chemin local du fichier PDF
+ * @param {string} printerId - UUID de l'imprimante
+ * @returns {Object} { rotation: 0|90|180|270, needsWarning: boolean }
+ */
+async function analyzeJobOrientation(filePath, printerId) {
+  const FALLBACK = {
+    rotation: 0,
+    needsWarning: false,
+  };
+
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext !== ".pdf") {
+      return FALLBACK;
+    }
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Fichier introuvable: ${filePath}`);
+    }
+
+    // Rasteriser page 1 du PDF en image
+    const { createCanvas } = require("@napi-rs/canvas");
+    const pdfjs = require("pdfjs-dist/legacy/build/pdf");
+
+    // Chemin du worker
+    const pdfWorkerPath = require("pdfjs-dist/legacy/build/pdf.worker.min.js");
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerPath;
+
+    const pdfData = fs.readFileSync(filePath);
+    const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
+    const page = await pdf.getPage(1);
+
+    // Canvas offscreen pour rasteriser
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = createCanvas(viewport.width, viewport.height);
+    const ctx = canvas.getContext("2d");
+
+    await page.render({
+      canvasContext: ctx,
+      viewport: viewport,
+    }).promise;
+
+    // Convertir en base64 PNG
+    const pngBuffer = canvas.toBuffer("image/png");
+    const base64Image = pngBuffer.toString("base64");
+
+    // Appel Claude Vision - prompt court pour juste la rotation
+    const prompt = `Analyze this document page orientation. Return ONLY valid JSON: {rotation: 0|90|180|270}`;
+
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": getAnthropicKey(),
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 50,
+        system:
+          "You are a document orientation analyzer. Respond ONLY with valid JSON.",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/png",
+                  data: base64Image,
+                },
+              },
+              { type: "text", text: prompt },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("[DEREWOL AI] Claude API error for orientation analysis");
+      return FALLBACK;
+    }
+
+    const data = await response.json();
+    const text = data.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    const clean = text.replace(/```json|```/g, "").trim();
+    const result = JSON.parse(clean);
+
+    const rotation = [0, 90, 180, 270].includes(Number(result.rotation))
+      ? Number(result.rotation)
+      : 0;
+
+    return {
+      rotation,
+      needsWarning: rotation !== 0,
+    };
+  } catch (err) {
+    console.error("[DEREWOL AI] analyzeJobOrientation error:", err.message);
+    return FALLBACK;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -572,6 +825,8 @@ module.exports = {
   analyzeDocument,
   analyzeExcel,
   ocrDocument,
+  analyzeOrientation,
+  analyzeJobOrientation,
 
   // Système de crédits (pour main.js)
   checkAICredits,

@@ -59,6 +59,8 @@ const {
   analyzeDocument,
   analyzeExcel,
   ocrDocument,
+  analyzeOrientation,
+  analyzeJobOrientation,
   checkAICredits,
   addAICredits,
 } = require("../services/aiPrintAnalyzer");
@@ -517,6 +519,72 @@ async function subscribeToSubscriptionChanges() {
   );
 }
 
+async function analyzeNewJob(jobData) {
+  console.log("[AI] analyzeNewJob appelé:", jobData?.id);
+  console.log("[AI] jobData keys:", JSON.stringify(Object.keys(jobData || {})));
+  console.log("[AI] file_id:", jobData?.file_id, "| id:", jobData?.id);
+  try {
+    const fileGroupId = jobData?.id;
+    if (!fileGroupId || !printerCfg?.id) return;
+
+    const { data: filesData, error: filesError } = await supabase
+      .from("files")
+      .select("id, storage_path, encrypted_key, file_name")
+      .eq("file_group_id", fileGroupId)
+      .eq("file_type", "original");
+
+    if (filesError || !filesData?.length) {
+      console.warn("[AI] Aucun fichier trouvé pour file_group:", fileGroupId);
+      return;
+    }
+
+    // Analyser seulement le premier PDF trouvé
+    const fileData =
+      filesData.find((f) => f.file_name?.endsWith(".pdf")) || filesData[0];
+
+    const ext = path.extname(fileData.file_name).toLowerCase();
+    if (ext !== ".pdf") {
+      return;
+    }
+
+    const { data: dlData, error: dlErr } = await supabase.storage
+      .from("derewol-files")
+      .download(fileData.storage_path);
+
+    if (dlErr || !dlData) {
+      console.warn("[JOBS] Impossible de télécharger le fichier");
+      return;
+    }
+
+    const decrypted = decryptFile(
+      Buffer.from(await dlData.arrayBuffer()),
+      fileData.encrypted_key,
+    );
+
+    const tmpPath = path.join(
+      os.tmpdir(),
+      `ai-orient-${Date.now()}-${jobData.id}.pdf`,
+    );
+    fs.writeFileSync(tmpPath, decrypted);
+
+    const result = await analyzeJobOrientation(tmpPath, printerCfg.id);
+
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (_) {}
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("jobs:orientation-analyzed", {
+        jobId: jobData.id,
+        rotation: result.rotation,
+        needsWarning: result.needsWarning,
+      });
+    }
+  } catch (err) {
+    console.error("[JOBS] Erreur analyse orientation:", err.message);
+  }
+}
+
 async function subscribeToJobChanges() {
   if (!printerCfg?.id) return;
 
@@ -542,6 +610,7 @@ async function subscribeToJobChanges() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("jobs:new", payload.new);
       }
+      analyzeNewJob(payload.new);
     },
   );
 
@@ -580,6 +649,7 @@ async function subscribeToJobChanges() {
       console.log("[JOBS] Realtime nouveau file_group:", payload.new?.id);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("jobs:new-group", payload.new);
+        analyzeNewJob(payload.new);
       }
     },
   );
@@ -1042,6 +1112,33 @@ ipcMain.handle("ai:ocrDocument", async (event, { filePath, printerId }) => {
     return { success: false, error: err.message };
   }
 });
+
+// Détecter si un document est mal orienté (rotation 0/90/180/270)
+ipcMain.handle(
+  "ai:analyzeOrientation",
+  async (event, { filePath, printerId }) => {
+    try {
+      const data = await analyzeOrientation(filePath, printerId);
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+);
+
+// Analyse rapide d'orientation pour jobs (page 1 rasterisée)
+ipcMain.handle(
+  "ai:analyzeJobOrientation",
+  async (event, { filePath, printerId }) => {
+    try {
+      const { analyzeJobOrientation } = require("../services/aiPrintAnalyzer");
+      const data = await analyzeJobOrientation(filePath, printerId);
+      return { success: true, data };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+);
 
 // Ajouter des crédits achetés
 ipcMain.handle(

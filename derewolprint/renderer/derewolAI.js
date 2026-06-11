@@ -148,7 +148,7 @@ async function ouvrirFichier(type) {
       .forEach((btn) => (btn.disabled = false));
 
     if (response.success) {
-      afficherResultats(response.data);
+      await afficherResultats(response.data, filePath);
       // Recharger les crédits après analyse
       await chargerCredits();
     } else {
@@ -164,7 +164,7 @@ async function ouvrirFichier(type) {
 }
 
 // ── Afficher les résultats de l'analyse ──────────────────────────
-function afficherResultats(data) {
+async function afficherResultats(data, filePath) {
   const resultsDiv = document.getElementById("results");
   resultsDiv.classList.remove("hidden");
 
@@ -202,6 +202,27 @@ function afficherResultats(data) {
   document.getElementById("content-type").textContent =
     data.type_contenu || data.contentType || "-";
   document.getElementById("format").textContent = data.format_recommande || "-";
+
+  // Analyser l'orientation du document
+  try {
+    const orientationData = await invokeChannel("ai:analyzeOrientation", {
+      filePath,
+      printerId: currentPrinterId,
+    });
+    const od = orientationData?.data || orientationData;
+    if (od?.rotation !== 0 && od?.rotation !== undefined) {
+      const orientWarning = document.getElementById("orientation-warning");
+      document.getElementById("rotation-angle").textContent = od.rotation;
+      document.getElementById("rotation-reason").textContent =
+        od.reason || "Rotation détectée";
+      orientWarning.classList.remove("hidden");
+    } else {
+      document.getElementById("orientation-warning").classList.add("hidden");
+    }
+  } catch (err) {
+    console.warn("Erreur analyzeOrientation:", err);
+    document.getElementById("orientation-warning").classList.add("hidden");
+  }
 }
 
 // ── Gestion de la recharge de crédits ───────────────────────────

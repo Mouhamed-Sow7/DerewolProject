@@ -223,6 +223,20 @@
         display: none;
       }
 
+      .orientation-warning {
+        margin-top: 15px;
+      }
+
+      .warning-banner {
+        background: var(--jaune);
+        color: var(--noir);
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        animation: fadeIn 0.3s ease;
+      }
+
       @media (max-width: 768px) {
         .buttons {
           flex-direction: column;
@@ -291,6 +305,10 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="orientation-warning hidden" id="orientation-warning">
+        <div class="warning-banner">⚠️ Document mal orienté (rotation <span id="rotation-angle">0</span>°) — <span id="rotation-reason">inconnu</span></div>
       </div>
 
       <div class="recharge hidden" id="recharge-section">
