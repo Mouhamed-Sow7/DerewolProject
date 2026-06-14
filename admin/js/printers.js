@@ -24,7 +24,9 @@ async function fetchPrinters(search = "") {
 }
 
 function getPrinterSubStatus(printer) {
-  const subs = printer.subscriptions || [];
+  const subs = Array.isArray(printer.subscriptions)
+    ? printer.subscriptions
+    : (printer.subscriptions ? [printer.subscriptions] : []);
   const now = new Date();
   const active = subs.find(
     (s) =>
