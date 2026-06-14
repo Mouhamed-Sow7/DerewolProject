@@ -527,20 +527,38 @@ async function analyzeNewJob(jobData) {
     const fileGroupId = jobData?.id;
     if (!fileGroupId || !printerCfg?.id) return;
 
-    const { data: filesData, error: filesError } = await supabase
-      .from("files")
-      .select("id, storage_path, encrypted_key, file_name")
-      .eq("file_group_id", fileGroupId)
-      .eq("file_type", "original");
-
-    if (filesError || !filesData?.length) {
-      console.warn("[AI] Aucun fichier trouvé pour file_group:", fileGroupId);
+    // Retry jusqu'à ce que les fichiers soient disponibles (race condition)
+    let filesData = [];
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const { data: groupData, error: groupError } = await supabase
+        .from("file_groups")
+        .select("id, files ( id, storage_path, encrypted_key, file_name )")
+        .eq("id", fileGroupId)
+        .single();
+      if (groupError) {
+        console.warn(
+          "[AI] Tentative",
+          attempt,
+          "- file_group introuvable:",
+          groupError.message,
+        );
+        continue;
+      }
+      filesData = groupData?.files || [];
+      if (filesData.length > 0) {
+        console.log("[AI] Fichiers trouvés à la tentative", attempt);
+        break;
+      }
+      console.log("[AI] Tentative", attempt, "- aucun fichier encore...");
+    }
+    const fileData =
+      filesData.find((f) => f.file_name?.toLowerCase().endsWith(".pdf")) ||
+      filesData[0];
+    if (!fileData) {
+      console.warn("[AI] Aucun fichier PDF dans le group:", fileGroupId);
       return;
     }
-
-    // Analyser seulement le premier PDF trouvé
-    const fileData =
-      filesData.find((f) => f.file_name?.endsWith(".pdf")) || filesData[0];
 
     const ext = path.extname(fileData.file_name).toLowerCase();
     if (ext !== ".pdf") {

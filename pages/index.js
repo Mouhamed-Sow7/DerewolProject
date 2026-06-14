@@ -15,9 +15,8 @@ import {
   CheckCircle2,
   Trash2,
 } from "lucide-react";
-
 const DOWNLOAD_URL =
-  "https://github.com/Mouhamed-Sow7/DerewolProject/releases/latest";
+  "https://github.com/Mouhamed-Sow7/DerewolProject/releases/download/v1.0.0/DerewolPrint.Setup.1.0.0.exe";
 const WHATSAPP_URL = "https://wa.me/221781220391";
 
 export default function DerewolLanding() {

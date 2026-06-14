@@ -26,16 +26,16 @@ async function fetchPrinters(search = "") {
 function getPrinterSubStatus(printer) {
   const subs = Array.isArray(printer.subscriptions)
     ? printer.subscriptions
-    : (printer.subscriptions ? [printer.subscriptions] : []);
+    : printer.subscriptions
+      ? [printer.subscriptions]
+      : [];
   const now = new Date();
   const active = subs.find(
     (s) =>
       s.status === "active" && s.expires_at && new Date(s.expires_at) > now,
   );
   if (active) {
-    const days = Math.ceil(
-      (new Date(active.expires_at) - now) / 86400000,
-    );
+    const days = Math.ceil((new Date(active.expires_at) - now) / 86400000);
     return { label: `Actif · ${days} j`, cls: "badge-active" };
   }
   const pending = subs.find((s) => s.status === "pending");

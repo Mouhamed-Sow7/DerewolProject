@@ -10,7 +10,7 @@ const { createClient } = require("@supabase/supabase-js");
 
 // ── Config ──────────────────────────────────────────────────────
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 1000;
 
 // Coût approximatif par action (pour les logs)
@@ -728,108 +728,31 @@ async function analyzeJobOrientation(filePath, printerId) {
       throw new Error(`Fichier introuvable: ${filePath}`);
     }
 
-    // Rasteriser page 1 du PDF en image
-    const { createCanvas } = require("@napi-rs/canvas");
-    const pdfjs = require("pdfjs-dist/legacy/build/pdf");
-
-    // Chemin du worker
-    const pdfWorkerPath = require("pdfjs-dist/legacy/build/pdf.worker.min.js");
-    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerPath;
-
-    const pdfData = fs.readFileSync(filePath);
-    const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
-    const page = await pdf.getPage(1);
-
-    // Canvas offscreen pour rasteriser
-    const viewport = page.getViewport({ scale: 1.5 });
-    const canvas = createCanvas(viewport.width, viewport.height);
-    const ctx = canvas.getContext("2d");
-
-    await page.render({
-      canvasContext: ctx,
-      viewport: viewport,
-    }).promise;
-
-    // Convertir en base64 PNG
-    const pngBuffer = canvas.toBuffer("image/png");
-    const base64Image = pngBuffer.toString("base64");
-
-    // Appel Claude Vision - prompt court pour juste la rotation
-    const prompt = `Analyze this document page orientation. Return ONLY valid JSON: {rotation: 0|90|180|270}`;
-
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": getAnthropicKey(),
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 50,
-        system:
-          "You are a document orientation analyzer. Respond ONLY with valid JSON.",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/png",
-                  data: base64Image,
-                },
-              },
-              { type: "text", text: prompt },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      console.warn("[DEREWOL AI] Claude API error for orientation analysis");
-      return FALLBACK;
-    }
-
-    const data = await response.json();
-    const text = data.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-
-    const clean = text.replace(/```json|```/g, "").trim();
-    const result = JSON.parse(clean);
-
-    const rotation = [0, 90, 180, 270].includes(Number(result.rotation))
-      ? Number(result.rotation)
-      : 0;
-
-    return {
-      rotation,
-      needsWarning: rotation !== 0,
-    };
+    // Lire /Rotate directement dans le binaire PDF ? zero dependance
+    const pdfBytes = fs.readFileSync(filePath, 'utf8');
+    const match = pdfBytes.match(/\/Rotate\s+(\d+)/);
+    const rotation = match ? ([0,90,180,270].includes(Number(match[1])) ? Number(match[1]) : 0) : 0;
+    console.log("[AI] orientation metadata PDF:", rotation, "deg");
+    return { rotation, needsWarning: rotation !== 0 };
   } catch (err) {
     console.error("[DEREWOL AI] analyzeJobOrientation error:", err.message);
     return FALLBACK;
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
+
+// ???????????????????????????????????????????????????????????????
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════
+// ???????????????????????????????????????????????????????????????
 
 module.exports = {
-  // Fonctions principales
   analyzeDocument,
   analyzeExcel,
   ocrDocument,
   analyzeOrientation,
   analyzeJobOrientation,
-
-  // Système de crédits (pour main.js)
   checkAICredits,
   consumeAICredit,
   addAICredits,
+  logAIUsage,
 };
