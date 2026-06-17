@@ -407,8 +407,9 @@ body {
   background: var(--surface);
   border-top: 1px solid var(--border);
   z-index: 60;
-  height: calc(64px + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Add a sensible default safe-area bottom padding (fallback 16px) */
+  height: calc(64px + env(safe-area-inset-bottom, 16px));
+  padding-bottom: env(safe-area-inset-bottom, 16px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -420,7 +421,7 @@ body {
   padding: 0 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center; /* center the FAB horizontally */
   position: relative;
 }
 
@@ -450,7 +451,8 @@ body {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  top: -28px;
+  /* raise the FAB slightly for a cleaner floating look */
+  top: -36px;
   width: 64px;
   height: 64px;
   border-radius: 50%;
@@ -481,6 +483,10 @@ body {
 
 .layout-main {
   min-height: 100vh;
+}
+
+/* Applied only when BottomNav is visible */
+.layout-main--with-bottomnav {
   padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
 }
 

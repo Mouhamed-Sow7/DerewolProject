@@ -145,6 +145,26 @@ async function verifyQRToken(slug, token) {
   return true;
 }
 
+// Génère un token court et sécurisé côté client
+function generateQrToken() {
+  try {
+    if (
+      typeof window !== "undefined" &&
+      window.crypto &&
+      window.crypto.getRandomValues
+    ) {
+      const arr = new Uint8Array(16);
+      window.crypto.getRandomValues(arr);
+      return Array.from(arr)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  } catch (e) {
+    // fallthrough
+  }
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
 function usePrintStatus(ownerId, showToast) {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1285,31 +1305,91 @@ export default function PrinterSPA({ showToast }) {
         ? sessionStorage.getItem("dw_qr_token")
         : null);
 
+    const isFromScanner =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("dw_scanner_redirect") === s;
+
     async function init() {
-      if (!token) {
-        router.replace(`/scan/${s}`);
-        return;
-      }
-
-      const valid = await verifyQRToken(s, token);
-      if (!valid) {
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem("dw_qr_token");
-        }
-        router.replace(`/scan/${s}?expired=true`);
-        return;
-      }
-
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("dw_qr_token", token);
-      }
-
+      // Fetch printer early so we can create a DB session tied to it
       const printerData = await getPrinterBySlug(s);
       if (!mounted) return;
       if (!printerData) {
         setPage("notfound");
         return;
       }
+
+      // Case: external camera scan — no token and not from internal scanner
+      if (!token && !isFromScanner) {
+        try {
+          // Ensure a local anonymous session exists (owner_id, display_code)
+          let sess = loadSession(s);
+          if (!sess) {
+            sess = createAnonymousSession({
+              printer_slug: s,
+              printer_id: printerData.id,
+              printer_name: printerData.name,
+            });
+          }
+
+          // Create a short-lived qr token in DB (30 minutes)
+          const qr = generateQrToken();
+          try {
+            await supabase.from("anon_sessions").insert({
+              owner_id: sess.owner_id || null,
+              printer_slug: s,
+              qr_token: qr,
+              first_seen_at: new Date().toISOString(),
+              last_seen_at: new Date().toISOString(),
+              token_expires_at: new Date(
+                Date.now() + 30 * 60 * 1000,
+              ).toISOString(),
+            });
+            if (typeof window !== "undefined") {
+              sessionStorage.setItem("dw_qr_token", qr);
+            }
+          } catch (dbErr) {
+            console.warn(
+              "[p/index] failed to persist short-lived qr token:",
+              dbErr?.message || dbErr,
+            );
+          }
+
+          // Finalize UI state: printer + local session + show upload UI
+          setPrinter(printerData);
+          setSlug(s);
+          setSession(sess);
+          setPage("home");
+          return;
+        } catch (err) {
+          console.error(
+            "[p/index] auto-session creation failed:",
+            err?.message || err,
+          );
+          setPage("notfound");
+          return;
+        }
+      }
+
+      // Token path: validate existing short-lived token
+      if (token) {
+        const valid = await verifyQRToken(s, token);
+        if (!valid) {
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("dw_qr_token");
+          }
+          router.replace(`/scan?expired=true`);
+          return;
+        }
+      } else if (isFromScanner && typeof window !== "undefined") {
+        // Internal scanner flow — clear redirect flag and continue
+        sessionStorage.removeItem("dw_scanner_redirect");
+      }
+
+      if (typeof window !== "undefined" && token) {
+        sessionStorage.setItem("dw_qr_token", token);
+      }
+
+      // Normal flow for PWA users (or validated token)
       setPrinter(printerData);
       setSlug(s);
       let sess = loadSession(s);

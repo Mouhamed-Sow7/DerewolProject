@@ -2975,7 +2975,57 @@ ipcMain.handle("polling:set-interval", async (_, intervalMs) => {
 // ── IPC : QR Code ───────────────────────────────────────────────
 ipcMain.handle("qr:generate", async (_, data) => {
   try {
-    const dataURL = await QRCode.toDataURL(data, { width: 300, margin: 2 });
+    // Accept a URL string (or fallback to string coercion)
+    const urlStr = typeof data === "string" ? data : String(data || "");
+    let urlObj;
+    try {
+      urlObj = new URL(urlStr);
+    } catch (err) {
+      // If not absolute, resolve against configured base
+      const base =
+        process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
+      urlObj = new URL(urlStr, base);
+    }
+
+    // Try to extract slug from /p/<slug>
+    const parts = urlObj.pathname.split("/").filter(Boolean);
+    let slug = null;
+    if (parts.length >= 2 && parts[0] === "p") slug = parts[1];
+
+    // If we have a slug, create a short-lived secure token and persist it
+    if (slug) {
+      try {
+        const token = crypto.randomBytes(12).toString("hex");
+        const tokenExpiresAt = new Date(
+          Date.now() + 30 * 60 * 1000,
+        ).toISOString(); // 30 minutes
+
+        const { data: insertData, error: insertError } = await supabase
+          .from("anon_sessions")
+          .insert({
+            qr_token: token,
+            printer_slug: slug,
+            token_expires_at: tokenExpiresAt,
+            first_seen_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (!insertError) {
+          // Append token as query param for the generated QR URL
+          urlObj.searchParams.set("token", token);
+        } else {
+          console.warn("[IPC] QR token insertion failed:", insertError.message);
+        }
+      } catch (err) {
+        console.warn("[IPC] Erreur création token QR:", err?.message || err);
+      }
+    }
+
+    const dataURL = await QRCode.toDataURL(urlObj.toString(), {
+      width: 300,
+      margin: 2,
+    });
     console.log("[IPC] QR code généré avec succès");
     return { success: true, dataURL };
   } catch (e) {
