@@ -3,6 +3,7 @@ import "../styles/dashboard.css";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
 import "../styles/modal.css";
+import Layout from "../components/Layout";
 // ── Toast global ──────────────────────────────────────────────
 function Toast({ message, type, visible }) {
   if (!visible) return null;
@@ -41,7 +42,9 @@ export default function App({ Component, pageProps }) {
 
   return (
     <>
-      <Component {...pageProps} showToast={showToast} />
+      <Layout>
+        <Component {...pageProps} showToast={showToast} />
+      </Layout>
       <Toast {...toast} />
     </>
   );

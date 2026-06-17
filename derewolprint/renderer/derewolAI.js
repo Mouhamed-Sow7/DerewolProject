@@ -51,6 +51,8 @@ function watchParentThemeChanges() {
 
 // ── Variables globales ──────────────────────────────────────────
 let currentPrinterId = null;
+let lastAnalyzedFilePath = null;
+let lastSuggestions = null;
 
 // ── Obtenir l'ID du printer actuel ──────────────────────────────
 async function getPrinterId() {
@@ -203,6 +205,80 @@ async function afficherResultats(data, filePath) {
     data.type_contenu || data.contentType || "-";
   document.getElementById("format").textContent = data.format_recommande || "-";
 
+  // Save last analyzed file + normalized suggestion fields for Apply action
+  lastAnalyzedFilePath = filePath;
+  lastSuggestions = {
+    orientation: data.orientation || null,
+    scale: data.echelle_recommandee || data.scale || data.zoom || null,
+    margins: data.marges || data.margins || null,
+    printArea:
+      data.printArea || data.print_area || data.zone_impression || null,
+    fitToPages: data.fitToPages || data.fit_to_pages || false,
+  };
+
+  // Toggle visibility of Apply button when suggestions present
+  const applyBtn = document.getElementById("btn-apply-suggestions");
+  if (data.suggestions && data.suggestions.length > 0) {
+    applyBtn.classList.remove("hidden");
+  } else {
+    applyBtn.classList.add("hidden");
+  }
+
+  // Apply suggestions flow
+  async function applySuggestionsHandler() {
+    if (!lastAnalyzedFilePath || !lastSuggestions) {
+      alert("Aucun fichier analysé à appliquer");
+      return;
+    }
+
+    try {
+      const payload = {
+        filePath: lastAnalyzedFilePath,
+        suggestions: lastSuggestions,
+      };
+
+      const res = await invokeChannel("ai:applySuggestions", payload);
+      if (!res || !res.success) {
+        alert("Erreur application suggestions: " + (res?.error || "inconnu"));
+        return;
+      }
+
+      // Show modal with temp file path
+      const modal = document.getElementById("apply-modal");
+      const pathEl = document.getElementById("apply-modal-path");
+      pathEl.textContent = res.tempFilePath;
+      modal.classList.remove("hidden");
+    } catch (err) {
+      console.error("applySuggestionsHandler:", err);
+      alert("Erreur lors de l'application des suggestions");
+    }
+  }
+
+  // Modal button handlers
+  async function applyModalHandlers() {
+    const modal = document.getElementById("apply-modal");
+    document
+      .getElementById("apply-cancel")
+      .addEventListener("click", async () => {
+        const path = document.getElementById("apply-modal-path").textContent;
+        if (path)
+          await invokeChannel("file:deleteTemp", { tempFilePath: path });
+        modal.classList.add("hidden");
+      });
+
+    document
+      .getElementById("apply-print-now")
+      .addEventListener("click", async () => {
+        const path = document.getElementById("apply-modal-path").textContent;
+        if (!path) return alert("Fichier introuvable");
+        // Trigger print of local temp file
+        const r = await invokeChannel("print:local", { tempFilePath: path });
+        if (!r || !r.success)
+          return alert("Erreur impression: " + (r?.error || "inconnu"));
+        // On success, close modal
+        modal.classList.add("hidden");
+      });
+  }
   // Analyser l'orientation du document
   try {
     const orientationData = await invokeChannel("ai:analyzeOrientation", {
@@ -295,4 +371,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       rechargerCredits(credits, amount);
     });
   });
+
+  // Toggle Derewol AI control (persisted in localStorage)
+  try {
+    const toggle = document.getElementById("toggle-derewol-ai");
+    const stored = localStorage.getItem("derewol_ai_enabled");
+    toggle.checked = stored === null ? true : stored === "1";
+    toggle.addEventListener("change", () => {
+      localStorage.setItem("derewol_ai_enabled", toggle.checked ? "1" : "0");
+    });
+  } catch (err) {
+    console.warn("Toggle Derewol AI init failed", err);
+  }
+
+  // Apply suggestions button
+  const applyBtn = document.getElementById("btn-apply-suggestions");
+  applyBtn.addEventListener("click", applySuggestionsHandler);
+  applyModalHandlers();
 });

@@ -260,7 +260,26 @@
   <body>
     <div class="container">
       <div class="header">
-        <div class="logo">Derewol AI ✦</div>
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+          "
+        >
+          <div class="logo">Derewol AI ✦</div>
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              font-weight: 600;
+            "
+          >
+            <input type="checkbox" id="toggle-derewol-ai" /> Derewol AI
+          </label>
+        </div>
         <div class="credits" id="credits-display">
           Chargement des crédits...
         </div>
@@ -307,8 +326,62 @@
         </div>
       </div>
 
+      <div style="text-align: center; margin-top: 12px">
+        <button class="btn-primary hidden" id="btn-apply-suggestions">
+          ✦ Appliquer les suggestions
+        </button>
+      </div>
+
+      <div
+        id="apply-modal"
+        class="hidden"
+        style="
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.45);
+        "
+      >
+        <div
+          style="
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            max-width: 620px;
+            width: 94%;
+            box-shadow: var(--shadow);
+          "
+        >
+          <h3 style="margin-top: 0; color: var(--jaune)">
+            Fichier modifié prêt
+          </h3>
+          <p
+            id="apply-modal-path"
+            style="word-break: break-all; color: var(--text-muted)"
+          ></p>
+          <div
+            style="
+              display: flex;
+              gap: 12px;
+              justify-content: flex-end;
+              margin-top: 12px;
+            "
+          >
+            <button class="btn-secondary" id="apply-cancel">Annuler</button>
+            <button class="btn-primary" id="apply-print-now">
+              Imprimer maintenant
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="orientation-warning hidden" id="orientation-warning">
-        <div class="warning-banner">⚠️ Document mal orienté (rotation <span id="rotation-angle">0</span>°) — <span id="rotation-reason">inconnu</span></div>
+        <div class="warning-banner">
+          ⚠️ Document mal orienté (rotation <span id="rotation-angle">0</span>°)
+          — <span id="rotation-reason">inconnu</span>
+        </div>
       </div>
 
       <div class="recharge hidden" id="recharge-section">

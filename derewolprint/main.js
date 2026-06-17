@@ -949,6 +949,265 @@ ipcMain.handle("print:set-options", (_event, opts) => {
   global._filesPrintOptions = { ...global._filesPrintOptions, ...opts };
 });
 
+// Apply AI suggestions to an Excel file (creates a temp copy, does not modify original)
+ipcMain.handle(
+  "ai:applySuggestions",
+  async (_event, { filePath, suggestions }) => {
+    try {
+      if (!filePath || !fs.existsSync(filePath))
+        return { success: false, error: "Fichier introuvable" };
+
+      const ext = path.extname(filePath).toLowerCase();
+      if (![".xlsx", ".xls"].includes(ext))
+        return {
+          success: false,
+          error:
+            "Format non supporté — seul Excel (.xlsx/.xls) est pris en charge",
+        };
+
+      const derewolDir = getDerewolFilesDir();
+      const base = path.basename(filePath, ext);
+      const ts = Date.now();
+      const tempFileName = `${base}-ai-applied-${ts}${ext}`;
+      const tempFilePath = path.join(derewolDir, tempFileName);
+
+      // Copy original to temp (never modify original)
+      fs.copyFileSync(filePath, tempFilePath);
+
+      // Helper: parse margin value into inches for Excel COM
+      function parseMarginValue(val) {
+        if (val === null || val === undefined) return null;
+        if (typeof val === "number") return val; // assume already inches
+        if (typeof val === "string") {
+          const raw = val.trim().toLowerCase();
+          // numeric with optional decimal/comma
+          const maybeNum = parseFloat(raw.replace(",", "."));
+          if (!isNaN(maybeNum)) {
+            if (/cm\b/.test(raw)) return maybeNum / 2.54;
+            if (/mm\b/.test(raw)) return maybeNum / 25.4;
+            if (/in\b/.test(raw) || /inch/.test(raw) || /\"$/.test(raw))
+              return maybeNum;
+            // no unit: assume inches
+            return maybeNum;
+          }
+          // fallback: try match value+unit
+          const m = raw.match(
+            /([0-9]+(?:[\.,][0-9]+)?)\s*(cm|mm|in|inch|inches)?/,
+          );
+          if (m) {
+            const num = parseFloat(m[1].replace(",", "."));
+            const unit = m[2];
+            if (!unit) return num;
+            if (unit.startsWith("cm")) return num / 2.54;
+            if (unit.startsWith("mm")) return num / 25.4;
+            return num; // inches
+          }
+        }
+        return null;
+      }
+
+      // Convert margins to inches if present
+      let marginsConverted = null;
+      if (
+        suggestions &&
+        suggestions.margins &&
+        typeof suggestions.margins === "object"
+      ) {
+        const m = suggestions.margins;
+        marginsConverted = {
+          left: parseMarginValue(m.left),
+          right: parseMarginValue(m.right),
+          top: parseMarginValue(m.top),
+          bottom: parseMarginValue(m.bottom),
+        };
+        if (
+          [
+            marginsConverted.left,
+            marginsConverted.right,
+            marginsConverted.top,
+            marginsConverted.bottom,
+          ].every((v) => v === null)
+        ) {
+          marginsConverted = null;
+        }
+      }
+
+      // Prepare suggestions copy for PowerShell (with converted margins)
+      const suggestionsForPS = { ...suggestions, margins: marginsConverted };
+
+      // Write suggestions JSON to temp file for PowerShell to read
+      const suggJsonPath = path.join(
+        derewolDir,
+        `${base}-ai-suggestions-${ts}.json`,
+      );
+      fs.writeFileSync(
+        suggJsonPath,
+        JSON.stringify(suggestionsForPS, null, 2),
+        "utf8",
+      );
+
+      // PowerShell script: open Excel COM, apply page setup per sheet, save and quit
+      function escapeForPS(p) {
+        return p.replace(/'/g, "''");
+      }
+
+      const psPath = path.join(derewolDir, `${base}-ai-apply-${ts}.ps1`);
+      const tempNorm = escapeForPS(tempFilePath);
+      const suggNorm = escapeForPS(suggJsonPath);
+
+      const psScript = `
+try {
+  $ErrorActionPreference = 'Stop'
+  $sugg = Get-Content -Raw -Path '${suggNorm}' | ConvertFrom-Json
+  $x = New-Object -ComObject Excel.Application
+} catch {
+  Write-Output "ERROR: Excel COM not available or failed to create object: $($_.Exception.Message)"
+  exit 2
+}
+
+$x.Visible = $false
+$x.DisplayAlerts = $false
+
+try {
+  $wb = $x.Workbooks.Open('${tempNorm}')
+  foreach ($ws in $wb.Worksheets) {
+    # Orientation
+    if ($sugg.orientation) {
+      if ($sugg.orientation -match 'paysage|landscape') { $ws.PageSetup.Orientation = 2 } else { $ws.PageSetup.Orientation = 1 }
+    }
+
+    # FitToPages
+    if ($sugg.fitToPages -eq $true) {
+      $ws.PageSetup.Zoom = $false
+      $ws.PageSetup.FitToPagesWide = 1
+      $ws.PageSetup.FitToPagesTall = 0
+    }
+
+    # Scale (Zoom percent)
+    if ($sugg.scale -and ($sugg.scale -is [int] -or $sugg.scale -is [double])) {
+      try { $ws.PageSetup.Zoom = [int]$sugg.scale } catch {}
+    }
+
+    # Margins (expect object with keys left,right,top,bottom in cm or inches)
+    if ($sugg.margins -and $sugg.margins -is [object]) {
+      try {
+        if ($sugg.margins.left) { $ws.PageSetup.LeftMargin = [double]$sugg.margins.left }
+        if ($sugg.margins.right) { $ws.PageSetup.RightMargin = [double]$sugg.margins.right }
+        if ($sugg.margins.top) { $ws.PageSetup.TopMargin = [double]$sugg.margins.top }
+        if ($sugg.margins.bottom) { $ws.PageSetup.BottomMargin = [double]$sugg.margins.bottom }
+      } catch { }
+    }
+
+    # Print area
+    if ($sugg.printArea) {
+      try { $ws.PageSetup.PrintArea = $sugg.printArea } catch { }
+    }
+  }
+
+  $wb.Save()
+  $wb.Close($false)
+  $x.Quit()
+  Write-Output "OK"
+} catch {
+  Write-Output "ERROR: $($_.Exception.Message)"
+  try { $x.Quit() } catch {}
+  exit 3
+}
+`;
+
+      fs.writeFileSync(psPath, psScript, "utf8");
+
+      // Execute the PowerShell script
+      const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "${psPath.replace(/"/g, '\\"')}"`;
+      try {
+        await execShell(cmd, { windowsHide: true, timeout: 120000 });
+      } catch (err) {
+        const msg = err?.message || String(err);
+        return { success: false, error: `PowerShell/Excel error: ${msg}` };
+      }
+
+      // Append to local ai_applied_history.jsonl
+      try {
+        const hist = {
+          original: filePath,
+          temp: tempFilePath,
+          suggestions,
+          timestamp: new Date().toISOString(),
+        };
+        const hpath = path.join(derewolDir, "ai_applied_history.jsonl");
+        fs.appendFileSync(hpath, JSON.stringify(hist) + "\n", "utf8");
+        log("AI_APPLIED", hist);
+      } catch (e) {
+        console.warn("Failed to write AI history:", e.message);
+      }
+
+      return { success: true, tempFilePath };
+    } catch (e) {
+      console.error("ai:applySuggestions error:", e.message);
+      return { success: false, error: e.message };
+    }
+  },
+);
+
+// Print a local temp file (convert to PDF if needed) and send to configured printer
+ipcMain.handle("print:local", async (_event, { tempFilePath }) => {
+  try {
+    if (!tempFilePath || !fs.existsSync(tempFilePath))
+      return { success: false, error: "Fichier introuvable" };
+    const ext = path.extname(tempFilePath).toLowerCase();
+    let pdfPath = tempFilePath;
+
+    if ([".xlsx", ".xls", ".doc", ".docx"].includes(ext)) {
+      // Convert to PDF using Office COM
+      const outPdf = tempFilePath.replace(/\.[^.]+$/, ".pdf");
+      const normalized = tempFilePath.replace(/'/g, "''");
+      const outputNormalized = outPdf.replace(/'/g, "''");
+      let cmd;
+      if ([".doc", ".docx"].includes(ext)) {
+        cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
+      } else {
+        cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
+      }
+      await execShell(cmd, { windowsHide: true, timeout: 120000 });
+      pdfPath = outPdf;
+    }
+
+    // Use pdf-to-printer for printing PDFs
+    if (path.extname(pdfPath).toLowerCase() !== ".pdf") {
+      return {
+        success: false,
+        error: "Impossible de convertir en PDF pour l'impression",
+      };
+    }
+
+    const printerName = getPrinterWindowsName();
+    const printOpts = printerName ? { printer: printerName } : {};
+    await pdfToPrinter.print(pdfPath, printOpts);
+
+    return { success: true };
+  } catch (e) {
+    console.error("print:local error:", e.message);
+    return { success: false, error: e.message };
+  }
+});
+
+// Delete temporary file
+ipcMain.handle("file:deleteTemp", async (_event, { tempFilePath }) => {
+  try {
+    if (!tempFilePath || !fs.existsSync(tempFilePath)) return { success: true };
+    try {
+      fs.unlinkSync(tempFilePath);
+    } catch (err) {
+      // Try secure delete helper
+      await forceDeleteWhenReleased(tempFilePath);
+    }
+    return { success: true };
+  } catch (e) {
+    console.warn("file:deleteTemp error:", e.message);
+    return { success: false, error: e.message };
+  }
+});
+
 // ── Viewer : helpers ────────────────────────────────────────────
 function getFileType(fileName) {
   const ext = path.extname(fileName).toLowerCase();
