@@ -2,25 +2,55 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
-// ─── Constantes ────────────────────────────────────────────────────────────────
 const READER_ID = "qr-reader-container";
 const SCAN_FPS = 10;
 const SCAN_COOLDOWN_MS = 2000;
 
-// ─── Composant principal ────────────────────────────────────────────────────────
 export default function ScanPage() {
   const router = useRouter();
   const scannerRef = useRef(null);
   const lastScanRef = useRef(0);
-  const [status, setStatus] = useState("idle"); // idle | scanning | success | error
+  const onScanSuccessRef = useRef(null); // ref stable — évite closure périmée
+  const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [torch, setTorch] = useState(false);
+
+  // ── Succès de scan ────────────────────────────────────────────────────────────
+  const onScanSuccess = useCallback(
+    async (decodedText) => {
+      const now = Date.now();
+      if (now - lastScanRef.current < SCAN_COOLDOWN_MS) return;
+      lastScanRef.current = now;
+
+      setStatus("success");
+      if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+
+      if (scannerRef.current) {
+        try {
+          await scannerRef.current.stop();
+        } catch (_) {}
+      }
+
+      const redirect = sessionStorage.getItem("dw_scanner_redirect");
+      if (redirect) {
+        sessionStorage.removeItem("dw_scanner_redirect");
+        router.push(`${redirect}?code=${encodeURIComponent(decodedText)}`);
+      } else {
+        router.push(`/verify?code=${encodeURIComponent(decodedText)}`);
+      }
+    },
+    [router],
+  );
+
+  // Garder la ref à jour à chaque render
+  useEffect(() => {
+    onScanSuccessRef.current = onScanSuccess;
+  }, [onScanSuccess]);
 
   // ── Démarrage du scanner ──────────────────────────────────────────────────────
   const startScanner = useCallback(async () => {
     const { Html5Qrcode } = await import("html5-qrcode");
 
-    // Nettoyer une instance précédente
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
@@ -36,15 +66,13 @@ export default function ScanPage() {
         { facingMode: "environment" },
         {
           fps: SCAN_FPS,
-          // On désactive la boîte native de html5-qrcode
-          // en passant un qrbox minimal (1×1) — la vraie UI est la nôtre
-          qrbox: { width: 1, height: 1 },
+          qrbox: { width: 50, height: 50 }, // minimum autorisé par html5-qrcode
           aspectRatio: 1.0,
           disableFlip: false,
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         },
-        onScanSuccess,
-        () => {}, // erreurs silencieuses (frame rate)
+        (decodedText) => onScanSuccessRef.current?.(decodedText),
+        () => {},
       );
       setStatus("scanning");
     } catch (err) {
@@ -53,37 +81,6 @@ export default function ScanPage() {
       console.error(err);
     }
   }, []);
-
-  // ── Succès de scan ────────────────────────────────────────────────────────────
-  const onScanSuccess = useCallback(
-    async (decodedText) => {
-      const now = Date.now();
-      if (now - lastScanRef.current < SCAN_COOLDOWN_MS) return;
-      lastScanRef.current = now;
-
-      setStatus("success");
-
-      // Vibration tactile (PWA)
-      if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
-
-      // Arrêt du scanner
-      if (scannerRef.current) {
-        try {
-          await scannerRef.current.stop();
-        } catch (_) {}
-      }
-
-      // Logique de redirection Derewol
-      const redirect = sessionStorage.getItem("dw_scanner_redirect");
-      if (redirect) {
-        sessionStorage.removeItem("dw_scanner_redirect");
-        router.push(`${redirect}?code=${encodeURIComponent(decodedText)}`);
-      } else {
-        router.push(`/verify?code=${encodeURIComponent(decodedText)}`);
-      }
-    },
-    [router],
-  );
 
   // ── Toggle torche ─────────────────────────────────────────────────────────────
   const toggleTorch = useCallback(async () => {
@@ -94,9 +91,7 @@ export default function ScanPage() {
         advanced: [{ torch: newVal }],
       });
       setTorch(newVal);
-    } catch (_) {
-      // Torche non supportée — on ignore silencieusement
-    }
+    } catch (_) {}
   }, [torch]);
 
   // ── Cycle de vie ──────────────────────────────────────────────────────────────
@@ -120,9 +115,7 @@ export default function ScanPage() {
         <meta name="theme-color" content="#09090b" />
       </Head>
 
-      {/* ── Fond plein écran ── */}
       <div className="scan-root">
-        {/* ── Header ── */}
         <header className="scan-header">
           <button
             className="scan-back-btn"
@@ -174,9 +167,7 @@ export default function ScanPage() {
           </button>
         </header>
 
-        {/* ── Zone caméra ── */}
         <main className="scan-main">
-          {/* Hint supérieur */}
           <p className="scan-hint">
             {status === "success"
               ? "✓ Code détecté !"
@@ -185,24 +176,22 @@ export default function ScanPage() {
                 : "Centrez le QR code dans la zone"}
           </p>
 
-          {/* Boîte de visée — toute l'UI custom est ici */}
           <div className="scan-viewfinder">
-            {/* Conteneur html5-qrcode — on laisse la lib injecter ici */}
             <div id={READER_ID} className="scan-reader-host" />
 
-            {/* Overlay décoratif : coins "high-tech" */}
             <div className="scan-corner scan-corner--tl" />
             <div className="scan-corner scan-corner--tr" />
             <div className="scan-corner scan-corner--bl" />
             <div className="scan-corner scan-corner--br" />
 
-            {/* Ligne laser — toujours monté, visible dès scanning */}
             <div
-              className={`scan-laser${status === "scanning" ? " scan-laser--active" : ""}`}
+              className={
+                "scan-laser" +
+                (status === "scanning" ? " scan-laser--active" : "")
+              }
               aria-hidden="true"
             />
 
-            {/* Flash succès */}
             {status === "success" && (
               <div className="scan-success-flash" aria-hidden="true">
                 <svg className="scan-check" viewBox="0 0 52 52" fill="none">
@@ -225,17 +214,11 @@ export default function ScanPage() {
             )}
           </div>
 
-          {/* Hint inférieur */}
           <p className="scan-sub-hint">Derewol · Impression sécurisée</p>
         </main>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════════
-          CSS GLOBAL — Neutralisation agressive de html5-qrcode
-          + UI custom
-      ═══════════════════════════════════════════════════════════════════════ */}
       <style jsx global>{`
-        /* ── Reset & fond ── */
         *,
         *::before,
         *::after {
@@ -249,14 +232,13 @@ export default function ScanPage() {
           inset: 0;
           display: flex;
           flex-direction: column;
-          background: #09090b; /* zinc-950 */
+          background: #09090b;
           color: #f4f4f5;
           font-family:
             -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           overflow: hidden;
         }
 
-        /* ── Header ── */
         .scan-header {
           position: relative;
           z-index: 20;
@@ -295,7 +277,6 @@ export default function ScanPage() {
           color: #e4e4e7;
         }
 
-        /* ── Main layout ── */
         .scan-main {
           flex: 1;
           display: flex;
@@ -307,7 +288,6 @@ export default function ScanPage() {
           padding-bottom: calc(24px + 68px);
         }
 
-        /* ── Hints texte ── */
         .scan-hint {
           font-size: 14px;
           font-weight: 500;
@@ -323,13 +303,12 @@ export default function ScanPage() {
           color: #52525b;
         }
 
-        /* ── Boîte de visée ── */
         .scan-viewfinder {
           position: relative;
           width: min(72vw, 300px);
           aspect-ratio: 1 / 1;
           border-radius: 18px;
-          overflow: hidden; /* ← LIE CLEF : laser ne déborde jamais */
+          overflow: hidden;
           background: #000;
           box-shadow:
             0 0 0 1px rgba(234, 179, 8, 0.15),
@@ -337,7 +316,6 @@ export default function ScanPage() {
             0 24px 64px rgba(0, 0, 0, 0.7);
         }
 
-        /* ── Hôte html5-qrcode — on lui écrase TOUT ── */
         .scan-reader-host {
           position: absolute !important;
           inset: 0 !important;
@@ -347,9 +325,7 @@ export default function ScanPage() {
           border: none !important;
           background: transparent !important;
         }
-
-        /* Vider le padding/border que la lib impose sur #reader */
-        #${READER_ID} {
+        #qr-reader-container {
           position: absolute !important;
           inset: 0 !important;
           width: 100% !important;
@@ -359,9 +335,7 @@ export default function ScanPage() {
           background: transparent !important;
           overflow: hidden !important;
         }
-
-        /* La vidéo : plein cadre, object-fit cover */
-        #${READER_ID} video {
+        #qr-reader-container video {
           position: absolute !important;
           top: 0 !important;
           left: 0 !important;
@@ -371,34 +345,27 @@ export default function ScanPage() {
           border: none !important;
           display: block !important;
         }
-
-        /* Tuer la région ombrée native */
         #qr-shaded-region {
           display: none !important;
           opacity: 0 !important;
           pointer-events: none !important;
         }
-
-        /* Tuer le canvas de dessin */
-        #${READER_ID} canvas,
+        #qr-reader-container canvas,
         #qr-canvas {
           display: none !important;
           visibility: hidden !important;
         }
-
-        /* Tuer les divs utilitaires de la lib (sélecteur de caméra, boutons…) */
-        #${READER_ID} > div:not([id]) {
+        #qr-reader-container select,
+        #qr-reader-container button,
+        #qr-reader-container img,
+        #qr-reader-container span,
+        #qr-reader-container p {
           display: none !important;
         }
-        #${READER_ID} select,
-        #${READER_ID} button,
-        #${READER_ID} img,
-        #${READER_ID} span,
-        #${READER_ID} p {
+        #qr-reader-container > div:not([id]) {
           display: none !important;
         }
 
-        /* ── Coins high-tech ── */
         .scan-corner {
           position: absolute;
           width: 22px;
@@ -435,13 +402,12 @@ export default function ScanPage() {
           border-radius: 0 0 4px 0;
         }
 
-        /* ── Laser ── */
         .scan-laser {
           position: absolute;
           left: 8%;
           right: 8%;
-          height: 2px;
           top: 10%;
+          height: 2px;
           z-index: 11;
           border-radius: 2px;
           opacity: 0;
@@ -458,7 +424,6 @@ export default function ScanPage() {
             0 0 6px 2px rgba(234, 179, 8, 0.5),
             0 0 16px 4px rgba(234, 179, 8, 0.25);
         }
-        /* Le laser s'anime seulement quand la caméra est active */
         .scan-laser--active {
           animation: laser-sweep 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
         }
@@ -483,7 +448,6 @@ export default function ScanPage() {
           }
         }
 
-        /* ── Flash succès ── */
         .scan-success-flash {
           position: absolute;
           inset: 0;
@@ -520,7 +484,6 @@ export default function ScanPage() {
           }
         }
 
-        /* ── Respect du reduced-motion ── */
         @media (prefers-reduced-motion: reduce) {
           .scan-laser--active {
             animation: none;
