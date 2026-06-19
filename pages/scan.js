@@ -5,15 +5,64 @@ import { useRouter } from "next/router";
 const READER_ID = "qr-reader-container";
 const SCAN_FPS = 10;
 const SCAN_COOLDOWN_MS = 2000;
+const BASE_URL = "https://derewol.digitalesf.com";
 
 export default function ScanPage() {
   const router = useRouter();
   const scannerRef = useRef(null);
   const lastScanRef = useRef(0);
-  const onScanSuccessRef = useRef(null); // ref stable — évite closure périmée
+  const onScanSuccessRef = useRef(null);
   const [status, setStatus] = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [torch, setTorch] = useState(false);
+
+  // ── Résolution de l'URL scannée → route interne ──────────────────────────────
+  const resolveRoute = useCallback((raw) => {
+    const trimmed = raw.trim();
+    console.log("[DW Scanner] valeur brute :", trimmed);
+
+    // Cas 1 : URL complète du domaine → extraire le chemin
+    // ex: https://derewol.digitalesf.com/p/medz → /p/medz
+    try {
+      const url = new URL(trimmed);
+      if (url.hostname === new URL(BASE_URL).hostname) {
+        console.log(
+          "[DW Scanner] URL interne détectée → pathname:",
+          url.pathname,
+        );
+        return url.pathname; // ex: /p/medz
+      }
+    } catch (_) {
+      // pas une URL valide, on continue
+    }
+
+    // Cas 2 : chemin relatif déjà propre ex: /p/medz
+    if (trimmed.startsWith("/")) {
+      console.log("[DW Scanner] chemin relatif détecté:", trimmed);
+      return trimmed;
+    }
+
+    // Cas 3 : slug brut ex: medz → on préfixe /p/
+    if (!trimmed.includes("/") && !trimmed.includes(":")) {
+      const route = `/p/${trimmed}`;
+      console.log("[DW Scanner] slug brut détecté → route:", route);
+      return route;
+    }
+
+    // Cas 4 : redirection custom sessionStorage
+    const redirect = sessionStorage.getItem("dw_scanner_redirect");
+    if (redirect) {
+      sessionStorage.removeItem("dw_scanner_redirect");
+      const route = `${redirect}?code=${encodeURIComponent(trimmed)}`;
+      console.log("[DW Scanner] redirect sessionStorage:", route);
+      return route;
+    }
+
+    // Fallback : /verify avec le code brut
+    const fallback = `/verify?code=${encodeURIComponent(trimmed)}`;
+    console.log("[DW Scanner] fallback:", fallback);
+    return fallback;
+  }, []);
 
   // ── Succès de scan ────────────────────────────────────────────────────────────
   const onScanSuccess = useCallback(
@@ -25,24 +74,21 @@ export default function ScanPage() {
       setStatus("success");
       if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
 
+      // Stopper le scanner AVANT de naviguer
       if (scannerRef.current) {
         try {
           await scannerRef.current.stop();
+          await scannerRef.current.clear();
         } catch (_) {}
+        scannerRef.current = null; // ← empêche le double stop du useEffect cleanup
       }
 
-      const redirect = sessionStorage.getItem("dw_scanner_redirect");
-      if (redirect) {
-        sessionStorage.removeItem("dw_scanner_redirect");
-        router.push(`${redirect}?code=${encodeURIComponent(decodedText)}`);
-      } else {
-        router.push(`/verify?code=${encodeURIComponent(decodedText)}`);
-      }
+      const route = resolveRoute(decodedText);
+      setTimeout(() => router.push(route), 400);
     },
-    [router],
+    [router, resolveRoute],
   );
 
-  // Garder la ref à jour à chaque render
   useEffect(() => {
     onScanSuccessRef.current = onScanSuccess;
   }, [onScanSuccess]);
@@ -66,7 +112,12 @@ export default function ScanPage() {
         { facingMode: "environment" },
         {
           fps: SCAN_FPS,
-          qrbox: { width: 50, height: 50 }, // minimum autorisé par html5-qrcode
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const size = Math.floor(
+              Math.min(viewfinderWidth, viewfinderHeight) * 0.85,
+            );
+            return { width: size, height: size };
+          },
           aspectRatio: 1.0,
           disableFlip: false,
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
@@ -75,10 +126,11 @@ export default function ScanPage() {
         () => {},
       );
       setStatus("scanning");
+      console.log("[DW Scanner] caméra démarrée ✓");
     } catch (err) {
       setStatus("error");
       setErrorMsg("Caméra inaccessible. Vérifiez les permissions.");
-      console.error(err);
+      console.error("[DW Scanner] erreur démarrage:", err);
     }
   }, []);
 

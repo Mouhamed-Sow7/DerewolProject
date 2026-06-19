@@ -1348,10 +1348,30 @@ export default function PrinterSPA({ showToast }) {
               sessionStorage.setItem("dw_qr_token", qr);
             }
           } catch (dbErr) {
-            console.warn(
-              "[p/index] failed to persist short-lived qr token:",
-              dbErr?.message || dbErr,
-            );
+            // If the insert failed with a unique-violation (existing session),
+            // fetch the existing session instead of crashing.
+            if (dbErr && dbErr.code === "23505") {
+              try {
+                const { data: existing } = await supabase
+                  .from("anon_sessions")
+                  .select("id, token_expires_at, printer_slug")
+                  .eq("qr_token", qr)
+                  .eq("printer_slug", s)
+                  .single();
+                // continuer avec `existing` au lieu de crasher
+                // (we don't need to do anything else here; UI will continue)
+              } catch (selErr) {
+                console.warn(
+                  "[p/index] could not retrieve existing anon_session:",
+                  selErr?.message || selErr,
+                );
+              }
+            } else {
+              console.warn(
+                "[p/index] failed to persist short-lived qr token:",
+                dbErr?.message || dbErr,
+              );
+            }
           }
 
           // Finalize UI state: printer + local session + show upload UI
