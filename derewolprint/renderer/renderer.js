@@ -2406,3 +2406,7 @@ if (window.derewol?.onUpdateAvailable) {
   );
   window.derewol.onUpdateError((data) => renderUpdateBanner("error", data));
 }
+
+// Expose helper functions to the DevTools console for quick testing
+window.renderUpdateBanner = renderUpdateBanner;
+window.ensureUpdateBanner = ensureUpdateBanner;
