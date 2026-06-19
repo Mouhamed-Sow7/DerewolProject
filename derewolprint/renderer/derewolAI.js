@@ -3,10 +3,61 @@ const bridge =
   window.parent?.derewol || window.derewol || window.electron || {};
 
 function invokeChannel(channel, ...args) {
-  if (typeof bridge.invoke === "function") {
-    return bridge.invoke(channel, ...args);
-  }
-  throw new Error("Bridge IPC non disponible");
+  return new Promise((resolve, reject) => {
+    const requestId = Math.random().toString(36).slice(2);
+    const payload = args[0];
+    let attempts = 0;
+    let timeout = null;
+
+    function cleanup() {
+      try {
+        window.removeEventListener("message", handler);
+      } catch (e) {}
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    }
+
+    function handler(event) {
+      if (event.data?.type !== "derewol-invoke-reply") return;
+      if (event.data.requestId !== requestId) return;
+      cleanup();
+      if (event.data.error) reject(new Error(event.data.error));
+      else resolve(event.data.result);
+    }
+
+    function doPost() {
+      attempts += 1;
+      console.debug(
+        `[AI IPC] sending ${channel} (attempt ${attempts}) requestId=${requestId}`,
+      );
+      try {
+        window.parent.postMessage(
+          { type: "derewol-invoke", channel, payload, requestId },
+          "*",
+        );
+      } catch (err) {
+        cleanup();
+        return reject(err);
+      }
+
+      // set/refresh timeout
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        if (attempts < 2) {
+          console.warn(`[AI IPC] timeout for ${channel}, retrying...`);
+          doPost();
+          return;
+        }
+        cleanup();
+        reject(new Error("IPC timeout"));
+      }, 10000); // shorter first timeout (10s), with 1 retry
+    }
+
+    window.addEventListener("message", handler);
+    doPost();
+  });
 }
 
 function getParentThemeMode() {
@@ -87,6 +138,18 @@ async function chargerCredits() {
       document.getElementById("credits-display").textContent =
         `${remaining} crédits ce mois · ${purchased} achetés`;
 
+      const hasCredits = remaining + purchased > 0;
+      document
+        .querySelectorAll(".btn-secondary, .btn-primary")
+        .forEach((btn) => {
+          if (btn.id !== "btn-apply-suggestions") {
+            btn.disabled = !hasCredits;
+            btn.title = hasCredits
+              ? ""
+              : "Crédits épuisés — rechargez pour continuer";
+          }
+        });
+
       // Afficher/cacher la section recharge
       const rechargeSection = document.getElementById("recharge-section");
       if (remaining + purchased === 0) {
@@ -107,6 +170,17 @@ async function chargerCredits() {
 
 // ── Ouvrir un fichier et analyser ────────────────────────────────
 async function ouvrirFichier(type) {
+  const creditsText = document.getElementById("credits-display").textContent;
+  if (
+    creditsText.includes("0 crédits ce mois") &&
+    creditsText.includes("0 achetés")
+  ) {
+    alert(
+      "Crédits IA épuisés. Rechargez pour continuer à utiliser Derewol AI.",
+    );
+    return;
+  }
+
   try {
     if (!currentPrinterId) currentPrinterId = await getPrinterId();
 

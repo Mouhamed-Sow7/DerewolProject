@@ -108,6 +108,10 @@ contextBridge.exposeInMainWorld("derewol", {
     ipcRenderer.on("update:downloaded", (_, d) => cb(d)),
   onUpdateProgress: (cb) => ipcRenderer.on("update:progress", (_, d) => cb(d)),
   installUpdate: () => ipcRenderer.invoke("update:install"),
+  onUpdateError: (cb) => ipcRenderer.on("update:error", (_, d) => cb(d)),
+  startUpdateDownload: () => ipcRenderer.invoke("update:start-download"),
+  installUpdateNow: () => ipcRenderer.invoke("update:install-now"),
+  checkForUpdateNow: () => ipcRenderer.invoke("update:check-now"),
 
   // ── Download authorization ────────────────────────────────────
   requestFileDownload: (data) =>

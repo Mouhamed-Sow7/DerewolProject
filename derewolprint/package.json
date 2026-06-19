@@ -97,6 +97,6 @@
     "provider": "github",
     "owner": "Mouhamed-Sow7",
     "repo": "DerewolProject",
-    "private": true
+    "private": false
   }
 }

@@ -79,7 +79,7 @@ const electronLog = require("electron-log");
 // Config logs auto-updater
 autoUpdater.logger = electronLog;
 autoUpdater.logger.transports.file.level = "info";
-autoUpdater.autoDownload = true;
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 function setupAutoUpdater() {
@@ -992,6 +992,64 @@ function createMainWindow() {
     mainWindow.setContentProtection(true);
   }
   mainWindow.loadFile("renderer/index.html");
+
+  // ── Auto-update ──────────────────────────────────────────────
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  function checkForUpdates() {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error("[UPDATE] Erreur vérification:", err.message);
+    });
+  }
+
+  autoUpdater.on("update-available", (info) => {
+    console.log("[UPDATE] Mise à jour disponible:", info.version);
+    mainWindow.webContents.send("update:available", { version: info.version });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("[UPDATE] Application à jour");
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow.webContents.send("update:progress", {
+      percent: Math.round(progress.percent),
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("[UPDATE] Téléchargée, prête à installer:", info.version);
+    mainWindow.webContents.send("update:downloaded", { version: info.version });
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("[UPDATE] Erreur:", err.message);
+    mainWindow.webContents.send("update:error", { message: err.message });
+  });
+
+  setTimeout(checkForUpdates, 5000);
+  setInterval(checkForUpdates, 30 * 60 * 1000);
+
+  ipcMain.handle("update:start-download", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("update:install-now", () => {
+    autoUpdater.quitAndInstall();
+  });
+
+  ipcMain.handle("update:check-now", () => {
+    checkForUpdates();
+  });
 }
 
 // ── Fonctions protection screenshot (ADMIN ONLY) ─────────────────

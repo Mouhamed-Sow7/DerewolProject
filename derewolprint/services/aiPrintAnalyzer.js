@@ -159,6 +159,13 @@ async function checkAICredits(printerId) {
     };
     saveAICreditsCache(cachePayload);
 
+    console.log("[AI CREDITS CHECK]", {
+      remaining,
+      purchased,
+      total,
+      hasCredits: total > 0,
+    });
+
     return {
       hasCredits: total > 0,
       remaining,
@@ -174,6 +181,14 @@ async function checkAICredits(printerId) {
       const remaining = cache.remaining ?? 0;
       const purchased = cache.purchased ?? 0;
       const total = remaining + purchased;
+
+      console.log("[AI CREDITS CHECK]", {
+        remaining,
+        purchased,
+        total,
+        hasCredits: total > 0,
+      });
+
       return {
         hasCredits: total > 0,
         remaining,
@@ -729,9 +744,13 @@ async function analyzeJobOrientation(filePath, printerId) {
     }
 
     // Lire /Rotate directement dans le binaire PDF ? zero dependance
-    const pdfBytes = fs.readFileSync(filePath, 'utf8');
+    const pdfBytes = fs.readFileSync(filePath, "utf8");
     const match = pdfBytes.match(/\/Rotate\s+(\d+)/);
-    const rotation = match ? ([0,90,180,270].includes(Number(match[1])) ? Number(match[1]) : 0) : 0;
+    const rotation = match
+      ? [0, 90, 180, 270].includes(Number(match[1]))
+        ? Number(match[1])
+        : 0
+      : 0;
     console.log("[AI] orientation metadata PDF:", rotation, "deg");
     return { rotation, needsWarning: rotation !== 0 };
   } catch (err) {
@@ -739,7 +758,6 @@ async function analyzeJobOrientation(filePath, printerId) {
     return FALLBACK;
   }
 }
-
 
 // ???????????????????????????????????????????????????????????????
 // EXPORTS

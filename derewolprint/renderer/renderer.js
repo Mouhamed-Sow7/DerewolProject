@@ -1906,6 +1906,53 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+// ── Relay postMessage from iframe to main via preload invoke ──
+// Allow channels coming from iframe that match secure prefixes.
+// IMPORTANT: This MUST be registered IMMEDIATELY, not inside DOMContentLoaded,
+// because the iframe may load before DOM is ready.
+const ALLOWED_PREFIXES = [
+  "ai:",
+  "printer:",
+  "derewol:",
+  "dialog:",
+  "print:",
+  "shell:",
+  "file:",
+];
+
+window.addEventListener("message", async (event) => {
+  try {
+    console.log("[RELAY] message reçu:", event.data?.type, event.data?.channel);
+    if (event.data?.type !== "derewol-invoke") return;
+    const { channel, payload, requestId } = event.data;
+    if (typeof channel !== "string") return;
+    if (!ALLOWED_PREFIXES.some((p) => channel.startsWith(p))) return;
+
+    try {
+      const result = await window.derewol.invoke(channel, payload);
+      console.log("[RELAY] résultat:", channel, result);
+      // Use event.source to send back to the iframe, not document.getElementById
+      // because the iframe element may not be in the DOM yet when this runs
+      event.source.postMessage(
+        { type: "derewol-invoke-reply", requestId, result },
+        "*",
+      );
+    } catch (err) {
+      console.log("[RELAY] erreur invoke:", channel, err?.message);
+      event.source.postMessage(
+        {
+          type: "derewol-invoke-reply",
+          requestId,
+          error: err?.message || String(err),
+        },
+        "*",
+      );
+    }
+  } catch (e) {
+    console.warn("[RENDERER] Error handling iframe message:", e);
+  }
+});
+
 // If DOM is already loaded, initialize immediately
 if (document.readyState !== "loading") {
   console.log("[DEREWOL] DOM already loaded — Initializing modals & i18n");
@@ -2212,4 +2259,150 @@ function showUpdateToast(message, withButton = false) {
   if (!withButton) {
     setTimeout(() => toast?.remove(), 6000);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-UPDATE — Notification + barre de progression
+// ═══════════════════════════════════════════════════════════════
+
+const UPDATE_TEXTS = {
+  fr: {
+    available: (v) => `Nouvelle version ${v} disponible`,
+    downloading: "Téléchargement de la mise à jour…",
+    ready: "Mise à jour prête — redémarrage requis",
+    installBtn: "Installer et redémarrer",
+    downloadBtn: "Télécharger maintenant",
+    laterBtn: "Plus tard",
+    error: "Erreur de mise à jour",
+  },
+  en: {
+    available: (v) => `New version ${v} available`,
+    downloading: "Downloading update…",
+    ready: "Update ready — restart required",
+    installBtn: "Install and restart",
+    downloadBtn: "Download now",
+    laterBtn: "Later",
+    error: "Update error",
+  },
+  wo: {
+    available: (v) => `Versioŋ bu bees ${v} am na`,
+    downloading: "Yebbi ngir update bi…",
+    ready: "Update bi parow na — laajum restart",
+    installBtn: "Installeel te restart",
+    downloadBtn: "Yebbi leegi",
+    laterBtn: "Ginnaaw",
+    error: "Njuumte ci update bi",
+  },
+};
+
+function getUpdateLang() {
+  const stored = localStorage.getItem("derewol_lang");
+  return ["fr", "en", "wo"].includes(stored) ? stored : "fr";
+}
+
+function ensureUpdateBanner() {
+  let el = document.getElementById("dw-update-banner");
+  if (el) return el;
+
+  el = document.createElement("div");
+  el.id = "dw-update-banner";
+  el.style.cssText = `
+    position: fixed; bottom: 20px; right: 20px; z-index: 999999;
+    background: var(--card-bg, #ffffff);
+    border: 1.5px solid var(--jaune, #f5a623);
+    border-radius: 14px;
+    padding: 14px 16px;
+    width: 320px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    font-family: "DM Sans", sans-serif;
+    display: none;
+  `;
+  document.body.appendChild(el);
+  return el;
+}
+
+function renderUpdateBanner(state, payload = {}) {
+  const t = UPDATE_TEXTS[getUpdateLang()];
+  const el = ensureUpdateBanner();
+  el.style.display = "block";
+
+  if (state === "available") {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:18px;">✨</span>
+        <strong style="font-size:13px;color: var(--text, #1a2e1f);">${t.available(payload.version)}</strong>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="dw-update-download-btn" style="
+          flex:1;background:var(--jaune,#f5a623);color:#1a2e1f;border:none;
+          padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">
+          ${t.downloadBtn}
+        </button>
+        <button id="dw-update-later-btn" style="
+          background:transparent;color:var(--text-muted,#5a6e5f);border:1px solid var(--border,#d4c9a8);
+          padding:8px 12px;border-radius:8px;font-size:12px;cursor:pointer;">
+          ${t.laterBtn}
+        </button>
+      </div>`;
+    document.getElementById("dw-update-download-btn").onclick = async () => {
+      renderUpdateBanner("downloading", { percent: 0 });
+      await window.derewol.startUpdateDownload();
+    };
+    document.getElementById("dw-update-later-btn").onclick = () => {
+      el.style.display = "none";
+    };
+  }
+
+  if (state === "downloading") {
+    const pct = payload.percent ?? 0;
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:18px;">⬇️</span>
+        <strong style="font-size:13px;color: var(--text, #1a2e1f);">${t.downloading}</strong>
+      </div>
+      <div style="background: var(--bg,#f5f0e8); border-radius:8px; height:8px; overflow:hidden; margin-bottom:6px;">
+        <div style="background: var(--jaune,#f5a623); height:100%; width:${pct}%; transition: width 0.3s;"></div>
+      </div>
+      <div style="font-size:11px; color: var(--text-muted,#5a6e5f); text-align:right;">${pct}%</div>`;
+  }
+
+  if (state === "ready") {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:18px;">✅</span>
+        <strong style="font-size:13px;color: var(--vert, #2d6a4f);">${t.ready}</strong>
+      </div>
+      <button id="dw-update-install-btn" style="
+        width:100%;background:var(--vert,#2d6a4f);color:#fff;border:none;
+        padding:9px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">
+        ${t.installBtn}
+      </button>`;
+    document.getElementById("dw-update-install-btn").onclick = () => {
+      window.derewol.installUpdateNow();
+    };
+  }
+
+  if (state === "error") {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:18px;">⚠️</span>
+        <strong style="font-size:13px;color:#b00;">${t.error}</strong>
+      </div>`;
+    setTimeout(() => {
+      el.style.display = "none";
+    }, 6000);
+  }
+}
+
+if (window.derewol?.onUpdateAvailable) {
+  window.derewol.onUpdateAvailable((data) =>
+    renderUpdateBanner("available", data),
+  );
+  window.derewol.onUpdateProgress((data) =>
+    renderUpdateBanner("downloading", data),
+  );
+  window.derewol.onUpdateDownloaded((data) =>
+    renderUpdateBanner("ready", data),
+  );
+  window.derewol.onUpdateError((data) => renderUpdateBanner("error", data));
 }
