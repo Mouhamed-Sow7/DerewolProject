@@ -6,7 +6,6 @@
     <title>Derewol AI</title>
     <link rel="stylesheet" href="renderer.css" />
     <style>
-      /* Styles pour Derewol AI - Thème local fixe */
       :root {
         --bg: #f5f0e8;
         --card-bg: #ffffff;
@@ -38,111 +37,191 @@
         background: var(--bg);
         color: var(--text);
         margin: 0;
-        padding: 20px;
+        padding: 16px;
         line-height: 1.6;
-        transition:
-          background 0.3s,
-          color 0.3s;
+        transition: background 0.3s, color 0.3s;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
       }
 
       .container {
-        max-width: 800px;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        max-width: 1200px;
         margin: 0 auto;
+        width: 100%;
       }
 
       .header {
-        text-align: center;
-        margin-bottom: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        flex-shrink: 0;
+      }
+
+      .header-left {
+        flex: 1;
+        min-width: 150px;
       }
 
       .logo {
-        font-size: 2.5em;
+        font-size: 1.5em;
         font-weight: bold;
         color: var(--jaune);
-        margin-bottom: 10px;
+        margin-bottom: 4px;
       }
 
       .credits {
-        font-size: 1.1em;
+        font-size: 0.85em;
         color: var(--text-muted);
       }
 
-      .buttons {
+      .header-right {
         display: flex;
-        justify-content: center;
-        gap: 15px;
-        margin-bottom: 30px;
-        flex-wrap: wrap;
+        align-items: center;
+        gap: 16px;
+        flex-shrink: 0;
       }
 
-      .btn-secondary {
+      .toggle-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+      }
+
+      .toggle {
+        position: relative;
+        width: 52px;
+        height: 28px;
+        background: #ccc;
+        border-radius: 14px;
+        cursor: pointer;
+        transition: background 0.3s;
+        border: none;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        padding: 2px;
+      }
+
+      .toggle.active {
         background: var(--vert);
-        color: var(--blanc);
-        border: none;
-        padding: 12px 20px;
-        border-radius: 8px;
+      }
+
+      .toggle-circle {
+        width: 24px;
+        height: 24px;
+        background: var(--blanc);
+        border-radius: 50%;
+        transition: transform 0.3s;
+      }
+
+      .toggle.active .toggle-circle {
+        transform: translateX(24px);
+      }
+
+      .main-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        flex: 1;
+        min-height: 0;
+        margin-bottom: 16px;
+      }
+
+      .upload-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 0;
+      }
+
+      .results-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow-y: auto;
+        max-height: 400px;
+        min-height: 0;
+      }
+
+      .results-section.hidden {
+        display: none;
+      }
+
+      .dropzone {
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+        padding: 30px 16px;
+        text-align: center;
         cursor: pointer;
-        font-size: 1em;
-        font-family: "DM Sans", sans-serif;
-        font-weight: 600;
-        transition: all 0.2s;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s;
+        background: var(--card-bg);
+        flex-shrink: 0;
       }
 
-      .btn-secondary:hover {
-        background: var(--vert-clair);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+      .dropzone:hover {
+        border-color: var(--jaune);
+        background: var(--detail-bg);
       }
 
-      .btn-secondary:disabled {
-        background: rgba(45, 106, 79, 0.5);
+      .dropzone.drag-over {
+        border-color: var(--vert);
+        background: rgba(45, 106, 79, 0.15);
+        box-shadow: 0 0 12px rgba(45, 106, 79, 0.3);
+      }
+
+      .dropzone.disabled {
+        opacity: 0.5;
         cursor: not-allowed;
-        opacity: 0.7;
-        transform: none;
-        box-shadow: none;
+        border-color: #999;
       }
 
-      .btn-primary {
-        background: var(--jaune);
-        color: var(--noir);
-        border: none;
-        padding: 12px 20px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 1em;
-        font-family: "DM Sans", sans-serif;
+      .dropzone-icon {
+        font-size: 2em;
+        margin-bottom: 8px;
+      }
+
+      .dropzone-text {
         font-weight: 600;
-        transition: all 0.2s;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 4px;
+        font-size: 0.95em;
       }
 
-      .btn-primary:hover {
-        background: #f6b940;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+      .dropzone-hint {
+        font-size: 0.75em;
+        color: var(--text-muted);
       }
 
-      .btn-primary:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
+      .file-input {
+        display: none;
       }
 
       .results {
-        margin-top: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .results.hidden {
+        display: none;
       }
 
       .card {
         background: var(--card-bg);
         border: 1.5px solid var(--border);
         border-radius: var(--radius);
-        padding: 15px;
-        margin-bottom: 15px;
+        padding: 16px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         transition: all 0.3s;
         animation: fadeIn 0.3s ease;
+        flex-shrink: 0;
       }
 
       .card:hover {
@@ -159,8 +238,19 @@
       }
 
       .card h3 {
-        margin-top: 0;
+        margin: 0 0 10px 0;
         color: var(--jaune);
+        font-size: 0.95em;
+      }
+
+      .card ul {
+        margin: 6px 0;
+        padding-left: 18px;
+      }
+
+      .card li {
+        margin-bottom: 4px;
+        font-size: 0.9em;
       }
 
       @keyframes fadeIn {
@@ -175,222 +265,365 @@
       }
 
       .details {
-        margin-top: 20px;
+        margin-top: 0;
       }
 
       .detail-item {
-        margin-bottom: 10px;
-        padding: 8px 12px;
+        margin-bottom: 8px;
+        padding: 8px 10px;
         background: var(--detail-bg);
-        border-radius: 4px;
+        border-radius: 6px;
         border-left: 3px solid var(--vert);
-        transition: background 0.3s;
+        display: grid;
+        grid-template-columns: 100px 1fr;
+        gap: 8px;
+        font-size: 0.85em;
       }
 
-      .recharge {
-        text-align: center;
-        margin-top: 30px;
+      .detail-item strong {
+        color: var(--vert);
       }
 
-      .recharge-options {
+      .button-row {
         display: flex;
+        gap: 12px;
         justify-content: center;
-        gap: 15px;
-        margin-top: 15px;
         flex-wrap: wrap;
+        flex-shrink: 0;
       }
 
-      .recharge-btn {
-        background: var(--jaune);
-        color: var(--noir);
+      .btn {
         border: none;
-        padding: 10px 15px;
+        padding: 10px 18px;
         border-radius: 8px;
         cursor: pointer;
         font-size: 0.9em;
         font-family: "DM Sans", sans-serif;
         font-weight: 600;
         transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        white-space: nowrap;
       }
 
-      .recharge-btn:hover {
-        background: #f6b940;
+      .btn:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.12);
       }
 
-      .hidden {
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .btn-primary {
+        background: var(--jaune);
+        color: var(--noir);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: #f6b940;
+      }
+
+      .btn-secondary {
+        background: var(--vert);
+        color: var(--blanc);
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: var(--vert-clair);
+      }
+
+      .btn-danger {
+        background: #d9534f;
+        color: var(--blanc);
+      }
+
+      .btn-danger:hover:not(:disabled) {
+        background: #c9302c;
+      }
+
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid var(--jaune);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .file-info {
+        background: var(--detail-bg);
+        padding: 10px 12px;
+        border-radius: 8px;
+        border-left: 3px solid var(--vert);
+        font-size: 0.85em;
+        flex-shrink: 0;
+      }
+
+      .file-name {
+        font-weight: 600;
+        color: var(--vert);
+        word-break: break-all;
+        font-size: 0.9em;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+      }
+
+      .modal.hidden {
         display: none;
       }
 
-      .orientation-warning {
-        margin-top: 15px;
+      .modal-content {
+        background: var(--card-bg);
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
       }
 
-      .warning-banner {
+      .modal-content h3 {
+        margin-top: 0;
+        color: var(--jaune);
+      }
+
+      #modal-file-path {
+        word-break: break-all;
+        color: var(--text-muted);
+        font-size: 0.9em;
+        margin: 8px 0;
+      }
+
+      .modal-buttons {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin-top: 20px;
+      }
+
+      .recharge-section {
+        text-align: center;
+        flex-shrink: 0;
+      }
+
+      .recharge-section.hidden {
+        display: none;
+      }
+
+      .recharge-buttons {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn-recharge {
         background: var(--jaune);
         color: var(--noir);
-        padding: 12px 16px;
+        border: none;
+        padding: 8px 12px;
         border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.8em;
+        font-family: "DM Sans", sans-serif;
         font-weight: 600;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        animation: fadeIn 0.3s ease;
+        transition: all 0.2s;
+      }
+
+      .btn-recharge:hover {
+        background: #f6b940;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .warning-message {
+        background: rgba(245, 166, 35, 0.2);
+        border-left: 3px solid var(--jaune);
+        padding: 10px 12px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        color: var(--text);
+        font-size: 0.85em;
+      }
+
+      @media (max-width: 1024px) {
+        .main-content {
+          grid-template-columns: 1fr;
+        }
+
+        .results-section {
+          max-height: none;
+        }
       }
 
       @media (max-width: 768px) {
-        .buttons {
-          flex-direction: column;
-          align-items: center;
+        body {
+          padding: 12px;
         }
 
-        .recharge-options {
+        .header {
           flex-direction: column;
-          align-items: center;
+          align-items: flex-start;
+          margin-bottom: 12px;
         }
 
-        .btn-secondary,
-        .btn-primary,
-        .recharge-btn {
+        .header-right {
           width: 100%;
-          max-width: 250px;
+        }
+
+        .main-content {
+          grid-template-columns: 1fr;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .dropzone {
+          padding: 25px 12px;
+        }
+
+        .detail-item {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+
+        .button-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .btn {
+          width: 100%;
+        }
+
+        .modal-content {
+          width: 95%;
         }
       }
     </style>
   </head>
   <body>
     <div class="container">
+      <!-- Header avec logo et toggle -->
       <div class="header">
-        <div
-          style="
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-          "
-        >
+        <div class="header-left">
           <div class="logo">Derewol AI ✦</div>
-          <label
-            style="
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              font-weight: 600;
-            "
-          >
-            <input type="checkbox" id="toggle-derewol-ai" /> Derewol AI
-          </label>
+          <div class="credits" id="credits-display">Chargement des crédits...</div>
         </div>
-        <div class="credits" id="credits-display">
-          Chargement des crédits...
-        </div>
-      </div>
-
-      <div class="buttons">
-        <button class="btn-secondary" id="btn-analyze-doc">
-          📄 Analyser document
-        </button>
-        <button class="btn-primary" id="btn-analyze-excel">
-          📊 Analyser Excel
-        </button>
-        <button class="btn-secondary" id="btn-ocr">🔍 OCR Scan</button>
-      </div>
-
-      <div class="results hidden" id="results">
-        <div class="card success" id="suggestions-card">
-          <h3>Suggestions</h3>
-          <ul id="suggestions-list"></ul>
-        </div>
-
-        <div class="card warning" id="warnings-card" class="hidden">
-          <h3>Avertissements</h3>
-          <ul id="warnings-list"></ul>
-        </div>
-
-        <div class="details">
-          <div class="card">
-            <h3>Détails d'impression</h3>
-            <div class="detail-item">
-              <strong>Orientation :</strong> <span id="orientation">-</span>
-            </div>
-            <div class="detail-item">
-              <strong>Mode :</strong> <span id="mode">-</span>
-            </div>
-            <div class="detail-item">
-              <strong>Type de contenu :</strong>
-              <span id="content-type">-</span>
-            </div>
-            <div class="detail-item">
-              <strong>Format recommandé :</strong> <span id="format">-</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style="text-align: center; margin-top: 12px">
-        <button class="btn-primary hidden" id="btn-apply-suggestions">
-          ✦ Appliquer les suggestions
-        </button>
-      </div>
-
-      <div
-        id="apply-modal"
-        class="hidden"
-        style="
-          position: fixed;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(0, 0, 0, 0.45);
-        "
-      >
-        <div
-          style="
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 16px;
-            max-width: 620px;
-            width: 94%;
-            box-shadow: var(--shadow);
-          "
-        >
-          <h3 style="margin-top: 0; color: var(--jaune)">
-            Fichier modifié prêt
-          </h3>
-          <p
-            id="apply-modal-path"
-            style="word-break: break-all; color: var(--text-muted)"
-          ></p>
-          <div
-            style="
-              display: flex;
-              gap: 12px;
-              justify-content: flex-end;
-              margin-top: 12px;
-            "
-          >
-            <button class="btn-secondary" id="apply-cancel">Annuler</button>
-            <button class="btn-primary" id="apply-print-now">
-              Imprimer maintenant
+        <div class="header-right">
+          <div class="toggle-wrapper">
+            <span>Derewol AI</span>
+            <button class="toggle active" id="toggle-claude" title="Activer/désactiver Derewol AI">
+              <div class="toggle-circle"></div>
             </button>
           </div>
         </div>
       </div>
 
-      <div class="orientation-warning hidden" id="orientation-warning">
-        <div class="warning-banner">
-          ⚠️ Document mal orienté (rotation <span id="rotation-angle">0</span>°)
-          — <span id="rotation-reason">inconnu</span>
+      <!-- Layout principal 2 colonnes -->
+      <div class="main-content">
+        <!-- Colonne gauche : Upload -->
+        <div class="upload-section">
+          <!-- Zone drag & drop unifiée -->
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-icon">📁</div>
+            <div class="dropzone-text">Glissez votre fichier ici ou cliquez pour parcourir</div>
+            <div class="dropzone-hint">
+              Formats acceptés : PDF, XLSX, XLS, DOCX, JPG, PNG, PPT, TXT
+            </div>
+          </div>
+          <input type="file" id="file-input" class="file-input" accept=".pdf,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.ppt,.pptx,.txt" />
+
+          <!-- Infos du fichier -->
+          <div class="file-info hidden" id="file-info">
+            <div>Fichier sélectionné :</div>
+            <div class="file-name" id="file-name"></div>
+          </div>
+        </div>
+
+        <!-- Colonne droite : Résultats -->
+        <div class="results-section hidden" id="results-section">
+          <div class="results" id="results">
+            <!-- Suggestions -->
+            <div class="card success" id="suggestions-card">
+              <h3>✦ Suggestions</h3>
+              <ul id="suggestions-list"></ul>
+            </div>
+
+            <!-- Avertissements -->
+            <div class="card warning hidden" id="warnings-card">
+              <h3>⚠️ Avertissements</h3>
+              <ul id="warnings-list"></ul>
+            </div>
+
+            <!-- Détails d'impression -->
+            <div class="card">
+              <h3>📋 Détails d'impression</h3>
+              <div class="details">
+                <div class="detail-item">
+                  <strong>Orientation :</strong> <span id="orientation">-</span>
+                </div>
+                <div class="detail-item">
+                  <strong>Mode :</strong> <span id="mode">-</span>
+                </div>
+                <div class="detail-item">
+                  <strong>Type :</strong> <span id="content-type">-</span>
+                </div>
+                <div class="detail-item">
+                  <strong>Format :</strong> <span id="format">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="recharge hidden" id="recharge-section">
-        <p>Vous n'avez plus de crédits IA. Recharger pour continuer :</p>
-        <div class="recharge-options">
-          <button class="recharge-btn" data-credits="10" data-amount="2000">
+      <!-- Bouton appliquer suggestions -->
+      <div class="button-row">
+        <button type="button" class="btn btn-primary hidden" id="btn-apply">
+          ✦ Appliquer les suggestions
+        </button>
+      </div>
+
+      <!-- Modal imprimer/sauvegarder -->
+      <div class="modal hidden" id="modal-action">
+        <div class="modal-content">
+          <h3>Fichier modifié</h3>
+          <p id="modal-file-path"></p>
+          <p>Que voulez-vous faire ?</p>
+          <div class="modal-buttons">
+            <button type="button" class="btn btn-secondary" id="modal-btn-save">💾 Sauvegarder</button>
+            <button type="button" class="btn btn-primary" id="modal-btn-print">🖨️ Imprimer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section recharge (caché si crédits ok) -->
+      <div class="recharge-section hidden" id="recharge-section">
+        <div class="warning-message">
+          Vous n'avez plus de crédits IA. Recharger pour continuer :
+        </div>
+        <div class="recharge-buttons">
+          <button type="button" class="btn-recharge" data-credits="10" data-amount="2000">
             2 000 XOF = 10 crédits
           </button>
-          <button class="recharge-btn" data-credits="20" data-amount="3500">
+          <button type="button" class="btn-recharge" data-credits="20" data-amount="3500">
             3 500 XOF = 20 crédits
           </button>
         </div>

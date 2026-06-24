@@ -1,6 +1,5 @@
-// derewolAI.js — Interface pour Derewol AI
-const bridge =
-  window.parent?.derewol || window.derewol || window.electron || {};
+// derewolAI.js — Interface complète Derewol AI avec drag & drop unifiée
+const bridge = window.parent?.derewol || window.derewol || window.electron || {};
 
 function invokeChannel(channel, ...args) {
   return new Promise((resolve, reject) => {
@@ -30,7 +29,7 @@ function invokeChannel(channel, ...args) {
     function doPost() {
       attempts += 1;
       console.debug(
-        `[AI IPC] sending ${channel} (attempt ${attempts}) requestId=${requestId}`,
+        `[AI IPC] ${channel} (attempt ${attempts}) requestId=${requestId}`,
       );
       try {
         window.parent.postMessage(
@@ -42,7 +41,6 @@ function invokeChannel(channel, ...args) {
         return reject(err);
       }
 
-      // set/refresh timeout
       if (timeout) clearTimeout(timeout);
       timeout = setTimeout(() => {
         if (attempts < 2) {
@@ -52,7 +50,7 @@ function invokeChannel(channel, ...args) {
         }
         cleanup();
         reject(new Error("IPC timeout"));
-      }, 10000); // shorter first timeout (10s), with 1 retry
+      }, 10000);
     }
 
     window.addEventListener("message", handler);
@@ -60,6 +58,7 @@ function invokeChannel(channel, ...args) {
   });
 }
 
+// ── Theme sync ──────────────────────────────────────────────────
 function getParentThemeMode() {
   try {
     return (
@@ -76,7 +75,6 @@ function applyThemeMode() {
 
 function watchParentThemeChanges() {
   applyThemeMode();
-
   try {
     const parentBody = window.parent.document.body;
     const observer = new MutationObserver((mutations) => {
@@ -92,164 +90,171 @@ function watchParentThemeChanges() {
       attributeFilter: ["class"],
     });
   } catch (err) {
-    console.warn(
-      "Impossible d'observer le thème parent, fallback polling",
-      err,
-    );
     setInterval(applyThemeMode, 1000);
   }
 }
 
-// ── Variables globales ──────────────────────────────────────────
+// ── State global ───────────────────────────────────────────────────
 let currentPrinterId = null;
-let lastAnalyzedFilePath = null;
+let claudeEnabled = true;
+let lastAnalyzedFile = null;
 let lastSuggestions = null;
+let isAnalyzing = false;
 
-// ── Obtenir l'ID du printer actuel ──────────────────────────────
+// ── Déterminer le type de fichier ───────────────────────────────
+function getFileType(filePath) {
+  const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
+  if ([".pdf"].includes(ext)) return "document";
+  if ([".xlsx", ".xls"].includes(ext)) return "excel";
+  if ([".jpg", ".jpeg", ".png"].includes(ext)) return "image";
+  if ([".docx", ".ppt", ".pptx", ".txt"].includes(ext)) return "document";
+  return "document"; // fallback
+}
+
+// ── Récupérer l'ID de l'imprimante ────────────────────────────────
 async function getPrinterId() {
   try {
+    if (currentPrinterId) return currentPrinterId;
     const config = await invokeChannel("printer:config");
-    if (!config || !config.id) {
-      throw new Error(
-        "Configuration imprimeur manquante. Veuillez redémarrer l'application et compléter le setup.",
-      );
-    }
-    return config.id;
+    if (!config?.id) throw new Error("Configuration imprimeur manquante");
+    currentPrinterId = config.id;
+    return currentPrinterId;
   } catch (err) {
-    console.error("Erreur obtention printerId:", err);
-    // Afficher un message d'erreur à l'utilisateur au lieu d'un fallback
-    alert(
-      "Erreur : Configuration imprimeur introuvable. Redémarrez l'application.",
-    );
-    throw err; // Empêche l'exécution des fonctions suivantes
+    console.error("getPrinterId:", err);
+    alert("Erreur : Configuration imprimeur introuvable. Redémarrez l'application.");
+    throw err;
   }
 }
 
-// ── Charger et afficher les crédits ─────────────────────────────
-async function chargerCredits() {
+// ── Charger et afficher les crédits ───────────────────────────────
+async function loadCredits() {
   try {
-    if (!currentPrinterId) currentPrinterId = await getPrinterId();
-
-    const response = await invokeChannel("ai:checkCredits", {
-      printerId: currentPrinterId,
-    });
+    const printerId = await getPrinterId();
+    const response = await invokeChannel("ai:checkCredits", { printerId });
     if (response.success) {
       const { remaining, purchased } = response.data;
       document.getElementById("credits-display").textContent =
         `${remaining} crédits ce mois · ${purchased} achetés`;
 
       const hasCredits = remaining + purchased > 0;
-      document
-        .querySelectorAll(".btn-secondary, .btn-primary")
-        .forEach((btn) => {
-          if (btn.id !== "btn-apply-suggestions") {
-            btn.disabled = !hasCredits;
-            btn.title = hasCredits
-              ? ""
-              : "Crédits épuisés — rechargez pour continuer";
-          }
-        });
-
-      // Afficher/cacher la section recharge
-      const rechargeSection = document.getElementById("recharge-section");
-      if (remaining + purchased === 0) {
-        rechargeSection.classList.remove("hidden");
-      } else {
-        rechargeSection.classList.add("hidden");
-      }
+      updateDropzoneState(hasCredits);
+      updateRechargeSection(!hasCredits);
     } else {
       document.getElementById("credits-display").textContent =
         "Erreur chargement crédits";
     }
   } catch (err) {
-    console.error("Erreur chargerCredits:", err);
+    console.error("loadCredits:", err);
     document.getElementById("credits-display").textContent =
       "Erreur chargement crédits";
   }
 }
 
-// ── Ouvrir un fichier et analyser ────────────────────────────────
-async function ouvrirFichier(type) {
-  const creditsText = document.getElementById("credits-display").textContent;
-  if (
-    creditsText.includes("0 crédits ce mois") &&
-    creditsText.includes("0 achetés")
-  ) {
-    alert(
-      "Crédits IA épuisés. Rechargez pour continuer à utiliser Derewol AI.",
-    );
-    return;
+// ── Mettre à jour l'état de la dropzone ──────────────────────────
+function updateDropzoneState(enabled) {
+  const dropzone = document.getElementById("dropzone");
+  if (enabled && claudeEnabled) {
+    dropzone.classList.remove("disabled");
+    dropzone.title = "";
+  } else {
+    dropzone.classList.add("disabled");
+    if (!claudeEnabled) {
+      dropzone.title = "Derewol AI est désactivé";
+    } else {
+      dropzone.title = "Crédits épuisés — rechargez pour continuer";
+    }
   }
+}
+
+// ── Afficher/cacher la section recharge ──────────────────────────
+function updateRechargeSection(show) {
+  const section = document.getElementById("recharge-section");
+  section.classList.toggle("hidden", !show);
+}
+
+// ── Analyser le fichier ──────────────────────────────────────────
+async function analyzeFile(filePath) {
+  if (isAnalyzing) return;
+  isAnalyzing = true;
 
   try {
-    if (!currentPrinterId) currentPrinterId = await getPrinterId();
+    const printerId = await getPrinterId();
+    const fileType = getFileType(filePath);
 
-    // Déterminer les filtres selon le type
-    let filters = [];
-    if (type === "document") {
-      filters = [
-        { name: "Documents", extensions: ["pdf", "jpg", "jpeg", "png"] },
-      ];
-    } else if (type === "excel") {
-      filters = [{ name: "Fichiers Excel", extensions: ["xlsx", "xls"] }];
-    } else if (type === "ocr") {
-      filters = [{ name: "Images", extensions: ["jpg", "jpeg", "png", "pdf"] }];
+    // Afficher le loading
+    showLoading(true);
+    clearResults();
+
+    let response;
+    if (fileType === "excel") {
+      response = await invokeChannel("ai:analyzeExcel", {
+        filePath,
+        printerId,
+      });
+    } else if (fileType === "image") {
+      response = await invokeChannel("ai:ocrDocument", {
+        filePath,
+        printerId,
+      });
+    } else {
+      response = await invokeChannel("ai:analyzeDocument", {
+        filePath,
+        printerId,
+      });
     }
 
-    const result = await invokeChannel("dialog:openFile", { filters });
-
-    if (result.canceled || result.filePaths.length === 0) return;
-
-    const filePath = result.filePaths[0];
-
-    // Désactiver les boutons pendant l'analyse
-    document
-      .querySelectorAll(".btn-secondary, .btn-primary")
-      .forEach((btn) => (btn.disabled = true));
-
-    // Appeler le handler approprié
-    let handler = "";
-    if (type === "document") handler = "ai:analyzeDocument";
-    else if (type === "excel") handler = "ai:analyzeExcel";
-    else if (type === "ocr") handler = "ai:ocrDocument";
-
-    const response = await invokeChannel(handler, {
-      filePath,
-      printerId: currentPrinterId,
-    });
-
-    // Debug: afficher le contenu brut retourné par l'IA (Claude)
-    try {
-      console.log("[AI DEBUG] suggestions reçues:", response?.data ?? response);
-    } catch (e) {
-      /* ignore */
-    }
-
-    // Réactiver les boutons
-    document
-      .querySelectorAll(".btn-secondary, .btn-primary")
-      .forEach((btn) => (btn.disabled = false));
+    showLoading(false);
 
     if (response.success) {
-      await afficherResultats(response.data, filePath);
-      // Recharger les crédits après analyse
-      await chargerCredits();
+      lastAnalyzedFile = filePath;
+      lastSuggestions = response.data;
+      displayResults(response.data);
+      await loadCredits();
     } else {
       alert("Erreur lors de l'analyse : " + response.error);
     }
   } catch (err) {
-    console.error("Erreur ouvrirFichier:", err);
-    document
-      .querySelectorAll(".btn-secondary, .btn-primary")
-      .forEach((btn) => (btn.disabled = false));
-    alert("Erreur lors de l'ouverture du fichier");
+    console.error("analyzeFile:", err);
+    showLoading(false);
+    alert("Erreur lors de l'analyse du fichier");
+  } finally {
+    isAnalyzing = false;
   }
 }
 
-// ── Afficher les résultats de l'analyse ──────────────────────────
-async function afficherResultats(data, filePath) {
-  const resultsDiv = document.getElementById("results");
-  resultsDiv.classList.remove("hidden");
+// ── Afficher le loading ──────────────────────────────────────────
+function showLoading(show) {
+  const dropzone = document.getElementById("dropzone");
+  if (show) {
+    dropzone.innerHTML = '<div class="loading"></div>';
+  } else {
+    restoreDropzoneText();
+  }
+}
+
+// ── Restaurer le texte de la dropzone ───────────────────────────
+function restoreDropzoneText() {
+  const dropzone = document.getElementById("dropzone");
+  dropzone.innerHTML = `
+    <div class="dropzone-icon">📁</div>
+    <div class="dropzone-text">Glissez votre fichier ici ou cliquez pour parcourir</div>
+    <div class="dropzone-hint">
+      Formats acceptés : PDF, XLSX, XLS, DOCX, JPG, PNG, PPT, TXT
+    </div>
+  `;
+}
+
+// ── Effacer les résultats ────────────────────────────────────────
+function clearResults() {
+  document.getElementById("results-section").classList.add("hidden");
+  document.getElementById("btn-apply").classList.add("hidden");
+  document.getElementById("file-info").classList.add("hidden");
+}
+
+// ── Afficher les résultats ───────────────────────────────────────
+function displayResults(data) {
+  const resultsSection = document.getElementById("results-section");
+  resultsSection.classList.remove("hidden");
 
   // Suggestions
   const suggestionsList = document.getElementById("suggestions-list");
@@ -260,11 +265,12 @@ async function afficherResultats(data, filePath) {
       li.textContent = sugg;
       suggestionsList.appendChild(li);
     });
+    document.getElementById("btn-apply").classList.remove("hidden");
   } else {
-    suggestionsList.innerHTML = "<li>Aucune suggestion</li>";
+    suggestionsList.innerHTML = "<li>Aucune suggestion spécifique</li>";
   }
 
-  // Warnings
+  // Avertissements
   const warningsCard = document.getElementById("warnings-card");
   const warningsList = document.getElementById("warnings-list");
   warningsList.innerHTML = "";
@@ -279,290 +285,269 @@ async function afficherResultats(data, filePath) {
     warningsCard.classList.add("hidden");
   }
 
-  // Debug: montrer le JSON brut reçu
-  try {
-    console.log("[AI DEBUG] raw data:", data);
-  } catch (e) {
-    /* ignore */
-  }
+  // Détails
+  document.getElementById("orientation").textContent =
+    data.orientation || data.orient || "-";
+  document.getElementById("mode").textContent = data.mode || "-";
+  document.getElementById("content-type").textContent =
+    data.type_contenu || data.contentType || "-";
+  document.getElementById("format").textContent =
+    data.format_recommande || data.format || "-";
 
-  // Normaliser / tenter parsing si l'IA a renvoyé du texte libre
-  let finalData = data;
-  if (typeof finalData === "string") {
-    try {
-      finalData = JSON.parse(finalData);
-      console.log("[AI DEBUG] parsed JSON string:", finalData);
-    } catch (e) {
-      // reste en string, on utilisera le fallback textuel plus bas
-    }
-  }
-
-  // Save last analyzed file + normalized suggestion fields for Apply action
-  lastAnalyzedFilePath = filePath;
-  lastSuggestions = {
-    orientation: finalData.orientation || finalData.orient || null,
-    scale:
-      finalData.echelle_recommandee ||
-      finalData.scale ||
-      finalData.zoom ||
-      null,
-    margins: finalData.marges || finalData.margins || null,
-    printArea:
-      finalData.printArea ||
-      finalData.print_area ||
-      finalData.zone_impression ||
-      null,
-    fitToPages: finalData.fitToPages || finalData.fit_to_pages || false,
-  };
-
-  // Si champs manquants, tenter d'extraire depuis le texte des suggestions
-  let suggestionsText = "";
-  if (Array.isArray(finalData.suggestions))
-    suggestionsText = finalData.suggestions.join(" ");
-  else if (typeof finalData.suggestions === "string")
-    suggestionsText = finalData.suggestions;
-  else if (typeof finalData === "string") suggestionsText = finalData;
-
-  if (
-    !lastSuggestions.orientation ||
-    !lastSuggestions.scale ||
-    !lastSuggestions.margins ||
-    !lastSuggestions.printArea
-  ) {
-    const fallback = parseFallbackFromText(suggestionsText);
-    lastSuggestions.orientation =
-      lastSuggestions.orientation || fallback.orientation || null;
-    lastSuggestions.scale = lastSuggestions.scale || fallback.scale || null;
-    lastSuggestions.margins =
-      lastSuggestions.margins || fallback.margins || null;
-    lastSuggestions.printArea =
-      lastSuggestions.printArea || fallback.printArea || null;
-    lastSuggestions.fitToPages =
-      lastSuggestions.fitToPages || fallback.fitToPages || false;
-  }
-
-  // Afficher les détails (utilise finalData si disponible, sinon fallback)
-  const uiOrientation =
-    finalData.orientation ||
-    finalData.orient ||
-    lastSuggestions.orientation ||
-    "-";
-  const uiMode = finalData.mode || "-";
-  const uiContentType = finalData.type_contenu || finalData.contentType || "-";
-  const uiFormat = finalData.format_recommande || finalData.format || "-";
-
-  document.getElementById("orientation").textContent = uiOrientation;
-  document.getElementById("mode").textContent = uiMode;
-  document.getElementById("content-type").textContent = uiContentType;
-  document.getElementById("format").textContent = uiFormat;
-
-  // Toggle visibility of Apply button when suggestions present
-  const applyBtn = document.getElementById("btn-apply-suggestions");
-  if (data.suggestions && data.suggestions.length > 0) {
-    applyBtn.classList.remove("hidden");
-  } else {
-    applyBtn.classList.add("hidden");
-  }
-
-  // Apply suggestions flow
-  // NOTE: `applySuggestionsHandler` and `applyModalHandlers` moved to top-level
-  // Analyser l'orientation du document
-  try {
-    const orientationData = await invokeChannel("ai:analyzeOrientation", {
-      filePath,
-      printerId: currentPrinterId,
-    });
-    const od = orientationData?.data || orientationData;
-    if (od?.rotation !== 0 && od?.rotation !== undefined) {
-      const orientWarning = document.getElementById("orientation-warning");
-      document.getElementById("rotation-angle").textContent = od.rotation;
-      document.getElementById("rotation-reason").textContent =
-        od.reason || "Rotation détectée";
-      orientWarning.classList.remove("hidden");
-    } else {
-      document.getElementById("orientation-warning").classList.add("hidden");
-    }
-  } catch (err) {
-    console.warn("Erreur analyzeOrientation:", err);
-    document.getElementById("orientation-warning").classList.add("hidden");
-  }
+  // Info fichier
+  const fileInfo = document.getElementById("file-info");
+  document.getElementById("file-name").textContent = lastAnalyzedFile
+    ? lastAnalyzedFile.split(/[\\/]/).pop()
+    : "";
+  fileInfo.classList.remove("hidden");
 }
 
-// ── Apply suggestions handler (global, used by DOMContentLoaded) ──
-async function applySuggestionsHandler() {
-  if (!lastAnalyzedFilePath || !lastSuggestions) {
+// ── Appliquer les suggestions ────────────────────────────────────
+async function applySuggestions() {
+  if (!lastAnalyzedFile || !lastSuggestions) {
     alert("Aucun fichier analysé à appliquer");
     return;
   }
 
   try {
+    const printerId = await getPrinterId();
     const payload = {
-      filePath: lastAnalyzedFilePath,
+      filePath: lastAnalyzedFile,
       suggestions: lastSuggestions,
     };
 
     const res = await invokeChannel("ai:applySuggestions", payload);
-    if (!res || !res.success) {
+    if (!res?.success) {
       alert("Erreur application suggestions: " + (res?.error || "inconnu"));
       return;
     }
 
-    // Show modal with temp file path
-    const modal = document.getElementById("apply-modal");
-    const pathEl = document.getElementById("apply-modal-path");
-    pathEl.textContent = res.tempFilePath;
-    modal.classList.remove("hidden");
+    // Afficher la modale
+    showActionModal(res.tempFilePath);
   } catch (err) {
-    console.error("applySuggestionsHandler:", err);
+    console.error("applySuggestions:", err);
     alert("Erreur lors de l'application des suggestions");
   }
 }
 
-// ── Modal button handlers (global) ─────────────────────────────
-async function applyModalHandlers() {
-  const modal = document.getElementById("apply-modal");
-  const cancelBtn = document.getElementById("apply-cancel");
-  const printNowBtn = document.getElementById("apply-print-now");
+// ── Afficher la modale action (imprimer/sauvegarder) ─────────────
+function showActionModal(tempFilePath) {
+  const modal = document.getElementById("modal-action");
+  document.getElementById("modal-file-path").textContent = tempFilePath;
+  modal.classList.remove("hidden");
+}
 
-  if (cancelBtn)
-    cancelBtn.addEventListener("click", async () => {
-      const path = document.getElementById("apply-modal-path").textContent;
-      if (path) await invokeChannel("file:deleteTemp", { tempFilePath: path });
-      modal.classList.add("hidden");
+// ── Fermer la modale ────────────────────────────────────────────
+function closeActionModal() {
+  document.getElementById("modal-action").classList.add("hidden");
+}
+
+// ── Imprimer le fichier ────────────────────────────────────────
+async function printFile(tempFilePath) {
+  try {
+    const res = await invokeChannel("print:local", { tempFilePath });
+    if (!res?.success) {
+      alert("Erreur impression: " + (res?.error || "inconnu"));
+      return;
+    }
+    closeActionModal();
+    alert("Fichier envoyé à l'imprimante");
+  } catch (err) {
+    console.error("printFile:", err);
+    alert("Erreur lors de l'impression");
+  }
+}
+
+// ── Sauvegarder le fichier ─────────────────────────────────────
+async function saveFile(tempFilePath) {
+  try {
+    const fileName = tempFilePath.split(/[\\/]/).pop();
+    const res = await invokeChannel("file:saveToDocuments", {
+      tempFilePath,
+      fileName,
+      subDir: "derewol-ai-files",
     });
 
-  if (printNowBtn)
-    printNowBtn.addEventListener("click", async () => {
-      const path = document.getElementById("apply-modal-path").textContent;
-      if (!path) return alert("Fichier introuvable");
-      const r = await invokeChannel("print:local", { tempFilePath: path });
-      if (!r || !r.success)
-        return alert("Erreur impression: " + (r?.error || "inconnu"));
-      modal.classList.add("hidden");
-    });
+    if (!res?.success) {
+      alert("Erreur sauvegarde: " + (res?.error || "inconnu"));
+      return;
+    }
+
+    closeActionModal();
+    alert(`Fichier sauvegardé dans Documents/derewol-ai-files/`);
+  } catch (err) {
+    console.error("saveFile:", err);
+    alert("Erreur lors de la sauvegarde");
+  }
 }
 
-// ── Fallback parser: tente d'extraire des champs depuis du texte libre ──
-function parseFallbackFromText(text) {
-  if (!text) return {};
-  const t = String(text).toLowerCase();
-  const out = {};
+// ── Recharger les crédits (WhatsApp) ───────────────────────────
+async function rechargeCredits(credits, amountXof) {
+  try {
+    const printerId = await getPrinterId();
+    const message = encodeURIComponent(
+      `Bonjour, je souhaite recharger ${credits} crédits Derewol AI (${amountXof} XOF). Mon ID boutique : ${printerId}`,
+    );
+    const whatsappUrl = `https://wa.me/+221781220391?text=${message}`;
 
-  // orientation
-  if (t.includes("paysage") || t.includes("landscape"))
-    out.orientation = "landscape";
-  else if (t.includes("portrait")) out.orientation = "portrait";
-
-  // fitToPages
-  if (t.includes("fit to") || t.includes("ajuster") || t.includes("ajust"))
-    out.fitToPages = true;
-
-  // scale / echelle: look for percentages
-  const pct = t.match(/(\d{1,3})\s?%/);
-  if (pct) out.scale = pct[1] + "%";
-
-  // margins: look for mm/cm/in values
-  const mm = t.match(/(\d+(?:[\.,]\d+)?)\s?(mm|cm|in|cm\.)/);
-  if (mm) out.margins = mm[1] + mm[2];
-
-  // printArea: keywords
-  if (
-    t.includes("entière page") ||
-    t.includes("full page") ||
-    t.includes("whole page")
-  )
-    out.printArea = "full";
-  if (t.includes("zone centrale") || t.includes("center area"))
-    out.printArea = "center";
-
-  return out;
+    await invokeChannel("shell:openExternal", { url: whatsappUrl });
+  } catch (err) {
+    console.error("rechargeCredits:", err);
+  }
 }
 
-// ── Gestion de la recharge de crédits ───────────────────────────
-async function rechargerCredits(credits, amountXof) {
-  if (!currentPrinterId) currentPrinterId = await getPrinterId();
+// ── Setup drag & drop ────────────────────────────────────────────
+function setupDragDrop() {
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("file-input");
 
-  const message = encodeURIComponent(
-    `Bonjour, je souhaite recharger ${credits} crédits Derewol AI (${amountXof} XOF). Mon ID boutique : ${currentPrinterId}`,
-  );
-  const whatsappUrl = `https://wa.me/+221781220391?text=${message}`;
+  // Click pour ouvrir dialog
+  dropzone.addEventListener("click", () => {
+    if (!claudeEnabled) {
+      alert("Derewol AI est désactivé");
+      return;
+    }
+    fileInput.click();
+  });
 
-  await invokeChannel("shell:openExternal", { url: whatsappUrl });
-}
+  // Drag over
+  dropzone.addEventListener("dragover", (e) => {
+    if (!claudeEnabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.add("drag-over");
+  });
 
-// ── Événements ──────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", async () => {
-  watchParentThemeChanges();
+  // Drag leave
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.classList.remove("drag-over");
+  });
 
-  // ── Écouter les mises à jour de crédits depuis le parent ──
-  window.addEventListener("message", (e) => {
-    if (e.data?.type === "ai-credits-updated") {
-      console.log("[AI] Mise à jour crédits reçue du parent → rechargement");
-      chargerCredits();
+  // Drop
+  dropzone.addEventListener("drop", (e) => {
+    if (!claudeEnabled) {
+      alert("Derewol AI est désactivé");
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    dropzone.classList.remove("drag-over");
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      fileInput.files = files;
+      analyzeFile(file.path);
     }
   });
 
-  await chargerCredits();
-
-  // ✅ Polling crédits IA toutes les 30s (détection recharge admin)
-  let aiCreditsPollingInterval = setInterval(async () => {
-    try {
-      await chargerCredits();
-      console.log("[AI] Polling crédits IA — rafraîchi");
-    } catch (e) {
-      console.warn("[AI] Polling crédits IA — erreur:", e.message);
+  // File input change
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length > 0) {
+      const file = fileInput.files[0];
+      analyzeFile(file.path);
     }
-  }, 30_000);
-
-  // Nettoyage si la page est déchargée
-  window.addEventListener("beforeunload", () => {
-    clearInterval(aiCreditsPollingInterval);
   });
+}
 
-  // ── Écouter les mises à jour de crédits après activation d'abonnement ──
-  if (window.derewol?.onAICreditsUpdated) {
-    window.derewol.onAICreditsUpdated(() => {
-      console.log(
-        "[AI] Événement credits-updated reçu — rechargement des crédits",
-      );
-      chargerCredits();
-    });
+// ── Setup toggle Claude ──────────────────────────────────────────
+function setupToggle() {
+  const toggle = document.getElementById("toggle-claude");
+  const stored = localStorage.getItem("derewol_ai_enabled");
+  claudeEnabled = stored === null ? true : stored === "1";
+
+  // Mettre à jour visuellement
+  if (claudeEnabled) {
+    toggle.classList.add("active");
   }
 
-  // Boutons d'analyse
-  document
-    .getElementById("btn-analyze-doc")
-    .addEventListener("click", () => ouvrirFichier("document"));
-  document
-    .getElementById("btn-analyze-excel")
-    .addEventListener("click", () => ouvrirFichier("excel"));
-  document
-    .getElementById("btn-ocr")
-    .addEventListener("click", () => ouvrirFichier("ocr"));
+  toggle.addEventListener("click", () => {
+    claudeEnabled = !claudeEnabled;
+    localStorage.setItem("derewol_ai_enabled", claudeEnabled ? "1" : "0");
+    toggle.classList.toggle("active");
+    updateDropzoneState(
+      !document
+        .getElementById("recharge-section")
+        .classList.contains("hidden"),
+    );
+    if (!claudeEnabled) {
+      clearResults();
+    }
+  });
 
-  // Boutons de recharge
-  document.querySelectorAll(".recharge-btn").forEach((btn) => {
+  // Mettre à jour l'état initial de la dropzone
+  const rechargeShown = !document
+    .getElementById("recharge-section")
+    .classList.contains("hidden");
+  updateDropzoneState(!rechargeShown);
+}
+
+// ── Setup boutons ────────────────────────────────────────────────
+function setupButtons() {
+  // Apply suggestions
+  document
+    .getElementById("btn-apply")
+    .addEventListener("click", applySuggestions);
+
+  // Modal actions
+  document.getElementById("modal-btn-print").addEventListener("click", () => {
+    const path = document.getElementById("modal-file-path").textContent;
+    printFile(path);
+  });
+
+  document.getElementById("modal-btn-save").addEventListener("click", () => {
+    const path = document.getElementById("modal-file-path").textContent;
+    saveFile(path);
+  });
+
+  // Recharge buttons
+  document.querySelectorAll(".btn-recharge").forEach((btn) => {
     btn.addEventListener("click", () => {
       const credits = parseInt(btn.dataset.credits);
       const amount = parseInt(btn.dataset.amount);
-      rechargerCredits(credits, amount);
+      rechargeCredits(credits, amount);
     });
   });
+}
 
-  // Toggle Derewol AI control (persisted in localStorage)
+// ── Initialize ───────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  watchParentThemeChanges();
+
   try {
-    const toggle = document.getElementById("toggle-derewol-ai");
-    const stored = localStorage.getItem("derewol_ai_enabled");
-    toggle.checked = stored === null ? true : stored === "1";
-    toggle.addEventListener("change", () => {
-      localStorage.setItem("derewol_ai_enabled", toggle.checked ? "1" : "0");
-    });
+    await getPrinterId();
+    await loadCredits();
   } catch (err) {
-    console.warn("Toggle Derewol AI init failed", err);
+    console.error("Init error:", err);
   }
 
-  // Apply suggestions button
-  const applyBtn = document.getElementById("btn-apply-suggestions");
-  applyBtn.addEventListener("click", applySuggestionsHandler);
-  applyModalHandlers();
+  setupToggle();
+  setupDragDrop();
+  setupButtons();
+
+  // Polling crédits toutes les 30s
+  setInterval(async () => {
+    try {
+      await loadCredits();
+      console.log("[AI] Crédits rafraîchis");
+    } catch (e) {
+      console.warn("[AI] Polling crédits erreur:", e.message);
+    }
+  }, 30000);
+
+  // Écouter les mises à jour de crédits du parent
+  window.addEventListener("message", (e) => {
+    if (e.data?.type === "ai-credits-updated") {
+      console.log("[AI] Crédits mis à jour depuis le parent");
+      loadCredits();
+    }
+  });
+
+  // Callback si disponible
+  if (window.derewol?.onAICreditsUpdated) {
+    window.derewol.onAICreditsUpdated(() => {
+      console.log("[AI] Événement credits-updated");
+      loadCredits();
+    });
+  }
 });
