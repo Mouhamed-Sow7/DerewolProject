@@ -1,3 +1,5 @@
+console.log("[MAIN] ===== Démarrage de main.js =====");
+
 const { app, BrowserWindow, ipcMain, Menu, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
@@ -12,6 +14,8 @@ const {
   validateDecryptedBuffer,
 } = require("../services/crypto");
 const SpoolerGuard = require("../lib/spoolerGuard.js");
+
+console.log("[MAIN] Imports complétés, définition de execShell...");
 
 function execShell(command, options = {}) {
   return new Promise((resolve, reject) => {
@@ -260,6 +264,8 @@ let isOfflineApp = false;
 let lastActiveTabGlobal = "jobs"; // ─ Sauvegarde onglet actif côté main (résiste aux reload)
 let isBooting = false; // Empêche le handler did-finish-load de se relancer pendant le boot
 let hasReloadedAfterReconnect = false; // Empêche les reloads répétés après reconnexion
+let screenshotProtectionEnabled = process.env.NODE_ENV !== "development";
+const ADMIN_SECRET_CODE = process.env.ADMIN_SECRET_CODE || "derewol_admin_2024";
 const processingJobs = new Set();
 const spoolerGuard = new SpoolerGuard();
 
@@ -879,6 +885,8 @@ ipcMain.handle("security:screenshot-status", () => ({
 }));
 
 // ── IPC : Derewol AI ────────────────────────────────────────────
+console.log("[MAIN] Enregistrement des handlers IPC Derewol AI...");
+
 // Vérifier les crédits IA du printer
 ipcMain.handle("ai:checkCredits", async (event, { printerId }) => {
   try {
@@ -1181,6 +1189,7 @@ try {
 );
 
 ipcMain.handle("ai:applyExcelFull", async (_event, { filePath }) => {
+  console.log("[AI] Handler ai:applyExcelFull appelé avec:", filePath);
   try {
     if (!filePath || !fs.existsSync(filePath)) {
       return { success: false, error: "Fichier introuvable" };
@@ -1239,6 +1248,8 @@ ipcMain.handle("ai:applyExcelFull", async (_event, { filePath }) => {
     return { success: false, error: err.message };
   }
 });
+
+console.log("[MAIN] ✅ Handler 'ai:applyExcelFull' enregistré avec succès");
 
 ipcMain.handle(
   "ai:improveOcrText",

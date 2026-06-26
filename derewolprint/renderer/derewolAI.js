@@ -489,9 +489,11 @@ async function applyExcelFull() {
     if (!selectedFilePath) {
       throw new Error("Aucun fichier sélectionné");
     }
+    console.log("[AI] Appel du handler ai:applyExcelFull avec filePath:", selectedFilePath);
     const result = await invokeChannel("ai:applyExcelFull", {
       filePath: selectedFilePath,
     });
+    console.log("[AI] Résultat de ai:applyExcelFull:", result);
     if (!result?.success) {
       throw new Error(result?.error || "Échec de l'application Excel");
     }

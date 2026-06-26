@@ -113,6 +113,24 @@ contextBridge.exposeInMainWorld("derewol", {
   installUpdateNow: () => ipcRenderer.invoke("update:install-now"),
   checkForUpdateNow: () => ipcRenderer.invoke("update:check-now"),
 
+  // ── Derewol AI ────────────────────────────────────────────
+  aiCheckCredits: (printerId) =>
+    ipcRenderer.invoke("ai:checkCredits", { printerId }),
+  aiAnalyzeDocument: (filePath, printerId) =>
+    ipcRenderer.invoke("ai:analyzeDocument", { filePath, printerId }),
+  aiAnalyzeExcel: (filePath, printerId) =>
+    ipcRenderer.invoke("ai:analyzeExcel", { filePath, printerId }),
+  aiOcrDocument: (filePath, printerId) =>
+    ipcRenderer.invoke("ai:ocrDocument", { filePath, printerId }),
+  aiAddCredits: (printerId, credits, amountXof, paymentRef) =>
+    ipcRenderer.invoke("ai:addCredits", { printerId, credits, amountXof, paymentRef }),
+  aiApplySuggestions: (filePath, suggestions) =>
+    ipcRenderer.invoke("ai:applySuggestions", { filePath, suggestions }),
+  aiApplyExcelFull: (filePath) =>
+    ipcRenderer.invoke("ai:applyExcelFull", { filePath }),
+  aiImproveOcrText: (text, docType, improvements, printerId) =>
+    ipcRenderer.invoke("ai:improveOcrText", { text, docType, improvements, printerId }),
+
   // ── Download authorization ────────────────────────────────────
   requestFileDownload: (data) =>
     ipcRenderer.invoke("file:request-download", data),
