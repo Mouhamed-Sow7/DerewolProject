@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Derewol AI - Nouveau Layout Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f5f0e8;
+            --card-bg: #ffffff;
+            --border: #d4c9a8;
+            --text: #1a2e1f;
+            --text-muted: #5a6e5f;
+            --jaune: #f5a623;
+            --vert: #2d6a4f;
+            --vert-clair: #3f7b5f;
+            --blanc: #ffffff;
+            --noir: #1a2e1f;
+            --radius: 14px;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+            --detail-bg: rgba(45, 106, 79, 0.1);
+        }
+
+        body {
+            font-family: "DM Sans", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 16px;
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--jaune);
+        }
+
+        .credits {
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .toggle {
+            width: 52px;
+            height: 28px;
+            background: var(--vert);
+            border-radius: 14px;
+            border: none;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .toggle-circle {
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            right: 2px;
+            top: 2px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            flex: 1;
+            margin-bottom: 16px;
+            min-height: 0;
+        }
+
+        .upload-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .results-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .dropzone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 30px 16px;
+            text-align: center;
+            cursor: pointer;
+            background: var(--card-bg);
+            transition: all 0.3s;
+        }
+
+        .dropzone:hover {
+            border-color: var(--jaune);
+            background: var(--detail-bg);
+        }
+
+        .dropzone-icon {
+            font-size: 2em;
+            margin-bottom: 8px;
+        }
+
+        .dropzone-text {
+            font-weight: 600;
+            margin-bottom: 4px;
+            font-size: 0.95em;
+        }
+
+        .dropzone-hint {
+            font-size: 0.75em;
+            color: var(--text-muted);
+        }
+
+        .file-info {
+            background: var(--detail-bg);
+            padding: 10px 12px;
+            border-radius: 8px;
+            border-left: 3px solid var(--vert);
+            font-size: 0.85em;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: var(--vert);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h3 {
+            margin: 0 0 10px 0;
+            color: var(--jaune);
+            font-size: 0.95em;
+        }
+
+        .card ul {
+            margin: 6px 0;
+            padding-left: 18px;
+        }
+
+        .card li {
+            margin-bottom: 4px;
+            font-size: 0.9em;
+        }
+
+        .details {
+            margin-top: 0;
+        }
+
+        .detail-item {
+            margin-bottom: 8px;
+            padding: 8px 10px;
+            background: var(--detail-bg);
+            border-radius: 6px;
+            border-left: 3px solid var(--vert);
+            display: grid;
+            grid-template-columns: 100px 1fr;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+
+        .detail-item strong {
+            color: var(--vert);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-family: "DM Sans", sans-serif;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--jaune);
+            color: var(--noir);
+        }
+
+        .btn-primary:hover {
+            background: #f6b940;
+            transform: translateY(-1px);
+        }
+
+        .layout-info {
+            background: rgba(61, 195, 113, 0.1);
+            border-left: 3px solid #3dc371;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.9em;
+        }
+
+        .layout-info strong {
+            color: #2d6a4f;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .results-section {
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Info -->
+        <div class="layout-info">
+            <strong>✓ Nouveau Layout Derewol AI</strong> - 2 colonnes optimisées pour afficher tout à l'écran
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <div class="logo">Derewol AI ✦</div>
+                <div class="credits">4 crédits ce mois · 0 achetés</div>
+            </div>
+            <div class="header-right">
+                <span>Derewol AI</span>
+                <button class="toggle"></button>
+            </div>
+        </div>
+
+        <!-- Main Content: 2 Columns -->
+        <div class="main-content">
+            <!-- Colonne Gauche: Upload -->
+            <div class="upload-section">
+                <div class="dropzone">
+                    <div class="dropzone-icon">📁</div>
+                    <div class="dropzone-text">Glissez votre fichier ici ou cliquez pour parcourir</div>
+                    <div class="dropzone-hint">Formats acceptés : PDF, XLSX, XLS, DOCX, JPG, PNG, PPT, TXT</div>
+                </div>
+
+                <div class="file-info">
+                    <div>Fichier sélectionné :</div>
+                    <div class="file-name">📄 Bloc sanitaire 1.xlsx</div>
+                </div>
+            </div>
+
+            <!-- Colonne Droite: Résultats (avec scroll interne) -->
+            <div class="results-section">
+                <!-- Suggestions -->
+                <div class="card">
+                    <h3>✦ Suggestions</h3>
+                    <ul>
+                        <li>Adapter la largeur des colonnes au contenu</li>
+                        <li>Configurer les marges (haut: 1cm, bas: 1cm, gauche: 0.8cm, droite: 0.8cm)</li>
+                        <li>Répéter les en-têtes sur chaque page</li>
+                        <li>Vérifier l'orientation (paysage recommandé pour données larges)</li>
+                        <li>Tester l'aperçu avant impression</li>
+                        <li>Réduire l'échelle à 90-95% si nécessaire</li>
+                        <li>Vérifier les sauts de page manuels</li>
+                    </ul>
+                </div>
+
+                <!-- Avertissements -->
+                <div class="card">
+                    <h3>⚠️ Avertissements</h3>
+                    <ul>
+                        <li>Données potentiellement trop larges pour une page A4 en portrait</li>
+                    </ul>
+                </div>
+
+                <!-- Détails d'impression -->
+                <div class="card">
+                    <h3>📋 Détails d'impression</h3>
+                    <div class="details">
+                        <div class="detail-item">
+                            <strong>Orientation :</strong> <span>Paysage recommandé</span>
+                        </div>
+                        <div class="detail-item">
+                            <strong>Mode :</strong> <span>Impression couleur</span>
+                        </div>
+                        <div class="detail-item">
+                            <strong>Type :</strong> <span>Tableau Excel</span>
+                        </div>
+                        <div class="detail-item">
+                            <strong>Format :</strong> <span>A4 Paysage</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bouton Appliquer (toujours visible en bas) -->
+        <div class="button-row">
+            <button class="btn btn-primary">✦ Appliquer les suggestions</button>
+        </div>
+    </div>
+</body>
+</html>

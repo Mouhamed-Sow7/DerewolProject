@@ -33,6 +33,7 @@ const { startPolling, stopPolling } = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
 const QRCode = require("qrcode");
+const ExcelJS = require("exceljs");
 const pdfCache = require("../services/pdfCache");
 const {
   getAvailablePrinters,
@@ -49,6 +50,7 @@ const {
   ocrDocument,
   checkAICredits,
   addAICredits,
+  improveOcrText,
 } = require("../services/aiPrintAnalyzer");
 const {
   extractTextFromImage,
@@ -945,6 +947,35 @@ ipcMain.handle("dialog:openFile", async (event, { filters }) => {
   return result;
 });
 
+ipcMain.handle("file:getSize", async (_event, { filePath }) => {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return { success: false, error: "Fichier introuvable" };
+    }
+    const size = fs.statSync(filePath).size;
+    return { success: true, size };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("file:saveToAIFolder", async (_event, { tempFilePath }) => {
+  try {
+    if (!tempFilePath || !fs.existsSync(tempFilePath)) {
+      return { success: false, error: "Fichier introuvable" };
+    }
+    const targetDir = path.join(app.getPath("documents"), "derewol-ai-files");
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const targetPath = path.join(targetDir, path.basename(tempFilePath));
+    fs.copyFileSync(tempFilePath, targetPath);
+    return { success: true, savedPath: targetPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle("print:set-options", (_event, opts) => {
   global._filesPrintOptions = { ...global._filesPrintOptions, ...opts };
 });
@@ -1145,6 +1176,82 @@ try {
     } catch (e) {
       console.error("ai:applySuggestions error:", e.message);
       return { success: false, error: e.message };
+    }
+  },
+);
+
+ipcMain.handle("ai:applyExcelFull", async (_event, { filePath }) => {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return { success: false, error: "Fichier introuvable" };
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    if (![".xlsx", ".xls"].includes(ext)) {
+      return {
+        success: false,
+        error:
+          "Format non supporté — seule la version Excel est prise en charge",
+      };
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    workbook.eachSheet((sheet) => {
+      const cols = sheet.columnCount || 0;
+      const po = sheet.pageSetup || {};
+      sheet.pageSetup = po;
+      po.orientation = cols > 7 ? "landscape" : "portrait";
+      po.fitToPage = true;
+      po.fitToWidth = 1;
+      po.fitToHeight = 0;
+      po.horizontalCentered = true;
+      po.verticalCentered = true;
+      po.margins = {
+        left: 0.5,
+        right: 0.5,
+        top: 0.75,
+        bottom: 0.75,
+        header: 0.3,
+        footer: 0.3,
+      };
+      po.showGridLines = true;
+      sheet.columns.forEach((col) => {
+        let maxLen = 10;
+        col.eachCell({ includeEmpty: false }, (cell) => {
+          const value = cell.value;
+          const length = value ? value.toString().length : 0;
+          if (length > maxLen) {
+            maxLen = length;
+          }
+        });
+        col.width = Math.min(maxLen + 2, 40);
+      });
+      if (!po.printTitlesRow && sheet.rowCount > 0) {
+        po.printTitlesRow = "1:1";
+      }
+    });
+
+    const tempFilePath = path.join(os.tmpdir(), `dw-ai-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tempFilePath);
+    return { success: true, tempFilePath };
+  } catch (err) {
+    console.error("ai:applyExcelFull error:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle(
+  "ai:improveOcrText",
+  async (_event, { text, docType, improvements, printerId }) => {
+    try {
+      if (!text) {
+        return { success: false, error: "Texte OCR manquant" };
+      }
+      const data = await improveOcrText(text, docType, improvements, printerId);
+      return { success: true, ...data };
+    } catch (err) {
+      console.error("ai:improveOcrText error:", err.message);
+      return { success: false, error: err.message };
     }
   },
 );

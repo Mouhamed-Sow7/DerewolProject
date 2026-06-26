@@ -1,553 +1,760 @@
-// derewolAI.js — Interface complète Derewol AI avec drag & drop unifiée
-const bridge = window.parent?.derewol || window.derewol || window.electron || {};
+const bridge =
+  window.parent?.derewol || window.derewol || window.electron || {};
 
-function invokeChannel(channel, ...args) {
+function invokeChannel(channel, payload = {}) {
+  if (bridge?.invoke) {
+    return bridge.invoke(channel, payload);
+  }
+
   return new Promise((resolve, reject) => {
     const requestId = Math.random().toString(36).slice(2);
-    const payload = args[0];
-    let attempts = 0;
-    let timeout = null;
+    let timeoutId = null;
 
     function cleanup() {
-      try {
-        window.removeEventListener("message", handler);
-      } catch (e) {}
-      if (timeout) {
-        clearTimeout(timeout);
-        timeout = null;
+      window.removeEventListener("message", handler);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
       }
     }
 
     function handler(event) {
       if (event.data?.type !== "derewol-invoke-reply") return;
-      if (event.data.requestId !== requestId) return;
+      if (event.data?.requestId !== requestId) return;
       cleanup();
-      if (event.data.error) reject(new Error(event.data.error));
-      else resolve(event.data.result);
-    }
-
-    function doPost() {
-      attempts += 1;
-      console.debug(
-        `[AI IPC] ${channel} (attempt ${attempts}) requestId=${requestId}`,
-      );
-      try {
-        window.parent.postMessage(
-          { type: "derewol-invoke", channel, payload, requestId },
-          "*",
-        );
-      } catch (err) {
-        cleanup();
-        return reject(err);
+      if (event.data.error) {
+        reject(new Error(event.data.error));
+      } else {
+        resolve(event.data.result);
       }
-
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        if (attempts < 2) {
-          console.warn(`[AI IPC] timeout for ${channel}, retrying...`);
-          doPost();
-          return;
-        }
-        cleanup();
-        reject(new Error("IPC timeout"));
-      }, 10000);
     }
 
     window.addEventListener("message", handler);
-    doPost();
+    try {
+      window.parent.postMessage(
+        { type: "derewol-invoke", channel, payload, requestId },
+        "*",
+      );
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("IPC timeout"));
+    }, 15000);
   });
 }
 
-// ── Theme sync ──────────────────────────────────────────────────
+const SUPPORTED_EXTENSIONS = [
+  "pdf",
+  "xlsx",
+  "xls",
+  "docx",
+  "jpg",
+  "jpeg",
+  "png",
+  "ppt",
+  "pptx",
+  "txt",
+];
+
+let currentPrinterId = null;
+let currentPrinterName = "Imprimante active";
+let currentCredits = { remaining: 0, purchased: 0, total: 0 };
+let claudeEnabled = true;
+let selectedFilePath = null;
+let selectedFileType = null;
+let analysisMode = null;
+let lastOcrData = null;
+
+function formatBytes(bytes) {
+  if (bytes === 0) return "0 o";
+  const sizes = ["o", "Ko", "Mo", "Go"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${Number((bytes / 1024 ** i).toFixed(1))} ${sizes[i]}`;
+}
+
+function getExtension(filePath) {
+  return filePath.split(".").pop().toLowerCase();
+}
+
+function getFileType(filePath) {
+  const ext = getExtension(filePath);
+  if (["jpg", "jpeg", "png"].includes(ext)) return "image";
+  if (["xlsx", "xls"].includes(ext)) return "excel";
+  if (["pdf", "docx", "ppt", "pptx", "txt"].includes(ext)) return "document";
+  return "document";
+}
+
+function getFileIcon(ext) {
+  if (["pdf"].includes(ext)) return "📄";
+  if (["xlsx", "xls"].includes(ext)) return "📊";
+  if (["jpg", "jpeg", "png"].includes(ext)) return "🖼️";
+  if (["docx", "ppt", "pptx", "txt"].includes(ext)) return "📎";
+  return "📁";
+}
+
+function getCleanFileName(filePath) {
+  return filePath.split(/[\\/]/).pop();
+}
+
+function setStatus(message, type = "info") {
+  const status = document.getElementById("status-card");
+  status.textContent = message;
+  status.classList.remove("hidden");
+  status.style.borderColor =
+    type === "warning"
+      ? "#f5a623"
+      : type === "error"
+        ? "#d9534f"
+        : "var(--border)";
+  status.style.color = type === "error" ? "#a33" : "var(--text)";
+}
+
+function clearStatus() {
+  const status = document.getElementById("status-card");
+  status.textContent = "";
+  status.classList.add("hidden");
+}
+
+function toggleDarkMode() {
+  document.body.classList.toggle("dark-mode", getParentThemeMode());
+}
+
 function getParentThemeMode() {
   try {
-    return (
-      window.parent?.document?.body?.classList?.contains("dark-mode") ?? false
-    );
-  } catch (err) {
+    return window.parent?.document?.body?.classList?.contains("dark-mode");
+  } catch (error) {
     return false;
   }
 }
 
-function applyThemeMode() {
-  document.body.classList.toggle("dark-mode", getParentThemeMode());
+function setDropzoneEnabled(enabled) {
+  const dropzone = document.getElementById("dropzone");
+  if (enabled) {
+    dropzone.classList.remove("disabled");
+  } else {
+    dropzone.classList.add("disabled");
+  }
 }
 
-function watchParentThemeChanges() {
-  applyThemeMode();
+function showPreviewCard(show) {
+  const card = document.getElementById("preview-card");
+  card.classList.toggle("hidden", !show);
+}
+
+function showAnalysisCard(show) {
+  document.getElementById("analysis-card").classList.toggle("hidden", !show);
+}
+
+function showOcrCard(show) {
+  document.getElementById("ocr-card").classList.toggle("hidden", !show);
+}
+
+async function getPrinterConfig() {
+  if (currentPrinterId) {
+    return { id: currentPrinterId, name: currentPrinterName };
+  }
+
+  const config = await invokeChannel("printer:config");
+  currentPrinterId = config?.id;
+  currentPrinterName = config?.name || currentPrinterName;
+  return config;
+}
+
+async function chargerCredits() {
+  try {
+    const config = await getPrinterConfig();
+    if (!config?.id) {
+      throw new Error("Configuration de l'imprimante introuvable");
+    }
+    const response = await invokeChannel("ai:checkCredits", {
+      printerId: config.id,
+    });
+    if (response.success) {
+      const { remaining, purchased } = response.data;
+      currentCredits = {
+        remaining: Number(remaining || 0),
+        purchased: Number(purchased || 0),
+        total: Number((remaining || 0) + (purchased || 0)),
+      };
+      document.getElementById("credits-display").textContent =
+        `${currentCredits.total} crédits disponibles (${currentCredits.remaining} mensuels, ${currentCredits.purchased} achetés)`;
+      updateInterfaceState();
+
+      const statusCard = document.getElementById("status-card");
+      if (
+        statusCard &&
+        statusCard.textContent.toLowerCase().includes("recharger") &&
+        currentCredits.total > 0
+      ) {
+        statusCard.classList.add("hidden");
+      }
+    } else {
+      document.getElementById("credits-display").textContent =
+        "Erreur chargement crédits";
+      updateInterfaceState(false);
+    }
+  } catch (error) {
+    console.error("chargerCredits", error);
+    document.getElementById("credits-display").textContent =
+      "Erreur chargement crédits";
+    updateInterfaceState(false);
+  }
+}
+
+function updateInterfaceState(hasCredits = currentCredits.total > 0) {
+  const rechargeSection = document.getElementById("recharge-section");
+  rechargeSection.classList.toggle("hidden", hasCredits);
+  const dropzoneEnabled = hasCredits && claudeEnabled;
+  setDropzoneEnabled(dropzoneEnabled);
+  if (!hasCredits) {
+    showPreviewCard(false);
+    showAnalysisCard(false);
+    showOcrCard(false);
+    setStatus("Rechargez vos crédits pour continuer.", "warning");
+  } else {
+    clearStatus();
+    if (selectedFilePath) {
+      showPreviewCard(true);
+    }
+  }
+}
+
+function renderFilePreview() {
+  const name = getCleanFileName(selectedFilePath);
+  const ext = getExtension(selectedFilePath);
+  const badge = `${getFileIcon(ext)} ${ext.toUpperCase()}`;
+
+  document.getElementById("file-name").textContent = name;
+  document.getElementById("file-badge").textContent = badge;
+  document.getElementById("file-size").textContent = "Calcul de la taille...";
+
+  invokeChannel("file:getSize", { filePath: selectedFilePath })
+    .then((response) => {
+      if (response.success) {
+        document.getElementById("file-size").textContent = formatBytes(
+          response.size,
+        );
+      } else {
+        document.getElementById("file-size").textContent = "Taille introuvable";
+      }
+    })
+    .catch(() => {
+      document.getElementById("file-size").textContent = "Taille introuvable";
+    });
+
+  showPreviewCard(true);
+  clearStatus();
+  showAnalysisCard(false);
+  showOcrCard(false);
+  analysisMode = null;
+  lastOcrData = null;
+}
+
+function canPerformOcr() {
+  return ["image", "document"].includes(selectedFileType);
+}
+
+function updateActionButtons() {
+  const analyzeBtn = document.getElementById("btn-analyze");
+  const ocrBtn = document.getElementById("btn-ocr");
+  const active = currentCredits.total > 0 && claudeEnabled;
+
+  analyzeBtn.disabled = !active || !selectedFilePath;
+  ocrBtn.disabled = !active || !selectedFilePath || !canPerformOcr();
+  ocrBtn.textContent = canPerformOcr()
+    ? "🔍 Extraire le texte (OCR)"
+    : "OCR indisponible";
+}
+
+function showLoadingOnDropzone(enabled) {
+  const dropzone = document.getElementById("dropzone");
+  if (enabled) {
+    dropzone.innerHTML = '<div class="loader"></div>';
+  } else {
+    dropzone.innerHTML =
+      '<div class="dropzone-icon">📁</div><div class="dropzone-text">Glissez votre fichier ici ou cliquez pour parcourir</div><div class="dropzone-hint">Formats acceptés : PDF, XLSX, XLS, DOCX, JPG, PNG, PPT, TXT</div>';
+  }
+}
+
+function prepareSelectedFile(filePath) {
+  selectedFilePath = filePath;
+  selectedFileType = getFileType(filePath);
+  renderFilePreview();
+  updateActionButtons();
+}
+
+async function openFilePicker() {
+  if (currentCredits.total <= 0) {
+    setStatus(
+      "Vous devez recharger vos crédits avant de sélectionner un fichier.",
+      "warning",
+    );
+    return;
+  }
+
+  try {
+    const result = await invokeChannel("dialog:openFile", {
+      filters: [
+        {
+          name: "Fichiers supportés",
+          extensions: SUPPORTED_EXTENSIONS,
+        },
+      ],
+    });
+    if (result?.filePaths?.length > 0) {
+      prepareSelectedFile(result.filePaths[0]);
+    }
+  } catch (error) {
+    console.error("openFilePicker", error);
+    setStatus("Impossible d'ouvrir le sélecteur de fichier.", "error");
+  }
+}
+
+function collapseResults() {
+  showAnalysisCard(false);
+  showOcrCard(false);
+}
+
+function renderSuggestions(suggestions = []) {
+  const suggestionsList = document.getElementById("suggestions-list");
+
+  suggestionsList.innerHTML = "";
+
+  if (!suggestions.length) {
+    const d = document.createElement("div");
+    d.className = "sugg-item";
+    d.textContent = "Aucune suggestion spécifique détectée.";
+    suggestionsList.appendChild(d);
+    return;
+  }
+
+  (suggestions || []).forEach((s) => {
+    const d = document.createElement("div");
+    d.className = "sugg-item";
+    d.textContent = s;
+    suggestionsList.appendChild(d);
+  });
+}
+
+function renderWarnings(warnings = []) {
+  const warningsList = document.getElementById("warnings-list");
+
+  warningsList.innerHTML = "";
+
+  if (warnings && warnings.length > 0) {
+    warnings.forEach((w) => {
+      const d = document.createElement("div");
+      d.className = "warn-item";
+      d.textContent = w;
+      warningsList.appendChild(d);
+    });
+
+    document.getElementById("warnings-block").classList.remove("hidden");
+    return;
+  }
+
+  document.getElementById("warnings-block").classList.add("hidden");
+}
+
+function renderAnalysisDetails(data) {
+  const block = document.getElementById("warnings-block");
+  const list = document.getElementById("warnings-list");
+  list.innerHTML = "";
+  if (!warnings || !warnings.length) {
+    block.classList.add("hidden");
+    return;
+  }
+  warnings.forEach((warning) => {
+    const li = document.createElement("li");
+    li.textContent = warning;
+    list.appendChild(li);
+  });
+  block.classList.remove("hidden");
+}
+
+function renderAnalysisDetails(data) {
+  document.getElementById("det-orient").textContent =
+    data.orientation || data.orientation_recommandee || "-";
+  document.getElementById("det-mode").textContent =
+    data.mode || data.mode_recommande || data.contentType || "-";
+  document.getElementById("det-format").textContent =
+    data.format || data.format_recommande || "-";
+  document.getElementById("det-scale").textContent =
+    data.scale || data.echelle_recommandee || "-";
+}
+
+function displayAnalysisResult(data) {
+  renderSuggestions(data.suggestions || data.issues || []);
+  renderWarnings(data.warnings || data.issues || []);
+  renderAnalysisDetails(data);
+  showAnalysisCard(true);
+  showOcrCard(false);
+}
+
+function displayOcrResult(data) {
+  lastOcrData = data;
+  document.getElementById("ocr-doc-type").textContent =
+    `Document détecté : ${data.docType || "Autre"}`;
+  document.getElementById("ocr-text").textContent =
+    data.text || "Aucun texte extrait.";
+  showOcrCard(true);
+  showAnalysisCard(false);
+  analysisMode = "ocr";
+}
+
+async function analyzeForPrint() {
+  if (!selectedFilePath) {
+    setStatus("Sélectionnez d'abord un fichier.", "warning");
+    return;
+  }
+  if (currentCredits.total <= 0) {
+    setStatus("Crédits insuffisants.", "warning");
+    return;
+  }
+
+  try {
+    clearStatus();
+    showLoadingOnDropzone(true);
+    const printerConfig = await getPrinterConfig();
+    if (!printerConfig?.id) {
+      throw new Error("Printer config missing");
+    }
+    let response;
+    if (selectedFileType === "excel") {
+      response = await invokeChannel("ai:analyzeExcel", {
+        filePath: selectedFilePath,
+        printerId: printerConfig.id,
+      });
+    } else {
+      response = await invokeChannel("ai:analyzeDocument", {
+        filePath: selectedFilePath,
+        printerId: printerConfig.id,
+      });
+    }
+
+    showLoadingOnDropzone(false);
+    if (!response?.success) {
+      throw new Error(response?.error || "Analyse échouée");
+    }
+    analysisMode = "print";
+    displayAnalysisResult(response.data || {});
+    await chargerCredits();
+  } catch (error) {
+    console.error("analyzeForPrint", error);
+    showLoadingOnDropzone(false);
+    setStatus(`Erreur d'analyse : ${error.message}`, "error");
+  }
+}
+
+async function extractText() {
+  if (!selectedFilePath) {
+    setStatus("Sélectionnez d'abord un fichier.", "warning");
+    return;
+  }
+  if (currentCredits.total <= 0) {
+    setStatus("Crédits insuffisants.", "warning");
+    return;
+  }
+
+  try {
+    clearStatus();
+    showLoadingOnDropzone(true);
+    const printerConfig = await getPrinterConfig();
+    if (!printerConfig?.id) {
+      throw new Error("Printer config missing");
+    }
+    const response = await invokeChannel("ai:ocrDocument", {
+      filePath: selectedFilePath,
+      printerId: printerConfig.id,
+    });
+    showLoadingOnDropzone(false);
+    if (!response?.success) {
+      throw new Error(response?.error || "OCR échoué");
+    }
+    displayOcrResult(response.data || {});
+    await chargerCredits();
+  } catch (error) {
+    console.error("extractText", error);
+    showLoadingOnDropzone(false);
+    setStatus(`Erreur OCR : ${error.message}`, "error");
+  }
+}
+
+async function applyExcelFull() {
+  try {
+    if (!selectedFilePath) {
+      throw new Error("Aucun fichier sélectionné");
+    }
+    const result = await invokeChannel("ai:applyExcelFull", {
+      filePath: selectedFilePath,
+    });
+    if (!result?.success) {
+      throw new Error(result?.error || "Échec de l'application Excel");
+    }
+    openActionModal(result.tempFilePath);
+  } catch (error) {
+    console.error("applyExcelFull", error);
+    setStatus(`Erreur application Excel : ${error.message}`, "error");
+  }
+}
+
+async function applyOcrImprovements(improvements = []) {
+  try {
+    if (!lastOcrData?.text) {
+      throw new Error("Aucun texte OCR disponible");
+    }
+    const printerConfig = await getPrinterConfig();
+    if (!printerConfig?.id) {
+      throw new Error("Printer config missing");
+    }
+    const payload = {
+      text: lastOcrData.text,
+      docType: lastOcrData.docType || "Autre",
+      improvements,
+      printerId: printerConfig.id,
+    };
+    const response = await invokeChannel("ai:improveOcrText", payload);
+    if (!response?.success) {
+      throw new Error(response?.error || "Échec de l'amélioration OCR");
+    }
+    openActionModal(response.tempFilePath);
+  } catch (error) {
+    console.error("applyOcrImprovements", error);
+    setStatus(`Erreur amélioration OCR : ${error.message}`, "error");
+  }
+}
+
+async function preparePrintFile() {
+  if (!selectedFilePath) {
+    setStatus("Aucun fichier n'a été analysé.", "warning");
+    return;
+  }
+
+  if (analysisMode === "ocr") {
+    return applyOcrImprovements(getSelectedImprovements());
+  }
+
+  if (selectedFileType === "excel") {
+    return applyExcelFull();
+  }
+
+  openActionModal(selectedFilePath);
+}
+
+function getSelectedImprovements() {
+  const improvements = [];
+  if (document.getElementById("opt-format").checked) {
+    improvements.push("Corriger la mise en forme");
+  }
+  if (document.getElementById("opt-style").checked) {
+    improvements.push("Améliorer le texte (orthographe, style)");
+  }
+  if (document.getElementById("opt-layout").checked) {
+    improvements.push("Restructurer la mise en page");
+  }
+  return improvements;
+}
+
+function openActionModal(tempFilePath) {
+  document.getElementById("modal-fname").textContent =
+    `Nom du fichier : ${getCleanFileName(tempFilePath)}`;
+  document.getElementById("modal-printer").textContent =
+    `Imprimante : ${currentPrinterName}`;
+  document.getElementById("modal-print").dataset.tempFilePath = tempFilePath;
+  document.getElementById("modal-save").dataset.tempFilePath = tempFilePath;
+  document.getElementById("modal-action").classList.remove("hidden");
+}
+
+function closeActionModal() {
+  document.getElementById("modal-action").classList.add("hidden");
+}
+
+async function printTempFile(tempFilePath) {
+  try {
+    const result = await invokeChannel("print:local", { tempFilePath });
+    if (!result?.success) {
+      throw new Error(result?.error || "Échec impression");
+    }
+    closeActionModal();
+    setStatus("Fichier envoyé à l'imprimante.", "info");
+  } catch (error) {
+    console.error("printTempFile", error);
+    setStatus(`Erreur impression : ${error.message}`, "error");
+  }
+}
+
+async function saveTempFile(tempFilePath) {
+  try {
+    const result = await invokeChannel("file:saveToAIFolder", { tempFilePath });
+    if (!result?.success) {
+      throw new Error(result?.error || "Échec sauvegarde");
+    }
+    closeActionModal();
+    setStatus("Fichier sauvegardé dans Documents/derewol-ai-files/.", "info");
+  } catch (error) {
+    console.error("saveTempFile", error);
+    setStatus(`Erreur sauvegarde : ${error.message}`, "error");
+  }
+}
+
+async function openWhatsAppContact() {
+  const printerConfig = await getPrinterConfig();
+  const message = encodeURIComponent(
+    `Bonjour, je souhaite recharger mes crédits Derewol AI. ID boutique : ${printerConfig?.id || "inconnu"}`,
+  );
+  await invokeChannel("shell:openExternal", {
+    url: `https://wa.me/+221781220391?text=${message}`,
+  });
+}
+
+function resetInterface() {
+  selectedFilePath = null;
+  selectedFileType = null;
+  analysisMode = null;
+  lastOcrData = null;
+  document.getElementById("file-name").textContent = "—";
+  document.getElementById("file-badge").textContent = "—";
+  document.getElementById("file-size").textContent = "—";
+  showPreviewCard(false);
+  collapseResults();
+  updateActionButtons();
+  clearStatus();
+}
+
+function setupDragAndDrop() {
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("file-input");
+
+  dropzone.addEventListener("click", () => {
+    if (!claudeEnabled) {
+      setStatus("Derewol AI est désactivé.", "warning");
+      return;
+    }
+    openFilePicker();
+  });
+
+  dropzone.addEventListener("dragover", (event) => {
+    if (!claudeEnabled) return;
+    event.preventDefault();
+    dropzone.classList.add("drag-over");
+  });
+
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.classList.remove("drag-over");
+  });
+
+  dropzone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dropzone.classList.remove("drag-over");
+    if (!claudeEnabled) {
+      setStatus("Derewol AI est désactivé.", "warning");
+      return;
+    }
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      prepareSelectedFile(file.path);
+    }
+  });
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      prepareSelectedFile(file.path);
+    }
+  });
+}
+
+function setupToggle() {
+  const toggle = document.getElementById("toggle-claude");
+  const stored = localStorage.getItem("derewol_ai_enabled");
+  claudeEnabled = stored === null ? true : stored === "1";
+  toggle.classList.toggle("active", claudeEnabled);
+  toggle.addEventListener("click", () => {
+    claudeEnabled = !claudeEnabled;
+    localStorage.setItem("derewol_ai_enabled", claudeEnabled ? "1" : "0");
+    toggle.classList.toggle("active", claudeEnabled);
+    updateInterfaceState();
+  });
+}
+
+function setupButtons() {
+  document
+    .getElementById("btn-analyze")
+    .addEventListener("click", analyzeForPrint);
+  document.getElementById("btn-ocr").addEventListener("click", extractText);
+  document
+    .getElementById("btn-apply")
+    .addEventListener("click", preparePrintFile);
+  document
+    .getElementById("btn-reset")
+    .addEventListener("click", resetInterface);
+  document
+    .getElementById("btn-improve")
+    .addEventListener("click", () =>
+      applyOcrImprovements(getSelectedImprovements()),
+    );
+  document
+    .getElementById("btn-use-as-is")
+    .addEventListener("click", () => applyOcrImprovements([]));
+  const rechargeContactButton = document.getElementById("btn-recharge-contact");
+  if (rechargeContactButton) {
+    rechargeContactButton.addEventListener("click", openWhatsAppContact);
+  }
+
+  document.getElementById("modal-print").addEventListener("click", (event) => {
+    const filePath = event.currentTarget.dataset.tempFilePath;
+    printTempFile(filePath);
+  });
+  document.getElementById("modal-save").addEventListener("click", (event) => {
+    const filePath = event.currentTarget.dataset.tempFilePath;
+    saveTempFile(filePath);
+  });
+  document
+    .getElementById("modal-cancel")
+    .addEventListener("click", closeActionModal);
+}
+
+function setupThemeObserver() {
+  toggleDarkMode();
   try {
     const parentBody = window.parent.document.body;
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === "class") {
-          applyThemeMode();
-          break;
-        }
-      }
+    const observer = new MutationObserver(() => {
+      toggleDarkMode();
     });
     observer.observe(parentBody, {
       attributes: true,
       attributeFilter: ["class"],
     });
-  } catch (err) {
-    setInterval(applyThemeMode, 1000);
+  } catch (error) {
+    setInterval(toggleDarkMode, 1000);
   }
 }
 
-// ── State global ───────────────────────────────────────────────────
-let currentPrinterId = null;
-let claudeEnabled = true;
-let lastAnalyzedFile = null;
-let lastSuggestions = null;
-let isAnalyzing = false;
-
-// ── Déterminer le type de fichier ───────────────────────────────
-function getFileType(filePath) {
-  const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
-  if ([".pdf"].includes(ext)) return "document";
-  if ([".xlsx", ".xls"].includes(ext)) return "excel";
-  if ([".jpg", ".jpeg", ".png"].includes(ext)) return "image";
-  if ([".docx", ".ppt", ".pptx", ".txt"].includes(ext)) return "document";
-  return "document"; // fallback
-}
-
-// ── Récupérer l'ID de l'imprimante ────────────────────────────────
-async function getPrinterId() {
-  try {
-    if (currentPrinterId) return currentPrinterId;
-    const config = await invokeChannel("printer:config");
-    if (!config?.id) throw new Error("Configuration imprimeur manquante");
-    currentPrinterId = config.id;
-    return currentPrinterId;
-  } catch (err) {
-    console.error("getPrinterId:", err);
-    alert("Erreur : Configuration imprimeur introuvable. Redémarrez l'application.");
-    throw err;
+window.addEventListener("message", (event) => {
+  if (event.data?.type === "ai-credits-updated") {
+    chargerCredits();
   }
-}
+});
 
-// ── Charger et afficher les crédits ───────────────────────────────
-async function loadCredits() {
-  try {
-    const printerId = await getPrinterId();
-    const response = await invokeChannel("ai:checkCredits", { printerId });
-    if (response.success) {
-      const { remaining, purchased } = response.data;
-      document.getElementById("credits-display").textContent =
-        `${remaining} crédits ce mois · ${purchased} achetés`;
-
-      const hasCredits = remaining + purchased > 0;
-      updateDropzoneState(hasCredits);
-      updateRechargeSection(!hasCredits);
-    } else {
-      document.getElementById("credits-display").textContent =
-        "Erreur chargement crédits";
-    }
-  } catch (err) {
-    console.error("loadCredits:", err);
-    document.getElementById("credits-display").textContent =
-      "Erreur chargement crédits";
-  }
-}
-
-// ── Mettre à jour l'état de la dropzone ──────────────────────────
-function updateDropzoneState(enabled) {
-  const dropzone = document.getElementById("dropzone");
-  if (enabled && claudeEnabled) {
-    dropzone.classList.remove("disabled");
-    dropzone.title = "";
+function waitForBridgeAndInit() {
+  const bridge = window.parent?.derewol || window.derewol || window.electron;
+  if (bridge && typeof bridge.invoke === "function") {
+    chargerCredits();
   } else {
-    dropzone.classList.add("disabled");
-    if (!claudeEnabled) {
-      dropzone.title = "Derewol AI est désactivé";
-    } else {
-      dropzone.title = "Crédits épuisés — rechargez pour continuer";
-    }
+    setTimeout(waitForBridgeAndInit, 150);
   }
 }
 
-// ── Afficher/cacher la section recharge ──────────────────────────
-function updateRechargeSection(show) {
-  const section = document.getElementById("recharge-section");
-  section.classList.toggle("hidden", !show);
-}
-
-// ── Analyser le fichier ──────────────────────────────────────────
-async function analyzeFile(filePath) {
-  if (isAnalyzing) return;
-  isAnalyzing = true;
-
-  try {
-    const printerId = await getPrinterId();
-    const fileType = getFileType(filePath);
-
-    // Afficher le loading
-    showLoading(true);
-    clearResults();
-
-    let response;
-    if (fileType === "excel") {
-      response = await invokeChannel("ai:analyzeExcel", {
-        filePath,
-        printerId,
-      });
-    } else if (fileType === "image") {
-      response = await invokeChannel("ai:ocrDocument", {
-        filePath,
-        printerId,
-      });
-    } else {
-      response = await invokeChannel("ai:analyzeDocument", {
-        filePath,
-        printerId,
-      });
-    }
-
-    showLoading(false);
-
-    if (response.success) {
-      lastAnalyzedFile = filePath;
-      lastSuggestions = response.data;
-      displayResults(response.data);
-      await loadCredits();
-    } else {
-      alert("Erreur lors de l'analyse : " + response.error);
-    }
-  } catch (err) {
-    console.error("analyzeFile:", err);
-    showLoading(false);
-    alert("Erreur lors de l'analyse du fichier");
-  } finally {
-    isAnalyzing = false;
-  }
-}
-
-// ── Afficher le loading ──────────────────────────────────────────
-function showLoading(show) {
-  const dropzone = document.getElementById("dropzone");
-  if (show) {
-    dropzone.innerHTML = '<div class="loading"></div>';
-  } else {
-    restoreDropzoneText();
-  }
-}
-
-// ── Restaurer le texte de la dropzone ───────────────────────────
-function restoreDropzoneText() {
-  const dropzone = document.getElementById("dropzone");
-  dropzone.innerHTML = `
-    <div class="dropzone-icon">📁</div>
-    <div class="dropzone-text">Glissez votre fichier ici ou cliquez pour parcourir</div>
-    <div class="dropzone-hint">
-      Formats acceptés : PDF, XLSX, XLS, DOCX, JPG, PNG, PPT, TXT
-    </div>
-  `;
-}
-
-// ── Effacer les résultats ────────────────────────────────────────
-function clearResults() {
-  document.getElementById("results-section").classList.add("hidden");
-  document.getElementById("btn-apply").classList.add("hidden");
-  document.getElementById("file-info").classList.add("hidden");
-}
-
-// ── Afficher les résultats ───────────────────────────────────────
-function displayResults(data) {
-  const resultsSection = document.getElementById("results-section");
-  resultsSection.classList.remove("hidden");
-
-  // Suggestions
-  const suggestionsList = document.getElementById("suggestions-list");
-  suggestionsList.innerHTML = "";
-  if (data.suggestions && data.suggestions.length > 0) {
-    data.suggestions.forEach((sugg) => {
-      const li = document.createElement("li");
-      li.textContent = sugg;
-      suggestionsList.appendChild(li);
-    });
-    document.getElementById("btn-apply").classList.remove("hidden");
-  } else {
-    suggestionsList.innerHTML = "<li>Aucune suggestion spécifique</li>";
-  }
-
-  // Avertissements
-  const warningsCard = document.getElementById("warnings-card");
-  const warningsList = document.getElementById("warnings-list");
-  warningsList.innerHTML = "";
-  if (data.warnings && data.warnings.length > 0) {
-    data.warnings.forEach((warn) => {
-      const li = document.createElement("li");
-      li.textContent = warn;
-      warningsList.appendChild(li);
-    });
-    warningsCard.classList.remove("hidden");
-  } else {
-    warningsCard.classList.add("hidden");
-  }
-
-  // Détails
-  document.getElementById("orientation").textContent =
-    data.orientation || data.orient || "-";
-  document.getElementById("mode").textContent = data.mode || "-";
-  document.getElementById("content-type").textContent =
-    data.type_contenu || data.contentType || "-";
-  document.getElementById("format").textContent =
-    data.format_recommande || data.format || "-";
-
-  // Info fichier
-  const fileInfo = document.getElementById("file-info");
-  document.getElementById("file-name").textContent = lastAnalyzedFile
-    ? lastAnalyzedFile.split(/[\\/]/).pop()
-    : "";
-  fileInfo.classList.remove("hidden");
-}
-
-// ── Appliquer les suggestions ────────────────────────────────────
-async function applySuggestions() {
-  if (!lastAnalyzedFile || !lastSuggestions) {
-    alert("Aucun fichier analysé à appliquer");
-    return;
-  }
-
-  try {
-    const printerId = await getPrinterId();
-    const payload = {
-      filePath: lastAnalyzedFile,
-      suggestions: lastSuggestions,
-    };
-
-    const res = await invokeChannel("ai:applySuggestions", payload);
-    if (!res?.success) {
-      alert("Erreur application suggestions: " + (res?.error || "inconnu"));
-      return;
-    }
-
-    // Afficher la modale
-    showActionModal(res.tempFilePath);
-  } catch (err) {
-    console.error("applySuggestions:", err);
-    alert("Erreur lors de l'application des suggestions");
-  }
-}
-
-// ── Afficher la modale action (imprimer/sauvegarder) ─────────────
-function showActionModal(tempFilePath) {
-  const modal = document.getElementById("modal-action");
-  document.getElementById("modal-file-path").textContent = tempFilePath;
-  modal.classList.remove("hidden");
-}
-
-// ── Fermer la modale ────────────────────────────────────────────
-function closeActionModal() {
-  document.getElementById("modal-action").classList.add("hidden");
-}
-
-// ── Imprimer le fichier ────────────────────────────────────────
-async function printFile(tempFilePath) {
-  try {
-    const res = await invokeChannel("print:local", { tempFilePath });
-    if (!res?.success) {
-      alert("Erreur impression: " + (res?.error || "inconnu"));
-      return;
-    }
-    closeActionModal();
-    alert("Fichier envoyé à l'imprimante");
-  } catch (err) {
-    console.error("printFile:", err);
-    alert("Erreur lors de l'impression");
-  }
-}
-
-// ── Sauvegarder le fichier ─────────────────────────────────────
-async function saveFile(tempFilePath) {
-  try {
-    const fileName = tempFilePath.split(/[\\/]/).pop();
-    const res = await invokeChannel("file:saveToDocuments", {
-      tempFilePath,
-      fileName,
-      subDir: "derewol-ai-files",
-    });
-
-    if (!res?.success) {
-      alert("Erreur sauvegarde: " + (res?.error || "inconnu"));
-      return;
-    }
-
-    closeActionModal();
-    alert(`Fichier sauvegardé dans Documents/derewol-ai-files/`);
-  } catch (err) {
-    console.error("saveFile:", err);
-    alert("Erreur lors de la sauvegarde");
-  }
-}
-
-// ── Recharger les crédits (WhatsApp) ───────────────────────────
-async function rechargeCredits(credits, amountXof) {
-  try {
-    const printerId = await getPrinterId();
-    const message = encodeURIComponent(
-      `Bonjour, je souhaite recharger ${credits} crédits Derewol AI (${amountXof} XOF). Mon ID boutique : ${printerId}`,
-    );
-    const whatsappUrl = `https://wa.me/+221781220391?text=${message}`;
-
-    await invokeChannel("shell:openExternal", { url: whatsappUrl });
-  } catch (err) {
-    console.error("rechargeCredits:", err);
-  }
-}
-
-// ── Setup drag & drop ────────────────────────────────────────────
-function setupDragDrop() {
-  const dropzone = document.getElementById("dropzone");
-  const fileInput = document.getElementById("file-input");
-
-  // Click pour ouvrir dialog
-  dropzone.addEventListener("click", () => {
-    if (!claudeEnabled) {
-      alert("Derewol AI est désactivé");
-      return;
-    }
-    fileInput.click();
-  });
-
-  // Drag over
-  dropzone.addEventListener("dragover", (e) => {
-    if (!claudeEnabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.add("drag-over");
-  });
-
-  // Drag leave
-  dropzone.addEventListener("dragleave", () => {
-    dropzone.classList.remove("drag-over");
-  });
-
-  // Drop
-  dropzone.addEventListener("drop", (e) => {
-    if (!claudeEnabled) {
-      alert("Derewol AI est désactivé");
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.remove("drag-over");
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      fileInput.files = files;
-      analyzeFile(file.path);
-    }
-  });
-
-  // File input change
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files.length > 0) {
-      const file = fileInput.files[0];
-      analyzeFile(file.path);
-    }
-  });
-}
-
-// ── Setup toggle Claude ──────────────────────────────────────────
-function setupToggle() {
-  const toggle = document.getElementById("toggle-claude");
-  const stored = localStorage.getItem("derewol_ai_enabled");
-  claudeEnabled = stored === null ? true : stored === "1";
-
-  // Mettre à jour visuellement
-  if (claudeEnabled) {
-    toggle.classList.add("active");
-  }
-
-  toggle.addEventListener("click", () => {
-    claudeEnabled = !claudeEnabled;
-    localStorage.setItem("derewol_ai_enabled", claudeEnabled ? "1" : "0");
-    toggle.classList.toggle("active");
-    updateDropzoneState(
-      !document
-        .getElementById("recharge-section")
-        .classList.contains("hidden"),
-    );
-    if (!claudeEnabled) {
-      clearResults();
-    }
-  });
-
-  // Mettre à jour l'état initial de la dropzone
-  const rechargeShown = !document
-    .getElementById("recharge-section")
-    .classList.contains("hidden");
-  updateDropzoneState(!rechargeShown);
-}
-
-// ── Setup boutons ────────────────────────────────────────────────
-function setupButtons() {
-  // Apply suggestions
-  document
-    .getElementById("btn-apply")
-    .addEventListener("click", applySuggestions);
-
-  // Modal actions
-  document.getElementById("modal-btn-print").addEventListener("click", () => {
-    const path = document.getElementById("modal-file-path").textContent;
-    printFile(path);
-  });
-
-  document.getElementById("modal-btn-save").addEventListener("click", () => {
-    const path = document.getElementById("modal-file-path").textContent;
-    saveFile(path);
-  });
-
-  // Recharge buttons
-  document.querySelectorAll(".btn-recharge").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const credits = parseInt(btn.dataset.credits);
-      const amount = parseInt(btn.dataset.amount);
-      rechargeCredits(credits, amount);
-    });
-  });
-}
-
-// ── Initialize ───────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", async () => {
-  watchParentThemeChanges();
-
-  try {
-    await getPrinterId();
-    await loadCredits();
-  } catch (err) {
-    console.error("Init error:", err);
-  }
-
+document.addEventListener("DOMContentLoaded", () => {
+  setupThemeObserver();
+  setupDragAndDrop();
   setupToggle();
-  setupDragDrop();
   setupButtons();
-
-  // Polling crédits toutes les 30s
-  setInterval(async () => {
-    try {
-      await loadCredits();
-      console.log("[AI] Crédits rafraîchis");
-    } catch (e) {
-      console.warn("[AI] Polling crédits erreur:", e.message);
-    }
-  }, 30000);
-
-  // Écouter les mises à jour de crédits du parent
-  window.addEventListener("message", (e) => {
-    if (e.data?.type === "ai-credits-updated") {
-      console.log("[AI] Crédits mis à jour depuis le parent");
-      loadCredits();
-    }
-  });
-
-  // Callback si disponible
-  if (window.derewol?.onAICreditsUpdated) {
-    window.derewol.onAICreditsUpdated(() => {
-      console.log("[AI] Événement credits-updated");
-      loadCredits();
-    });
-  }
+  waitForBridgeAndInit(); // ← remplace l'appel direct à chargerCredits()
+  setInterval(chargerCredits, 30_000);
 });

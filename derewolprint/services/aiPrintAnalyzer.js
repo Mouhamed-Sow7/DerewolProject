@@ -5,6 +5,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
+const PDFDocument = require("pdfkit");
 const { app } = require("electron");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -18,6 +20,7 @@ const COST_PER_ACTION = {
   analyze_document: { tokens: 2000, usd: 0.03, xof: 18 },
   analyze_excel: { tokens: 3000, usd: 0.05, xof: 30 },
   ocr_document: { tokens: 2500, usd: 0.04, xof: 24 },
+  improve_ocr_text: { tokens: 2800, usd: 0.05, xof: 30 },
 };
 
 // ── Clé API ─────────────────────────────────────────────────────
@@ -487,18 +490,15 @@ async function analyzeExcel(filePath, printerId) {
     // Le renderer devra passer un screenshot ou une image de l'aperçu
     const prompt = `Tu es un expert en mise en page Excel pour impression.
 Un utilisateur veut imprimer un fichier Excel nommé "${fileName}".
-
-Analyse les problèmes courants et retourne ce JSON :
+Analyse les problèmes les plus probables liés à l'impression : colonnes trop larges, titres de colonnes, lignes répétées, orientations, marges, zones de tableau, et échelle.
+Retourne uniquement du JSON valide sans texte de présentation.
 {
-  "issues": [
-    "problème 1 détecté (colonnes trop larges, headers manquants, etc.)",
-    "problème 2"
-  ],
-  "risques_impression": ["risque 1", "risque 2"],
+  "issues": ["problème 1", "problème 2"],
+  "warnings": ["warning 1", "warning 2"],
   "suggestions": ["suggestion 1", "suggestion 2"],
-  "macroSuggestion": "Sub CorrigerMiseEnPage()\\n  ' Code VBA complet ici\\nEnd Sub",
-  "orientation_recommandee": "paysage" ou "portrait",
-  "echelle_recommandee": 85
+  "orientation_recommandee": "portrait" ou "paysage",
+  "format_recommande": "A4" ou "Lettres",
+  "echelle_recommandee": 90
 }`;
 
     // 3. Appel Claude (sans image pour Excel)
@@ -575,11 +575,13 @@ async function ocrDocument(filePath, printerId) {
 
     // 3. Prompt OCR
     const prompt = `Effectue une reconnaissance de texte (OCR) complète sur cette image.
-Retourne ce JSON :
+Détecte également le type de document parmi : CV, Lettre administrative, Ordonnance, Devis, Tableau, Autre.
+Retourne uniquement un JSON valide sans texte additionnel.
 {
-  "text": "texte complet extrait, avec sauts de ligne \\n là où il y en a",
+  "text": "texte complet extrait, avec sauts de ligne \n là où il y en a",
   "confidence": 95,
   "language": "fr" ou "ar" ou "wo" ou "en",
+  "docType": "CV" ou "Lettre administrative" ou "Ordonnance" ou "Devis" ou "Tableau" ou "Autre",
   "blocks": [
     { "type": "titre" ou "paragraphe" ou "tableau" ou "liste", "content": "..." }
   ],
@@ -610,6 +612,81 @@ Retourne ce JSON :
       printerId,
       "ocr_document",
       path.basename(filePath),
+      null,
+      "error",
+      err.message,
+    );
+    return FALLBACK;
+  }
+}
+
+async function improveOcrText(text, docType, improvements = [], printerId) {
+  const FALLBACK = {
+    improvedText: text || "",
+    tempFilePath: null,
+    error: "Amélioration OCR indisponible",
+    credits: null,
+  };
+
+  try {
+    const creditCheck = await checkAICredits(printerId);
+    if (!creditCheck.hasCredits) {
+      return { ...FALLBACK, error: "credits_epuises", showRecharge: true };
+    }
+
+    const improvementList = improvements.length
+      ? improvements.map((item) => `- ${item}`).join("\n")
+      : "- Nettoyer le texte\n- Corriger l'orthographe\n- Améliorer le style et la mise en page";
+
+    const prompt = `Tu es un assistant expert en édition de documents.
+Le texte suivant provient d'un document OCR de type : ${docType || "Autre"}.
+Améliore le texte en appliquant les corrections suivantes :\n${improvementList}
+Retourne uniquement un JSON valide sans aucune préface.
+{
+  "improvedText": "texte amélioré ..."
+}`;
+
+    const result = await callClaude(prompt);
+    const improvedText = result.improvedText || text;
+    const tempFilePath = path.join(os.tmpdir(), `dw-ai-${Date.now()}.pdf`);
+    const pdfDoc = new PDFDocument({ size: "A4", margin: 40 });
+    const writeStream = fs.createWriteStream(tempFilePath);
+    pdfDoc.pipe(writeStream);
+    pdfDoc
+      .fontSize(16)
+      .text(`${docType || "Document"} amélioré`, { align: "center" });
+    pdfDoc.moveDown(1);
+    pdfDoc.fontSize(11).text(improvedText, { align: "left", lineGap: 4 });
+    pdfDoc.end();
+
+    await new Promise((resolve, reject) => {
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
+    });
+
+    const creditConsume = await consumeAICredit(printerId);
+    await logAIUsage(
+      printerId,
+      "improve_ocr_text",
+      "ocr_text.pdf",
+      creditConsume.source,
+    );
+
+    return {
+      improvedText,
+      tempFilePath,
+      credits: {
+        source: creditConsume.source,
+        remainingMonthly: creditConsume.remaining_after,
+        remainingPurchased: creditConsume.purchased_after,
+      },
+    };
+  } catch (err) {
+    console.error("[DEREWOL AI] improveOcrText error:", err.message);
+    await logAIUsage(
+      printerId,
+      "improve_ocr_text",
+      "ocr_text.pdf",
       null,
       "error",
       err.message,
@@ -767,6 +844,7 @@ module.exports = {
   analyzeDocument,
   analyzeExcel,
   ocrDocument,
+  improveOcrText,
   analyzeOrientation,
   analyzeJobOrientation,
   checkAICredits,
