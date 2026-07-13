@@ -154,6 +154,26 @@ async function handleRecharge() {
     });
     if (error) throw error;
 
+    // CRITICAL FIX : l'app Electron du client lit ses crédits depuis
+    // subscriptions.ai_credits_purchased (pas depuis ai_recharge_history,
+    // qui ne sert qu'à l'historique affiché ici). Sans cette mise à jour,
+    // le client restait bloqué à 0 crédit après une recharge "réussie".
+    const { data: sub, error: subFetchErr } = await sb
+      .from("subscriptions")
+      .select("ai_credits_purchased")
+      .eq("printer_id", printerId)
+      .eq("status", "active")
+      .single();
+    if (subFetchErr) throw subFetchErr;
+
+    const newPurchasedTotal = (sub?.ai_credits_purchased || 0) + credits;
+    const { error: subUpdateErr } = await sb
+      .from("subscriptions")
+      .update({ ai_credits_purchased: newPurchasedTotal })
+      .eq("printer_id", printerId)
+      .eq("status", "active");
+    if (subUpdateErr) throw subUpdateErr;
+
     const printerName = document.getElementById("recharge-printer-name").textContent;
     const msg = encodeURIComponent(
       `✅ Bonjour ${printerName} !\n\nVotre recharge Derewol AI est confirmée :\n• +${credits} crédits ajoutés\n• Montant : ${amount.toLocaleString("fr-FR")} FCFA\n• Réf : ${ref || method}\n\nBonne impression ! 🖨️`
