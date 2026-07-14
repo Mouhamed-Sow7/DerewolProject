@@ -84,12 +84,27 @@ autoUpdater.logger.transports.file.level = "info";
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
+let autoUpdaterInitialized = false; // Empêche tout double enregistrement de listeners/handlers
+
 function setupAutoUpdater() {
   // Vérifier les mises à jour au démarrage (seulement en prod)
   if (process.env.NODE_ENV === "development") {
     console.log("[UPDATE] Mode dev — auto-update désactivé");
     return;
   }
+
+  // Garde d'idempotence : setupAutoUpdater() est appelée depuis plusieurs
+  // chemins de boot (offline, révoqué, normal) — sans cette garde, les
+  // listeners sur le singleton autoUpdater s'accumulaient et chaque
+  // événement (update-available, update-downloaded, etc.) se déclenchait
+  // plusieurs fois, avec deux boucles de vérification tournant en parallèle
+  // sur des horaires différents. C'était la cause probable des erreurs
+  // observées lors des tests de mise à jour.
+  if (autoUpdaterInitialized) {
+    console.log("[UPDATE] Déjà initialisé — skip");
+    return;
+  }
+  autoUpdaterInitialized = true;
 
   autoUpdater.on("checking-for-update", () => {
     console.log("[UPDATE] Vérification des mises à jour...");
@@ -108,6 +123,9 @@ function setupAutoUpdater() {
     console.log(`[UPDATE] Téléchargement: ${Math.round(progress.percent)}%`);
     mainWindow?.webContents.send("update:progress", {
       percent: Math.round(progress.percent),
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
     });
   });
 
@@ -120,20 +138,41 @@ function setupAutoUpdater() {
 
   autoUpdater.on("error", (err) => {
     console.error("[UPDATE] Erreur:", err.message);
+    mainWindow?.webContents.send("update:error", { message: err.message });
   });
 
-  // Vérifier au démarrage
-  setTimeout(() => {
-    autoUpdater.checkForUpdates();
-  }, 10000); // Attendre 10s après le boot
+  function checkForUpdates() {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error("[UPDATE] Erreur vérification:", err.message);
+    });
+  }
 
-  // Vérifier toutes les 4 heures
-  setInterval(
-    () => {
-      autoUpdater.checkForUpdates();
-    },
-    4 * 60 * 60 * 1000,
-  );
+  // Vérifier au démarrage, puis toutes les 4h (un seul planning — voir
+  // commentaire ci-dessus sur la garde d'idempotence)
+  setTimeout(checkForUpdates, 10000);
+  setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
+
+  // Handlers IPC côté renderer pour piloter le téléchargement/l'installation.
+  // Enregistrés ici (une seule fois, protégés par la garde d'idempotence)
+  // plutôt que dans createWindow(), qui peut théoriquement être invoquée à
+  // nouveau (reconnexion après mode offline) — ipcMain.handle() lève une
+  // exception si on tente d'enregistrer deux fois le même canal.
+  ipcMain.handle("update:start-download", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle("update:install-now", () => {
+    autoUpdater.quitAndInstall();
+  });
+
+  ipcMain.handle("update:check-now", () => {
+    checkForUpdates();
+  });
 }
 
 function getPdfPageCount(filePath) {
@@ -994,64 +1033,6 @@ function createMainWindow() {
     mainWindow.setContentProtection(true);
   }
   mainWindow.loadFile("renderer/index.html");
-
-  // ── Auto-update ──────────────────────────────────────────────
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  function checkForUpdates() {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error("[UPDATE] Erreur vérification:", err.message);
-    });
-  }
-
-  autoUpdater.on("update-available", (info) => {
-    console.log("[UPDATE] Mise à jour disponible:", info.version);
-    mainWindow.webContents.send("update:available", { version: info.version });
-  });
-
-  autoUpdater.on("update-not-available", () => {
-    console.log("[UPDATE] Application à jour");
-  });
-
-  autoUpdater.on("download-progress", (progress) => {
-    mainWindow.webContents.send("update:progress", {
-      percent: Math.round(progress.percent),
-      bytesPerSecond: progress.bytesPerSecond,
-      transferred: progress.transferred,
-      total: progress.total,
-    });
-  });
-
-  autoUpdater.on("update-downloaded", (info) => {
-    console.log("[UPDATE] Téléchargée, prête à installer:", info.version);
-    mainWindow.webContents.send("update:downloaded", { version: info.version });
-  });
-
-  autoUpdater.on("error", (err) => {
-    console.error("[UPDATE] Erreur:", err.message);
-    mainWindow.webContents.send("update:error", { message: err.message });
-  });
-
-  setTimeout(checkForUpdates, 5000);
-  setInterval(checkForUpdates, 30 * 60 * 1000);
-
-  ipcMain.handle("update:start-download", async () => {
-    try {
-      await autoUpdater.downloadUpdate();
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle("update:install-now", () => {
-    autoUpdater.quitAndInstall();
-  });
-
-  ipcMain.handle("update:check-now", () => {
-    checkForUpdates();
-  });
 }
 
 // ── Fonctions protection screenshot (ADMIN ONLY) ─────────────────
@@ -3789,14 +3770,6 @@ ipcMain.handle("qr:generate", async (_, data) => {
     console.error("[IPC] Erreur génération QR code:", e.message);
     return { success: false, error: e.message };
   }
-});
-
-ipcMain.handle("update:install", () => {
-  autoUpdater.quitAndInstall();
-});
-
-ipcMain.handle("update:check", () => {
-  autoUpdater.checkForUpdates();
 });
 
 // ── IPC : Téléchargement avec autorisation ────────────────────────
