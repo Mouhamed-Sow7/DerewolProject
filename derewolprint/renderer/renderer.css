@@ -1783,6 +1783,22 @@ body.dark-mode .act-trial-card {
   margin: 0;
 }
 
+.acc-text p {
+  margin: 0 0 10px 0;
+}
+
+.acc-text h3,
+.acc-text h4 {
+  color: var(--text);
+  margin: 14px 0 6px 0;
+}
+
+.acc-text hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
 .acc-actions {
   display: flex;
   gap: 12px;

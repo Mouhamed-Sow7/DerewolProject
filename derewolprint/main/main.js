@@ -44,6 +44,7 @@ const {
 } = require("../services/polling");
 const { log } = require("../services/logger");
 const pdfToPrinter = require("pdf-to-printer");
+const ExcelJS = require("exceljs");
 const QRCode = require("qrcode");
 const pdfCache = require("../services/pdfCache");
 const {
@@ -63,6 +64,7 @@ const {
   analyzeJobOrientation,
   checkAICredits,
   addAICredits,
+  improveOcrText,
 } = require("../services/aiPrintAnalyzer");
 const {
   extractTextFromImage,
@@ -1188,6 +1190,345 @@ ipcMain.handle("ai:ocrDocument", async (event, { filePath, printerId }) => {
     return { success: false, error: err.message };
   }
 });
+
+// --- Handlers portés depuis l'ancien derewolprint/main.js -----------------
+// BUG CRITIQUE : ces 5 handlers (utilisés par le flux "Appliquer" de
+// Derewol AI : boutons Analyser/OCR → Appliquer → Imprimer/Sauvegarder)
+// n'existaient QUE dans derewolprint/main.js, un fichier orphelin qui n'est
+// plus le point d'entrée réel de l'app depuis la réorganisation en main/
+// (package.json → "main": "main/main.js"). Résultat : tout le flux
+// d'application des suggestions échouait silencieusement (canal IPC sans
+// handler enregistré), aussi bien pour l'OCR/Excel que pour l'impression
+// et la sauvegarde du fichier final.
+
+ipcMain.handle("file:saveToAIFolder", async (_event, { tempFilePath }) => {
+  try {
+    if (!tempFilePath || !fs.existsSync(tempFilePath)) {
+      return { success: false, error: "Fichier introuvable" };
+    }
+    const targetDir = path.join(app.getPath("documents"), "derewol-ai-files");
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const targetPath = path.join(targetDir, path.basename(tempFilePath));
+    fs.copyFileSync(tempFilePath, targetPath);
+    return { success: true, savedPath: targetPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Apply AI suggestions to an Excel file (creates a temp copy, does not modify original)
+ipcMain.handle(
+  "ai:applySuggestions",
+  async (_event, { filePath, suggestions }) => {
+    try {
+      if (!filePath || !fs.existsSync(filePath))
+        return { success: false, error: "Fichier introuvable" };
+
+      const ext = path.extname(filePath).toLowerCase();
+      if (![".xlsx", ".xls"].includes(ext))
+        return {
+          success: false,
+          error:
+            "Format non supporté — seul Excel (.xlsx/.xls) est pris en charge",
+        };
+
+      const derewolDir = getDerewolFilesDir();
+      const base = path.basename(filePath, ext);
+      const ts = Date.now();
+      const tempFileName = `${base}-ai-applied-${ts}${ext}`;
+      const tempFilePath = path.join(derewolDir, tempFileName);
+
+      // Copy original to temp (never modify original)
+      fs.copyFileSync(filePath, tempFilePath);
+
+      // Helper: parse margin value into inches for Excel COM
+      function parseMarginValue(val) {
+        if (val === null || val === undefined) return null;
+        if (typeof val === "number") return val; // assume already inches
+        if (typeof val === "string") {
+          const raw = val.trim().toLowerCase();
+          // numeric with optional decimal/comma
+          const maybeNum = parseFloat(raw.replace(",", "."));
+          if (!isNaN(maybeNum)) {
+            if (/cm\b/.test(raw)) return maybeNum / 2.54;
+            if (/mm\b/.test(raw)) return maybeNum / 25.4;
+            if (/in\b/.test(raw) || /inch/.test(raw) || /\"$/.test(raw))
+              return maybeNum;
+            // no unit: assume inches
+            return maybeNum;
+          }
+          // fallback: try match value+unit
+          const m = raw.match(
+            /([0-9]+(?:[\.,][0-9]+)?)\s*(cm|mm|in|inch|inches)?/,
+          );
+          if (m) {
+            const num = parseFloat(m[1].replace(",", "."));
+            const unit = m[2];
+            if (!unit) return num;
+            if (unit.startsWith("cm")) return num / 2.54;
+            if (unit.startsWith("mm")) return num / 25.4;
+            return num; // inches
+          }
+        }
+        return null;
+      }
+
+      // Convert margins to inches if present
+      let marginsConverted = null;
+      if (
+        suggestions &&
+        suggestions.margins &&
+        typeof suggestions.margins === "object"
+      ) {
+        const m = suggestions.margins;
+        marginsConverted = {
+          left: parseMarginValue(m.left),
+          right: parseMarginValue(m.right),
+          top: parseMarginValue(m.top),
+          bottom: parseMarginValue(m.bottom),
+        };
+        if (
+          [
+            marginsConverted.left,
+            marginsConverted.right,
+            marginsConverted.top,
+            marginsConverted.bottom,
+          ].every((v) => v === null)
+        ) {
+          marginsConverted = null;
+        }
+      }
+
+      const suggNorm = tempFilePath.replace(/'/g, "''");
+      const tempNorm = tempFilePath.replace(/'/g, "''");
+      const suggPayload = {
+        orientation: suggestions?.orientation,
+        fitToPages: suggestions?.fitToPages,
+        scale: suggestions?.scale,
+        margins: marginsConverted,
+        printArea: suggestions?.printArea,
+      };
+      const suggJsonPath = path.join(
+        os.tmpdir(),
+        `dw-ai-suggestions-${ts}.json`,
+      );
+      fs.writeFileSync(suggJsonPath, JSON.stringify(suggPayload), "utf8");
+
+      const psPath = path.join(os.tmpdir(), `dw-ai-apply-${ts}.ps1`);
+      const suggJsonNorm = suggJsonPath.replace(/'/g, "''");
+      const psScript = `
+try {
+  $sugg = Get-Content -Raw -Path '${suggJsonNorm}' | ConvertFrom-Json
+  $x = New-Object -ComObject Excel.Application
+} catch {
+  Write-Output "ERROR: Excel COM not available or failed to create object: $($_.Exception.Message)"
+  exit 2
+}
+
+$x.Visible = $false
+$x.DisplayAlerts = $false
+
+try {
+  $wb = $x.Workbooks.Open('${tempNorm}')
+  foreach ($ws in $wb.Worksheets) {
+    # Orientation
+    if ($sugg.orientation) {
+      if ($sugg.orientation -match 'paysage|landscape') { $ws.PageSetup.Orientation = 2 } else { $ws.PageSetup.Orientation = 1 }
+    }
+
+    # FitToPages
+    if ($sugg.fitToPages -eq $true) {
+      $ws.PageSetup.Zoom = $false
+      $ws.PageSetup.FitToPagesWide = 1
+      $ws.PageSetup.FitToPagesTall = 0
+    }
+
+    # Scale (Zoom percent)
+    if ($sugg.scale -and ($sugg.scale -is [int] -or $sugg.scale -is [double])) {
+      try { $ws.PageSetup.Zoom = [int]$sugg.scale } catch {}
+    }
+
+    # Margins (expect object with keys left,right,top,bottom in cm or inches)
+    if ($sugg.margins -and $sugg.margins -is [object]) {
+      try {
+        if ($sugg.margins.left) { $ws.PageSetup.LeftMargin = [double]$sugg.margins.left }
+        if ($sugg.margins.right) { $ws.PageSetup.RightMargin = [double]$sugg.margins.right }
+        if ($sugg.margins.top) { $ws.PageSetup.TopMargin = [double]$sugg.margins.top }
+        if ($sugg.margins.bottom) { $ws.PageSetup.BottomMargin = [double]$sugg.margins.bottom }
+      } catch { }
+    }
+
+    # Print area
+    if ($sugg.printArea) {
+      try { $ws.PageSetup.PrintArea = $sugg.printArea } catch { }
+    }
+  }
+
+  $wb.Save()
+  $wb.Close($false)
+  $x.Quit()
+  Write-Output "OK"
+} catch {
+  Write-Output "ERROR: $($_.Exception.Message)"
+  try { $x.Quit() } catch {}
+  exit 3
+}
+`;
+
+      fs.writeFileSync(psPath, psScript, "utf8");
+
+      // Execute the PowerShell script
+      const cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "${psPath.replace(/"/g, '\\"')}"`;
+      try {
+        await execShell(cmd, { windowsHide: true, timeout: 120000 });
+      } catch (err) {
+        const msg = err?.message || String(err);
+        return { success: false, error: `PowerShell/Excel error: ${msg}` };
+      }
+
+      // Append to local ai_applied_history.jsonl
+      try {
+        const hist = {
+          original: filePath,
+          temp: tempFilePath,
+          suggestions,
+          timestamp: new Date().toISOString(),
+        };
+        const hpath = path.join(derewolDir, "ai_applied_history.jsonl");
+        fs.appendFileSync(hpath, JSON.stringify(hist) + "\n", "utf8");
+        log("AI_APPLIED", hist);
+      } catch (e) {
+        console.warn("Failed to write AI history:", e.message);
+      }
+
+      return { success: true, tempFilePath };
+    } catch (e) {
+      console.error("ai:applySuggestions error:", e.message);
+      return { success: false, error: e.message };
+    }
+  },
+);
+
+ipcMain.handle("ai:applyExcelFull", async (_event, { filePath }) => {
+  console.log("[AI] Handler ai:applyExcelFull appelé avec:", filePath);
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return { success: false, error: "Fichier introuvable" };
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    if (![".xlsx", ".xls"].includes(ext)) {
+      return {
+        success: false,
+        error:
+          "Format non supporté — seule la version Excel est prise en charge",
+      };
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    workbook.eachSheet((sheet) => {
+      const cols = sheet.columnCount || 0;
+      const po = sheet.pageSetup || {};
+      sheet.pageSetup = po;
+      po.orientation = cols > 7 ? "landscape" : "portrait";
+      po.fitToPage = true;
+      po.fitToWidth = 1;
+      po.fitToHeight = 0;
+      po.horizontalCentered = true;
+      po.verticalCentered = true;
+      po.margins = {
+        left: 0.5,
+        right: 0.5,
+        top: 0.75,
+        bottom: 0.75,
+        header: 0.3,
+        footer: 0.3,
+      };
+      po.showGridLines = true;
+      sheet.columns.forEach((col) => {
+        let maxLen = 10;
+        col.eachCell({ includeEmpty: false }, (cell) => {
+          const value = cell.value;
+          const length = value ? value.toString().length : 0;
+          if (length > maxLen) {
+            maxLen = length;
+          }
+        });
+        col.width = Math.min(maxLen + 2, 40);
+      });
+      if (!po.printTitlesRow && sheet.rowCount > 0) {
+        po.printTitlesRow = "1:1";
+      }
+    });
+
+    const tempFilePath = path.join(os.tmpdir(), `dw-ai-${Date.now()}.xlsx`);
+    await workbook.xlsx.writeFile(tempFilePath);
+    return { success: true, tempFilePath };
+  } catch (err) {
+    console.error("ai:applyExcelFull error:", err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle(
+  "ai:improveOcrText",
+  async (_event, { text, docType, improvements, printerId }) => {
+    try {
+      if (!text) {
+        return { success: false, error: "Texte OCR manquant" };
+      }
+      const data = await improveOcrText(text, docType, improvements, printerId);
+      return { success: true, ...data };
+    } catch (err) {
+      console.error("ai:improveOcrText error:", err.message);
+      return { success: false, error: err.message };
+    }
+  },
+);
+
+ipcMain.handle("print:local", async (_event, { tempFilePath }) => {
+  try {
+    if (!tempFilePath || !fs.existsSync(tempFilePath))
+      return { success: false, error: "Fichier introuvable" };
+    const ext = path.extname(tempFilePath).toLowerCase();
+    let pdfPath = tempFilePath;
+
+    if ([".xlsx", ".xls", ".doc", ".docx"].includes(ext)) {
+      // Convert to PDF using Office COM
+      const outPdf = tempFilePath.replace(/\.[^.]+$/, ".pdf");
+      const normalized = tempFilePath.replace(/'/g, "''");
+      const outputNormalized = outPdf.replace(/'/g, "''");
+      let cmd;
+      if ([".doc", ".docx"].includes(ext)) {
+        cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
+      } else {
+        cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
+      }
+      await execShell(cmd, { windowsHide: true, timeout: 120000 });
+      pdfPath = outPdf;
+    }
+
+    // Use pdf-to-printer for printing PDFs
+    if (path.extname(pdfPath).toLowerCase() !== ".pdf") {
+      return {
+        success: false,
+        error: "Impossible de convertir en PDF pour l'impression",
+      };
+    }
+
+    const printerName = getPrinterWindowsName();
+    const printOpts = printerName ? { printer: printerName } : {};
+    await pdfToPrinter.print(pdfPath, printOpts);
+
+    return { success: true };
+  } catch (e) {
+    console.error("print:local error:", e.message);
+    return { success: false, error: e.message };
+  }
+});
+// --- Fin des handlers portés -----------------------------------------------
 
 // Détecter si un document est mal orienté (rotation 0/90/180/270)
 ipcMain.handle(

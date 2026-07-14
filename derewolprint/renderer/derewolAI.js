@@ -361,22 +361,6 @@ function renderWarnings(warnings = []) {
 }
 
 function renderAnalysisDetails(data) {
-  const block = document.getElementById("warnings-block");
-  const list = document.getElementById("warnings-list");
-  list.innerHTML = "";
-  if (!warnings || !warnings.length) {
-    block.classList.add("hidden");
-    return;
-  }
-  warnings.forEach((warning) => {
-    const li = document.createElement("li");
-    li.textContent = warning;
-    list.appendChild(li);
-  });
-  block.classList.remove("hidden");
-}
-
-function renderAnalysisDetails(data) {
   document.getElementById("det-orient").textContent =
     data.orientation || data.orientation_recommandee || "-";
   document.getElementById("det-mode").textContent =
@@ -407,6 +391,10 @@ function displayOcrResult(data) {
 }
 
 async function analyzeForPrint() {
+  if (!claudeEnabled) {
+    setStatus("Derewol AI est désactivé. Activez-le pour continuer.", "warning");
+    return;
+  }
   if (!selectedFilePath) {
     setStatus("Sélectionnez d'abord un fichier.", "warning");
     return;
@@ -451,6 +439,10 @@ async function analyzeForPrint() {
 }
 
 async function extractText() {
+  if (!claudeEnabled) {
+    setStatus("Derewol AI est désactivé. Activez-le pour continuer.", "warning");
+    return;
+  }
   if (!selectedFilePath) {
     setStatus("Sélectionnez d'abord un fichier.", "warning");
     return;
@@ -675,12 +667,18 @@ function setupToggle() {
   const toggle = document.getElementById("toggle-claude");
   const stored = localStorage.getItem("derewol_ai_enabled");
   claudeEnabled = stored === null ? true : stored === "1";
-  toggle.classList.toggle("active", claudeEnabled);
+  toggle.classList.toggle("on", claudeEnabled);
   toggle.addEventListener("click", () => {
     claudeEnabled = !claudeEnabled;
     localStorage.setItem("derewol_ai_enabled", claudeEnabled ? "1" : "0");
-    toggle.classList.toggle("active", claudeEnabled);
+    toggle.classList.toggle("on", claudeEnabled);
+    if (!claudeEnabled) {
+      setStatus("Derewol AI est désactivé. Activez-le pour continuer.", "warning");
+    } else if (currentCredits.total > 0) {
+      clearStatus();
+    }
     updateInterfaceState();
+    updateActionButtons();
   });
 }
 

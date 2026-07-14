@@ -6,8 +6,10 @@
 <title>Derewol AI</title>
 <link rel="stylesheet" href="renderer.css"/>
 <style>
-:root{--bg:#f5f0e8;--card:#fff;--border:#d4c9a8;--text:#1a2e1f;--muted:#5a6e5f;--jaune:#f5a623;--vert:#2d6a4f;--radius:12px}
-body.dark-mode{--bg:#0d1f13;--card:#162b1c;--border:#2d5a3d;--text:#f0f0f0;--muted:#8a9e8f}
+/* Couleurs, radius et dark-mode : héritées du thème global via renderer.css
+   (déjà importé ci-dessus). On ne redéfinit ici QUE l'alias --card, car ce
+   fichier utilise ce nom là où le thème global utilise --card-bg/--surface. */
+:root{--card:var(--card-bg, var(--surface, #fff))}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);padding:18px;transition:background .3s,color .3s}
 .wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -41,8 +43,7 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 .bp{background:var(--vert);color:#fff}
 .bo{background:transparent;color:var(--vert);border:1.5px solid var(--vert)}
 .bs{background:transparent;color:var(--muted);border:1px solid var(--border)}
-.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.res-grid>div:first-child{max-height:300px;overflow-y:auto;padding-right:8px}
+.res-grid{display:flex;flex-direction:column;gap:16px;margin-bottom:12px}
 .stitle{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .si{font-size:.87rem;padding:8px 10px;border-radius:8px;background:rgba(45,106,79,.06);border-left:3px solid var(--vert);line-height:1.4;margin-bottom:6px}
 .wi{font-size:.87rem;padding:8px 10px;border-radius:8px;background:rgba(245,166,35,.08);border-left:3px solid var(--jaune);line-height:1.4;margin-bottom:6px}
@@ -50,7 +51,7 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 .di{padding:10px;border-radius:8px;background:rgba(45,106,79,.06);font-size:.83rem}
 .di span{display:block;color:var(--muted);font-size:.75rem;margin-bottom:2px}
 .di strong{color:var(--vert)}
-.ocr-box{min-height:120px;max-height:200px;overflow-y:auto;padding:10px;border-radius:8px;border:1px solid var(--border);background:rgba(45,106,79,.04);white-space:pre-wrap;font-size:.87rem;margin-bottom:10px}
+.ocr-box{min-height:120px;padding:10px;border-radius:8px;border:1px solid var(--border);background:rgba(45,106,79,.04);white-space:pre-wrap;font-size:.87rem;margin-bottom:10px}
 .impopts{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px}
 .impopts label{display:flex;align-items:center;gap:8px;font-size:.88rem;cursor:pointer}
 .serr{padding:10px 12px;border-radius:8px;background:rgba(180,0,0,.07);border-left:3px solid #b00;color:#b00;font-size:.87rem}
@@ -63,7 +64,7 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 .mcard h2{font-size:1rem;color:var(--vert);margin-bottom:6px}
 .mcard p{font-size:.85rem;color:var(--muted);margin-bottom:4px}
 .mact{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-@media(max-width:620px){.res-grid{grid-template-columns:1fr}.brow,.mact{flex-direction:column}}
+@media(max-width:620px){.brow,.mact{flex-direction:column}}
 </style>
 </head>
 <body>
@@ -75,7 +76,7 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
       <div class="hcredits" id="credits-display">Chargement...</div>
     </div>
     <div class="toggle-wrap">
-      <span>Claude</span>
+      <span>Derewol AI</span>
       <button id="toggle-claude" class="toggle on" type="button">
         <span class="toggle-knob"></span>
       </button>

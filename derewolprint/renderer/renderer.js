@@ -534,6 +534,69 @@ function hideAcceptanceModal() {
 let cguTextCache = null;
 let cguLoaded = false;
 
+// Mini-parseur Markdown pour les CGU (fichier local et contrôlé, pas de
+// contenu utilisateur : pas besoin d'une lib externe pour ce sous-ensemble
+// limité : #, ##, **gras**, --- et paragraphes).
+function renderCguMarkdownToHtml(markdown) {
+  const escapeHtml = (str) =>
+    str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+  const lines = markdown.split("\n");
+  const htmlParts = [];
+  // Chaque item : { text: string, forceBreakAfter: boolean }
+  let paragraphBuffer = [];
+
+  const inlineFormat = (text) =>
+    escapeHtml(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+  const flushParagraph = () => {
+    if (paragraphBuffer.length === 0) return;
+    const html = paragraphBuffer
+      .map((item, i) => {
+        const isLast = i === paragraphBuffer.length - 1;
+        const separator = isLast ? "" : item.forceBreakAfter ? "<br>" : " ";
+        return inlineFormat(item.text) + separator;
+      })
+      .join("");
+    if (html.trim()) htmlParts.push(`<p>${html}</p>`);
+    paragraphBuffer = [];
+  };
+
+  for (const rawLine of lines) {
+    // Deux espaces (ou plus) en fin de ligne = retour à la ligne forcé
+    // (convention Markdown), à préserver avant le trim().
+    const forceBreakAfter = /\s\s+$/.test(rawLine);
+    const line = rawLine.trim();
+
+    if (line === "" || line === "\\") {
+      flushParagraph();
+      continue;
+    }
+    if (line === "---") {
+      flushParagraph();
+      htmlParts.push("<hr>");
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      flushParagraph();
+      htmlParts.push(`<h4>${inlineFormat(line.slice(3))}</h4>`);
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      flushParagraph();
+      htmlParts.push(`<h3>${inlineFormat(line.slice(2))}</h3>`);
+      continue;
+    }
+    paragraphBuffer.push({ text: line, forceBreakAfter });
+  }
+  flushParagraph();
+
+  return htmlParts.join("\n");
+}
+
 async function loadCguText() {
   if (cguLoaded && cguTextCache) return cguTextCache;
   try {
@@ -579,9 +642,11 @@ async function showCguModal() {
   if (!cguLoaded) {
     cguText.textContent = "Chargement des CGU...";
     const text = await loadCguText();
-    cguText.textContent = text;
+    cguText.innerHTML = renderCguMarkdownToHtml(text);
   } else {
-    cguText.textContent = cguTextCache || "Aucune CGU disponible.";
+    cguText.innerHTML = renderCguMarkdownToHtml(
+      cguTextCache || "Aucune CGU disponible.",
+    );
   }
 
   modal.style.zIndex = MODAL_Z_INDEXES.cgu;
