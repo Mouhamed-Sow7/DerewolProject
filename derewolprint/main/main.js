@@ -2811,17 +2811,22 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
             }
           });
 
-          const rotatedBytes = await pdfDoc.save();
-          const tmpPath = filePath.replace(
-            ".pdf",
-            `_rotated_tmp_${Date.now()}.pdf`,
-          );
-          fs.writeFileSync(tmpPath, rotatedBytes);
-          printPath = tmpPath;
           if (rotationApplied) {
+            const rotatedBytes = await pdfDoc.save();
+            const tmpPath = filePath.replace(
+              ".pdf",
+              `_rotated_tmp_${Date.now()}.pdf`,
+            );
+            fs.writeFileSync(tmpPath, rotatedBytes);
+            printPath = tmpPath;
             console.log(
               `[PRINT] PDF rotation corrigée → ${printOpts.orientation}`,
             );
+          } else {
+            // Déjà dans le bon sens sur toutes les pages : pas besoin de
+            // reparser/réécrire le PDF, on imprime directement l'original
+            // (gain de temps notable, surtout sur les gros fichiers).
+            printPath = filePath;
           }
         } catch (err) {
           console.warn("[PRINT] Rotation PDF échouée:", err.message);
@@ -2835,6 +2840,12 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       });
 
       if (printPath !== filePath) {
+        // Marge de sécurité avant suppression : pdfToPrinter.print() attend déjà
+        // la fin de la transmission complète du document (SumatraPDF ne rend la
+        // main qu'une fois le document entièrement spoolé), mais on ajoute un
+        // court délai supplémentaire par prudence — pour ne jamais risquer de
+        // couper une impression en cours (papier bloqué dans l'imprimante).
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         try {
           require("fs").unlinkSync(printPath);
         } catch {}
@@ -2934,6 +2945,11 @@ async function printSingleJobNoDelay(jobId, printerName, copies) {
       );
       throw printErr;
     } finally {
+      // Même marge de sécurité que pour le chemin PDF direct (cf. printFile) :
+      // on attend un court instant après la fin de pdfToPrinter.print() avant
+      // de supprimer le PDF converti, pour ne jamais risquer d'interrompre
+      // une impression encore en cours.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
       try {
         fs.unlinkSync(tmpPdf);
       } catch (_) {}
