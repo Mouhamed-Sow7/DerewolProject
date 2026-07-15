@@ -7,9 +7,12 @@
 <link rel="stylesheet" href="renderer.css"/>
 <style>
 /* Couleurs, radius et dark-mode : héritées du thème global via renderer.css
-   (déjà importé ci-dessus). On ne redéfinit ici QUE l'alias --card, car ce
-   fichier utilise ce nom là où le thème global utilise --card-bg/--surface. */
-:root{--card:var(--card-bg, var(--surface, #fff))}
+   (déjà importé ci-dessus). L'alias --card doit être déclaré sur body (et
+   non :root) : --card-bg n'est redéfini par body.dark-mode que sur <body>,
+   un descendant de :root — les variables CSS custom n'héritent jamais vers
+   le haut, donc une déclaration sur :root ne peut pas "voir" une valeur
+   redéfinie plus bas dans l'arbre. */
+body{--card:var(--card-bg, var(--surface, #fff))}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);padding:18px;transition:background .3s,color .3s}
 .wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -196,16 +199,18 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 
 </div>
 
-<div id="modal-action" class="modal hidden">
-  <div class="mcard">
-    <h2>✅ Fichier prêt</h2>
-    <p id="modal-fname">—</p>
-    <p id="modal-printer">—</p>
-    <div class="mact">
-      <button id="modal-print" class="btn bp" type="button">🖨 Imprimer maintenant</button>
-      <button id="modal-save" class="btn bs" type="button">💾 Sauvegarder</button>
-      <button id="modal-cancel" class="btn bs" type="button">Annuler</button>
-    </div>
+<div id="finalize-card" class="card hidden">
+  <div class="ctitle">✅ Fichier prêt</div>
+  <p class="csub" id="modal-fname">—</p>
+  <p class="csub" id="modal-printer">—</p>
+  <div id="finalize-actions" class="mact">
+    <button id="modal-print" class="btn bp" type="button">🖨 Imprimer maintenant</button>
+    <button id="modal-save" class="btn bs" type="button">💾 Sauvegarder</button>
+    <button id="modal-cancel" class="btn bs" type="button">Annuler</button>
+  </div>
+  <div id="finalize-loading" class="sload hidden">
+    <div class="spin"></div>
+    <span id="finalize-loading-label">Préparation en cours...</span>
   </div>
 </div>
 

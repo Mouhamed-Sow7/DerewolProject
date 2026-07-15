@@ -279,13 +279,14 @@ function updateActionButtons() {
     : "OCR indisponible";
 }
 
-function showLoadingOnDropzone(enabled) {
+const DROPZONE_IDLE_HTML = `<div class="dz-icon"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4v11m0-11 4 4m-4-4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="dz-txt">Glissez votre fichier ici ou cliquez pour parcourir</div><div class="dz-hint">Formats : PDF · XLSX · XLS · DOCX · JPG · PNG · PPT · TXT</div>`;
+
+function showLoadingOnDropzone(enabled, label = "Analyse en cours...") {
   const dropzone = document.getElementById("dropzone");
   if (enabled) {
-    dropzone.innerHTML = '<div class="loader"></div>';
+    dropzone.innerHTML = `<div class="sload"><div class="spin"></div><span>${label}</span></div>`;
   } else {
-    dropzone.innerHTML =
-      '<div class="dropzone-icon">📁</div><div class="dropzone-text">Glissez votre fichier ici ou cliquez pour parcourir</div><div class="dropzone-hint">Formats acceptés : PDF, XLSX, XLS, DOCX, JPG, PNG, PPT, TXT</div>';
+    dropzone.innerHTML = DROPZONE_IDLE_HTML;
   }
 }
 
@@ -463,7 +464,7 @@ async function extractText() {
 
   try {
     clearStatus();
-    showLoadingOnDropzone(true);
+    showLoadingOnDropzone(true, "Extraction du texte (OCR)...");
     const printerConfig = await getPrinterConfig();
     if (!printerConfig?.id) {
       throw new Error("Printer config missing");
@@ -498,7 +499,7 @@ async function applyExcelFull() {
     if (!result?.success) {
       throw new Error(result?.error || "Échec de l'application Excel");
     }
-    openActionModal(result.tempFilePath);
+    showFinalizeCard(result.tempFilePath);
   } catch (error) {
     console.error("applyExcelFull", error);
     setStatus(`Erreur application Excel : ${error.message}`, "error");
@@ -524,7 +525,7 @@ async function applyOcrImprovements(improvements = []) {
     if (!response?.success) {
       throw new Error(response?.error || "Échec de l'amélioration OCR");
     }
-    openActionModal(response.tempFilePath);
+    showFinalizeCard(response.tempFilePath);
   } catch (error) {
     console.error("applyOcrImprovements", error);
     setStatus(`Erreur amélioration OCR : ${error.message}`, "error");
@@ -545,7 +546,7 @@ async function preparePrintFile() {
     return applyExcelFull();
   }
 
-  openActionModal(selectedFilePath);
+  showFinalizeCard(selectedFilePath);
 }
 
 function getSelectedImprovements() {
@@ -562,22 +563,35 @@ function getSelectedImprovements() {
   return improvements;
 }
 
-function openActionModal(tempFilePath) {
+function showFinalizeCard(tempFilePath) {
   document.getElementById("modal-fname").textContent =
-    `Nom du fichier : ${getCleanFileName(tempFilePath)}`;
+    `Fichier : ${getCleanFileName(tempFilePath)}`;
   document.getElementById("modal-printer").textContent =
     `Imprimante : ${currentPrinterName}`;
   document.getElementById("modal-print").dataset.tempFilePath = tempFilePath;
   document.getElementById("modal-save").dataset.tempFilePath = tempFilePath;
-  document.getElementById("modal-action").classList.remove("hidden");
+  setFinalizeLoading(false);
+  const card = document.getElementById("finalize-card");
+  card.classList.remove("hidden");
+  card.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function closeActionModal() {
-  document.getElementById("modal-action").classList.add("hidden");
+function hideFinalizeCard() {
+  document.getElementById("finalize-card").classList.add("hidden");
+  setFinalizeLoading(false);
+}
+
+function setFinalizeLoading(loading, label) {
+  document.getElementById("finalize-actions").classList.toggle("hidden", loading);
+  document.getElementById("finalize-loading").classList.toggle("hidden", !loading);
+  if (loading && label) {
+    document.getElementById("finalize-loading-label").textContent = label;
+  }
 }
 
 async function printTempFile(tempFilePath) {
   try {
+    setFinalizeLoading(true, "Préparation de l'impression...");
     const result = await invokeChannel("print:local", {
       tempFilePath,
       printerName: getSelectedPrinterName(),
@@ -585,24 +599,27 @@ async function printTempFile(tempFilePath) {
     if (!result?.success) {
       throw new Error(result?.error || "Échec impression");
     }
-    closeActionModal();
+    hideFinalizeCard();
     setStatus("Fichier envoyé à l'imprimante.", "info");
   } catch (error) {
     console.error("printTempFile", error);
+    setFinalizeLoading(false);
     setStatus(`Erreur impression : ${error.message}`, "error");
   }
 }
 
 async function saveTempFile(tempFilePath) {
   try {
+    setFinalizeLoading(true, "Sauvegarde en cours...");
     const result = await invokeChannel("file:saveToAIFolder", { tempFilePath });
     if (!result?.success) {
       throw new Error(result?.error || "Échec sauvegarde");
     }
-    closeActionModal();
+    hideFinalizeCard();
     setStatus("Fichier sauvegardé dans Documents/derewol-ai-files/.", "info");
   } catch (error) {
     console.error("saveTempFile", error);
+    setFinalizeLoading(false);
     setStatus(`Erreur sauvegarde : ${error.message}`, "error");
   }
 }
@@ -640,6 +657,7 @@ function resetInterface() {
   document.getElementById("file-badge").textContent = "—";
   document.getElementById("file-size").textContent = "—";
   showPreviewCard(false);
+  hideFinalizeCard();
   collapseResults();
   updateActionButtons();
   clearStatus();
@@ -750,7 +768,7 @@ function setupButtons() {
   });
   document
     .getElementById("modal-cancel")
-    .addEventListener("click", closeActionModal);
+    .addEventListener("click", hideFinalizeCard);
 }
 
 function setupThemeObserver() {

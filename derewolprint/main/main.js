@@ -1481,6 +1481,50 @@ ipcMain.handle(
   },
 );
 
+// Convertit un fichier Word/Excel en PDF via automation COM, avec une vraie
+// remontée d'erreur : contrairement à un one-liner PowerShell classique, les
+// erreurs COM non-terminantes (Excel absent, fichier protégé, etc.) ne sont
+// pas silencieusement avalées — on force $ErrorActionPreference='Stop' et on
+// fait remonter le message exact au lieu d'un vague "PDF non généré".
+async function convertOfficeToPdf(sourcePath, outputPdfPath) {
+  const ext = path.extname(sourcePath).toLowerCase();
+  const normalized = sourcePath.replace(/'/g, "''");
+  const outputNormalized = outputPdfPath.replace(/'/g, "''");
+  const isWord = [".doc", ".docx"].includes(ext);
+
+  const psScript = isWord
+    ? `$ErrorActionPreference='Stop'; try { $w = New-Object -ComObject Word.Application; $w.Visible=$false; $d=$w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit(); Write-Output 'OK' } catch { Write-Output "ERROR: $($_.Exception.Message)"; try{$w.Quit()}catch{} }`
+    : `$ErrorActionPreference='Stop'; try { $x = New-Object -ComObject Excel.Application; $x.Visible=$false; $x.DisplayAlerts=$false; $wb=$x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit(); Write-Output 'OK' } catch { Write-Output "ERROR: $($_.Exception.Message)"; try{$x.Quit()}catch{} }`;
+
+  const psPath = path.join(os.tmpdir(), `dw-convert-${Date.now()}.ps1`);
+  fs.writeFileSync(psPath, psScript, "utf8");
+
+  let stdout = "";
+  try {
+    const result = await execShell(
+      `powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "${psPath}"`,
+      { windowsHide: true, timeout: 120000 },
+    );
+    stdout = result.stdout || "";
+  } finally {
+    try {
+      fs.unlinkSync(psPath);
+    } catch {}
+  }
+
+  if (stdout.includes("ERROR:")) {
+    const msg = stdout.split("ERROR:")[1]?.trim() || "Erreur COM inconnue";
+    throw new Error(
+      `Conversion ${isWord ? "Word" : "Excel"} → PDF échouée : ${msg} (Word/Excel est-il bien installé sur ce poste ?)`,
+    );
+  }
+  if (!fs.existsSync(outputPdfPath)) {
+    throw new Error(
+      `Conversion ${isWord ? "Word" : "Excel"} → PDF échouée : le fichier PDF n'a pas été créé, sans message d'erreur explicite. Vérifiez que ${isWord ? "Word" : "Excel"} est installé et que le fichier n'est pas protégé/corrompu.`,
+    );
+  }
+}
+
 ipcMain.handle(
   "print:local",
   async (_event, { tempFilePath, printerName: requestedPrinterName }) => {
@@ -1503,18 +1547,7 @@ ipcMain.handle(
         if (ext === ".pdf") {
           fs.copyFileSync(tempFilePath, outputPdfPath);
         } else if ([".doc", ".docx", ".xls", ".xlsx"].includes(ext)) {
-          const normalized = tempFilePath.replace(/'/g, "''");
-          const outputNormalized = outputPdfPath.replace(/'/g, "''");
-          const cmd = [".doc", ".docx"].includes(ext)
-            ? `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`
-            : `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
-          await execShell(cmd, { windowsHide: true, timeout: 120000 });
-          if (!fs.existsSync(outputPdfPath)) {
-            return {
-              success: false,
-              error: `Conversion échouée : PDF non généré (${baseName})`,
-            };
-          }
+          await convertOfficeToPdf(tempFilePath, outputPdfPath);
         } else {
           return {
             success: false,
@@ -1528,17 +1561,8 @@ ipcMain.handle(
       let pdfPath = tempFilePath;
 
       if ([".xlsx", ".xls", ".doc", ".docx"].includes(ext)) {
-        // Convert to PDF using Office COM
         const outPdf = tempFilePath.replace(/\.[^.]+$/, ".pdf");
-        const normalized = tempFilePath.replace(/'/g, "''");
-        const outputNormalized = outPdf.replace(/'/g, "''");
-        let cmd;
-        if ([".doc", ".docx"].includes(ext)) {
-          cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
-        } else {
-          cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
-        }
-        await execShell(cmd, { windowsHide: true, timeout: 120000 });
+        await convertOfficeToPdf(tempFilePath, outPdf);
         pdfPath = outPdf;
       }
 
