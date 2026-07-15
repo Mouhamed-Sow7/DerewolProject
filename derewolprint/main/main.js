@@ -1182,6 +1182,18 @@ ipcMain.handle("ai:ocrDocument", async (event, { filePath, printerId }) => {
 // handler enregistré), aussi bien pour l'OCR/Excel que pour l'impression
 // et la sauvegarde du fichier final.
 
+ipcMain.handle("file:getSize", async (_event, { filePath }) => {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return { success: false, error: "Fichier introuvable" };
+    }
+    const size = fs.statSync(filePath).size;
+    return { success: true, size };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle("file:saveToAIFolder", async (_event, { tempFilePath }) => {
   try {
     if (!tempFilePath || !fs.existsSync(tempFilePath)) {
@@ -1469,46 +1481,97 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("print:local", async (_event, { tempFilePath }) => {
-  try {
-    if (!tempFilePath || !fs.existsSync(tempFilePath))
-      return { success: false, error: "Fichier introuvable" };
-    const ext = path.extname(tempFilePath).toLowerCase();
-    let pdfPath = tempFilePath;
+ipcMain.handle(
+  "print:local",
+  async (_event, { tempFilePath, printerName: requestedPrinterName }) => {
+    try {
+      if (!tempFilePath || !fs.existsSync(tempFilePath))
+        return { success: false, error: "Fichier introuvable" };
+      const ext = path.extname(tempFilePath).toLowerCase();
 
-    if ([".xlsx", ".xls", ".doc", ".docx"].includes(ext)) {
-      // Convert to PDF using Office COM
-      const outPdf = tempFilePath.replace(/\.[^.]+$/, ".pdf");
-      const normalized = tempFilePath.replace(/'/g, "''");
-      const outputNormalized = outPdf.replace(/'/g, "''");
-      let cmd;
-      if ([".doc", ".docx"].includes(ext)) {
-        cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
-      } else {
-        cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
+      // ── Cas spécial : imprimante virtuelle Mp-Pdf ────────────────
+      // Ne passe jamais par pdfToPrinter — écrit simplement le PDF dans
+      // Documents/Mp-Pdf, comme le fait printFile() pour les jobs normaux.
+      if (requestedPrinterName === "Mp-Pdf") {
+        const mpPdfFolder = path.join(os.homedir(), "Documents", "Mp-Pdf");
+        if (!fs.existsSync(mpPdfFolder)) {
+          fs.mkdirSync(mpPdfFolder, { recursive: true });
+        }
+        const baseName = path.basename(tempFilePath, ext);
+        const outputPdfPath = path.join(mpPdfFolder, `${baseName}.pdf`);
+
+        if (ext === ".pdf") {
+          fs.copyFileSync(tempFilePath, outputPdfPath);
+        } else if ([".doc", ".docx", ".xls", ".xlsx"].includes(ext)) {
+          const normalized = tempFilePath.replace(/'/g, "''");
+          const outputNormalized = outputPdfPath.replace(/'/g, "''");
+          const cmd = [".doc", ".docx"].includes(ext)
+            ? `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`
+            : `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
+          await execShell(cmd, { windowsHide: true, timeout: 120000 });
+          if (!fs.existsSync(outputPdfPath)) {
+            return {
+              success: false,
+              error: `Conversion échouée : PDF non généré (${baseName})`,
+            };
+          }
+        } else {
+          return {
+            success: false,
+            error: `Format non supporté pour Mp-Pdf : ${ext}`,
+          };
+        }
+        console.log(`[PRINT] (Derewol AI) PDF écrit dans Mp-Pdf: ${outputPdfPath}`);
+        return { success: true, savedPath: outputPdfPath };
       }
-      await execShell(cmd, { windowsHide: true, timeout: 120000 });
-      pdfPath = outPdf;
+
+      let pdfPath = tempFilePath;
+
+      if ([".xlsx", ".xls", ".doc", ".docx"].includes(ext)) {
+        // Convert to PDF using Office COM
+        const outPdf = tempFilePath.replace(/\.[^.]+$/, ".pdf");
+        const normalized = tempFilePath.replace(/'/g, "''");
+        const outputNormalized = outPdf.replace(/'/g, "''");
+        let cmd;
+        if ([".doc", ".docx"].includes(ext)) {
+          cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w = New-Object -ComObject Word.Application; $w.Visible = $false; $d = $w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit()"`;
+        } else {
+          cmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$x = New-Object -ComObject Excel.Application; $x.Visible = $false; $x.DisplayAlerts = $false; $wb = $x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit()"`;
+        }
+        await execShell(cmd, { windowsHide: true, timeout: 120000 });
+        pdfPath = outPdf;
+      }
+
+      // Use pdf-to-printer for printing PDFs
+      if (path.extname(pdfPath).toLowerCase() !== ".pdf") {
+        return {
+          success: false,
+          error: "Impossible de convertir en PDF pour l'impression",
+        };
+      }
+
+      // Priorité à l'imprimante réellement sélectionnée dans l'app (menu
+      // déroulant principal) ; à défaut, on retombe sur la détection système.
+      const printerName = requestedPrinterName || getPrinterWindowsName();
+      const printOpts = printerName ? { printer: printerName } : {};
+      await pdfToPrinter.print(pdfPath, printOpts);
+
+      // Marge de sécurité avant suppression du PDF converti (cf. printFile /
+      // printOfficeFile) — ne jamais risquer de couper une impression en cours.
+      if (pdfPath !== tempFilePath) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          fs.unlinkSync(pdfPath);
+        } catch {}
+      }
+
+      return { success: true };
+    } catch (e) {
+      console.error("print:local error:", e.message || String(e));
+      return { success: false, error: e.message || "Erreur d'impression inconnue" };
     }
-
-    // Use pdf-to-printer for printing PDFs
-    if (path.extname(pdfPath).toLowerCase() !== ".pdf") {
-      return {
-        success: false,
-        error: "Impossible de convertir en PDF pour l'impression",
-      };
-    }
-
-    const printerName = getPrinterWindowsName();
-    const printOpts = printerName ? { printer: printerName } : {};
-    await pdfToPrinter.print(pdfPath, printOpts);
-
-    return { success: true };
-  } catch (e) {
-    console.error("print:local error:", e.message);
-    return { success: false, error: e.message };
-  }
-});
+  },
+);
 // --- Fin des handlers portés -----------------------------------------------
 
 // Détecter si un document est mal orienté (rotation 0/90/180/270)

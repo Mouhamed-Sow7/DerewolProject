@@ -123,6 +123,14 @@ function toggleDarkMode() {
   document.body.classList.toggle("dark-mode", getParentThemeMode());
 }
 
+function getSelectedPrinterName() {
+  try {
+    return window.parent?.localStorage?.getItem("derewol:lastPrinter") || null;
+  } catch {
+    return null;
+  }
+}
+
 function getParentThemeMode() {
   try {
     return window.parent?.document?.body?.classList?.contains("dark-mode");
@@ -569,7 +577,10 @@ function closeActionModal() {
 
 async function printTempFile(tempFilePath) {
   try {
-    const result = await invokeChannel("print:local", { tempFilePath });
+    const result = await invokeChannel("print:local", {
+      tempFilePath,
+      printerName: getSelectedPrinterName(),
+    });
     if (!result?.success) {
       throw new Error(result?.error || "Échec impression");
     }
