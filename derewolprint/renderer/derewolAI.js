@@ -188,8 +188,9 @@ async function chargerCredits() {
         purchased: Number(purchased || 0),
         total: Number((remaining || 0) + (purchased || 0)),
       };
-      document.getElementById("credits-display").textContent =
-        `${currentCredits.total} crédits disponibles (${currentCredits.remaining} mensuels, ${currentCredits.purchased} achetés)`;
+      document.getElementById("credit-count").textContent = currentCredits.total;
+      document.getElementById("credit-detail").textContent =
+        `${currentCredits.remaining} mensuels · ${currentCredits.purchased} achetés`;
       updateInterfaceState();
 
       const statusCard = document.getElementById("status-card");
@@ -201,21 +202,21 @@ async function chargerCredits() {
         statusCard.classList.add("hidden");
       }
     } else {
-      document.getElementById("credits-display").textContent =
-        "Erreur chargement crédits";
+      document.getElementById("credit-count").textContent = "—";
+      document.getElementById("credit-detail").textContent = "Erreur de chargement";
       updateInterfaceState(false);
     }
   } catch (error) {
     console.error("chargerCredits", error);
-    document.getElementById("credits-display").textContent =
-      "Erreur chargement crédits";
+    document.getElementById("credit-count").textContent = "—";
+    document.getElementById("credit-detail").textContent = "Erreur de chargement";
     updateInterfaceState(false);
   }
 }
 
 function updateInterfaceState(hasCredits = currentCredits.total > 0) {
-  const rechargeSection = document.getElementById("recharge-section");
-  rechargeSection.classList.toggle("hidden", hasCredits);
+  document.getElementById("credit-chip").classList.toggle("empty", !hasCredits);
+  document.getElementById("btn-refill").classList.toggle("urgent", !hasCredits);
   const dropzoneEnabled = hasCredits && claudeEnabled;
   setDropzoneEnabled(dropzoneEnabled);
   if (!hasCredits) {
@@ -334,8 +335,8 @@ function renderSuggestions(suggestions = []) {
 
   if (!suggestions.length) {
     const d = document.createElement("div");
-    d.className = "sugg-item";
-    d.textContent = "Aucune suggestion spécifique détectée.";
+    d.className = "ok-state";
+    d.textContent = "✓ Rien à signaler — le fichier est prêt tel quel.";
     suggestionsList.appendChild(d);
     return;
   }
@@ -606,10 +607,24 @@ async function saveTempFile(tempFilePath) {
   }
 }
 
-async function openWhatsAppContact() {
+function openCreditModal() {
+  document.getElementById("credit-modal-balance").textContent =
+    `Solde actuel : ${currentCredits.total} crédit${currentCredits.total > 1 ? "s" : ""}.`;
+  document.getElementById("modal-credits").classList.remove("hidden");
+}
+
+function closeCreditModal() {
+  document.getElementById("modal-credits").classList.add("hidden");
+}
+
+async function openWhatsAppContact(credits, amount) {
   const printerConfig = await getPrinterConfig();
+  const detail =
+    credits && amount
+      ? `Forfait souhaité : ${credits} crédits (${amount} XOF).`
+      : "";
   const message = encodeURIComponent(
-    `Bonjour, je souhaite recharger mes crédits Derewol AI. ID boutique : ${printerConfig?.id || "inconnu"}`,
+    `Bonjour, je souhaite recharger mes crédits Derewol AI. ID boutique : ${printerConfig?.id || "inconnu"}. ${detail}`.trim(),
   );
   await invokeChannel("shell:openExternal", {
     url: `https://wa.me/+221781220391?text=${message}`,
@@ -712,10 +727,18 @@ function setupButtons() {
   document
     .getElementById("btn-use-as-is")
     .addEventListener("click", () => applyOcrImprovements([]));
-  const rechargeContactButton = document.getElementById("btn-recharge-contact");
-  if (rechargeContactButton) {
-    rechargeContactButton.addEventListener("click", openWhatsAppContact);
-  }
+  document.getElementById("btn-refill").addEventListener("click", openCreditModal);
+  document
+    .getElementById("credit-modal-cancel")
+    .addEventListener("click", closeCreditModal);
+  document.querySelectorAll(".pkg").forEach((pkgBtn) => {
+    pkgBtn.addEventListener("click", () => {
+      const credits = pkgBtn.dataset.credits;
+      const amount = pkgBtn.dataset.amount;
+      closeCreditModal();
+      openWhatsAppContact(credits, amount);
+    });
+  });
 
   document.getElementById("modal-print").addEventListener("click", (event) => {
     const filePath = event.currentTarget.dataset.tempFilePath;

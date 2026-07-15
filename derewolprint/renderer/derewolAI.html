@@ -13,9 +13,26 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);padding:18px;transition:background .3s,color .3s}
 .wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
-.hdr{display:flex;justify-content:space-between;align-items:flex-start}
-.htitle{font-size:1.4rem;font-weight:800;color:var(--jaune)}
-.hcredits{font-size:.82rem;color:var(--muted);margin-top:3px}
+.hdr{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.htitle{font-size:1.5rem;font-weight:800;color:var(--jaune);letter-spacing:-.01em}
+.hdr-left{display:flex;flex-direction:column;gap:8px}
+.hdr-right{display:flex;align-items:center;gap:16px}
+
+/* Puce de crédits : information d'abord (le chiffre), l'icône n'est qu'un
+   repère visuel rapide — pas une jauge décorative sans base réelle. */
+.credit-row{display:flex;align-items:center;gap:8px}
+.credit-chip{display:flex;align-items:center;gap:8px;background:rgba(30,77,43,.08);border:1px solid var(--border);border-radius:999px;padding:6px 14px 6px 10px;transition:border-color .2s,background .2s}
+.credit-chip .cdot{width:8px;height:8px;border-radius:50%;background:var(--vert);flex-shrink:0}
+.credit-chip .cnum{font-weight:800;font-size:.95rem;color:var(--text)}
+.credit-chip .clabel{font-size:.78rem;color:var(--muted)}
+.credit-chip.empty{border-color:var(--jaune);background:rgba(245,200,66,.1)}
+.credit-chip.empty .cdot{background:var(--jaune);animation:pulse-dot 1.8s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.35}}
+.credit-detail{font-size:.74rem;color:var(--muted)}
+.refill-btn{width:26px;height:26px;border-radius:50%;border:none;background:var(--vert);color:#fff;font-size:1rem;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .15s,background .2s}
+.refill-btn:hover{transform:scale(1.08);background:var(--vert-clair)}
+.refill-btn.urgent{background:var(--jaune);color:var(--noir)}
+
 .toggle-wrap{display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:600}
 .toggle{width:46px;height:25px;border-radius:999px;border:none;background:#999;position:relative;cursor:pointer;padding:3px;transition:background .25s}
 .toggle.on{background:var(--vert)}
@@ -25,10 +42,11 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 .card.hidden{display:none}
 .ctitle{font-size:.95rem;font-weight:700;margin-bottom:4px}
 .csub{font-size:.82rem;color:var(--muted);margin-bottom:12px}
-.dropzone{border:2px dashed var(--border);border-radius:var(--radius);background:var(--card);padding:44px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
-.dropzone:hover,.dropzone.over{border-color:var(--jaune);background:rgba(245,166,35,.06)}
+.dropzone{border:2px dashed var(--border);border-radius:var(--radius);background:var(--card);padding:40px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.dropzone:hover,.dropzone.over{border-color:var(--jaune);background:rgba(245,200,66,.06)}
 .dropzone.off{opacity:.5;cursor:not-allowed}
-.dz-icon{font-size:2rem;margin-bottom:10px}
+.dz-icon{margin-bottom:10px;color:var(--vert)}
+.dz-icon svg{width:34px;height:34px}
 .dz-txt{font-size:.97rem;font-weight:700;margin-bottom:6px}
 .dz-hint{font-size:.8rem;color:var(--muted)}
 .file-input{display:none}
@@ -46,7 +64,8 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 .res-grid{display:flex;flex-direction:column;gap:16px;margin-bottom:12px}
 .stitle{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .si{font-size:.87rem;padding:8px 10px;border-radius:8px;background:rgba(45,106,79,.06);border-left:3px solid var(--vert);line-height:1.4;margin-bottom:6px}
-.wi{font-size:.87rem;padding:8px 10px;border-radius:8px;background:rgba(245,166,35,.08);border-left:3px solid var(--jaune);line-height:1.4;margin-bottom:6px}
+.wi{font-size:.87rem;padding:8px 10px;border-radius:8px;background:rgba(245,200,66,.1);border-left:3px solid var(--jaune);line-height:1.4;margin-bottom:6px}
+.ok-state{display:flex;align-items:center;gap:8px;font-size:.87rem;color:var(--vert);padding:8px 10px;border-radius:8px;background:rgba(45,106,79,.06)}
 .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .di{padding:10px;border-radius:8px;background:rgba(45,106,79,.06);font-size:.83rem}
 .di span{display:block;color:var(--muted);font-size:.75rem;margin-bottom:2px}
@@ -64,41 +83,58 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
 .mcard h2{font-size:1rem;color:var(--vert);margin-bottom:6px}
 .mcard p{font-size:.85rem;color:var(--muted);margin-bottom:4px}
 .mact{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-@media(max-width:620px){.brow,.mact{flex-direction:column}}
+
+/* Modale de recharge de crédits */
+.pkg-list{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+.pkg{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;background:transparent;text-align:left;transition:border-color .2s,background .2s;width:100%}
+.pkg:hover{border-color:var(--vert);background:rgba(45,106,79,.05)}
+.pkg-credits{font-weight:800;font-size:.95rem}
+.pkg-rate{font-size:.74rem;color:var(--muted)}
+.pkg-price{font-weight:700;color:var(--vert);font-size:.9rem;white-space:nowrap}
+.pkg-tag{display:inline-block;background:var(--jaune);color:var(--noir);font-size:.68rem;font-weight:800;padding:2px 7px;border-radius:999px;margin-left:8px;vertical-align:middle}
+.wa-note{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted);margin-top:10px}
+
+@media(max-width:620px){.brow,.mact{flex-direction:column}.hdr{flex-direction:column;align-items:flex-start}}
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="hdr">
-    <div>
+    <div class="hdr-left">
       <div class="htitle">Derewol AI ✦</div>
-      <div class="hcredits" id="credits-display">Chargement...</div>
+      <div class="credit-row">
+        <div class="credit-chip" id="credit-chip">
+          <span class="cdot"></span>
+          <span class="cnum" id="credit-count">—</span>
+          <span class="clabel">crédits</span>
+        </div>
+        <button id="btn-refill" class="refill-btn" type="button" title="Recharger mes crédits">+</button>
+      </div>
+      <div class="credit-detail" id="credit-detail"></div>
     </div>
-    <div class="toggle-wrap">
-      <span>Derewol AI</span>
-      <button id="toggle-claude" class="toggle on" type="button">
-        <span class="toggle-knob"></span>
-      </button>
+    <div class="hdr-right">
+      <div class="toggle-wrap">
+        <span>Derewol AI</span>
+        <button id="toggle-claude" class="toggle on" type="button">
+          <span class="toggle-knob"></span>
+        </button>
+      </div>
     </div>
   </div>
 
   <div id="dropzone" class="dropzone">
-    <div class="dz-icon">📁</div>
+    <div class="dz-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 4v11m0-11 4 4m-4-4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
     <div class="dz-txt">Glissez votre fichier ici ou cliquez pour parcourir</div>
     <div class="dz-hint">Formats : PDF · XLSX · XLS · DOCX · JPG · PNG · PPT · TXT</div>
   </div>
   <input id="file-input" class="file-input" type="file"
     accept=".pdf,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.ppt,.pptx,.txt"/>
-
-  <div id="recharge-section" class="card hidden">
-    <div class="ctitle">Crédits épuisés</div>
-    <div class="csub">Rechargez pour continuer à utiliser Derewol AI.</div>
-    <div class="brow">
-      <button class="btn bs recharge-btn" data-credits="10" data-amount="2000" type="button">2 000 XOF = 10 crédits</button>
-      <button class="btn bs recharge-btn" data-credits="20" data-amount="3500" type="button">3 500 XOF = 20 crédits</button>
-    </div>
-  </div>
 
   <div id="preview-card" class="card hidden">
     <div class="ctitle">Fichier chargé</div>
@@ -169,6 +205,27 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);pad
       <button id="modal-print" class="btn bp" type="button">🖨 Imprimer maintenant</button>
       <button id="modal-save" class="btn bs" type="button">💾 Sauvegarder</button>
       <button id="modal-cancel" class="btn bs" type="button">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-credits" class="modal hidden">
+  <div class="mcard">
+    <h2>Recharger mes crédits</h2>
+    <p id="credit-modal-balance">—</p>
+    <div class="pkg-list">
+      <button class="pkg" type="button" data-credits="10" data-amount="2000">
+        <span><span class="pkg-credits">10 crédits</span><br><span class="pkg-rate">200 XOF / crédit</span></span>
+        <span class="pkg-price">2 000 XOF</span>
+      </button>
+      <button class="pkg" type="button" data-credits="20" data-amount="3500">
+        <span><span class="pkg-credits">20 crédits<span class="pkg-tag">Meilleure valeur</span></span><br><span class="pkg-rate">175 XOF / crédit</span></span>
+        <span class="pkg-price">3 500 XOF</span>
+      </button>
+    </div>
+    <div class="wa-note">💬 La commande se finalise sur WhatsApp avec votre imprimerie.</div>
+    <div class="mact">
+      <button id="credit-modal-cancel" class="btn bs" type="button">Fermer</button>
     </div>
   </div>
 </div>
