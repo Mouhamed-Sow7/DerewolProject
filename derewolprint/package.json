@@ -12,7 +12,8 @@
     "start": "cross-env NODE_ENV=development electron .",
     "prebuild": "node scripts/clean-dist.js",
     "build": "electron-builder --win --x64",
-    "build:dir": "electron-builder --win --x64 --dir"
+    "build:dir": "electron-builder --win --x64 --dir",
+    "release": "electron-builder --win --x64 --publish always"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
