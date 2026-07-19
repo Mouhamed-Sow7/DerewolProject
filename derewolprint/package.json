@@ -94,7 +94,9 @@
       "provider": "github",
       "owner": "Mouhamed-Sow7",
       "repo": "DerewolProject",
-      "private": false
+      "private": false,
+      "releaseType": "release",
+      "draft": false
     }
   },
   "devDependencies": {
