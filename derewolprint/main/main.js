@@ -2275,24 +2275,19 @@ ipcMain.handle(
   "setup:register",
   async (_, { name, slug, ownerPhone, email }) => {
     try {
-      const owner_phone = (ownerPhone || "").toString().trim() || null;
-      const user_email = (email || "").toString().trim() || null;
-      const { supabaseAdmin } = require("../services/supabase");
-      const { data, error } = await supabaseAdmin
-        .from("printers")
-        .insert({ name, slug, owner_phone, email: user_email })
-        .select()
-        .single();
+      const { data: result, error: invokeError } =
+        await supabase.functions.invoke("register-printer", {
+          body: { name, slug, ownerPhone, email },
+        });
 
-      if (error) {
-        // Handle duplicate slug error specifically
-        if (error.code === "23505" || error.message.includes("duplicate key")) {
-          throw new Error(
-            `Le slug "${slug}" est déjà utilisé. Veuillez en choisir un autre.`,
-          );
-        }
-        throw new Error(error.message);
+      if (invokeError) {
+        throw new Error(invokeError.message || "Erreur d'inscription");
       }
+      if (!result?.success) {
+        throw new Error(result?.error || "Erreur d'inscription");
+      }
+
+      const data = result.data;
 
       const BASE_URL =
         process.env.DEREWOL_PWA_URL || "https://derewol.digitalesf.com";
@@ -2301,7 +2296,7 @@ ipcMain.handle(
         slug: data.slug,
         name: data.name,
         url: `${BASE_URL}/p/${data.slug}`,
-        owner_phone: owner_phone,
+        owner_phone: (ownerPhone || "").toString().trim() || null,
       };
 
       saveConfig(cfg);

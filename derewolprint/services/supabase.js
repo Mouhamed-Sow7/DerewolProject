@@ -98,49 +98,27 @@ async function getSignedUrlForOfficeViewer(storagePath, format) {
  * @returns {Promise<{signedUrl: string, previewPath: string}>}
  */
 async function uploadTempPreview(decryptedBuffer, fileName) {
-  const ext = require("path").extname(fileName).toLowerCase();
+  console.log(`[SUPABASE] uploadTempPreview via Edge Function: ${fileName}`);
 
-  // Nom unique dans le bucket — jamais de collision
-  const previewPath = `tmp/${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}${ext}`;
+  const { data: result, error: invokeError } = await supabase.functions.invoke(
+    "preview-upload",
+    {
+      body: {
+        fileBase64: Buffer.from(decryptedBuffer).toString("base64"),
+        fileName,
+      },
+    },
+  );
 
-  const mimeTypes = {
-    ".docx":
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".xlsx":
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ".doc": "application/msword",
-    ".xls": "application/vnd.ms-excel",
-  };
-  const contentType = mimeTypes[ext] || "application/octet-stream";
-
-  console.log(`[SUPABASE] uploadTempPreview: ${previewPath} (${contentType})`);
-
-  // Upload avec supabaseAdmin (service_role) pour bypasser RLS
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from("derewol-previews")
-    .upload(previewPath, decryptedBuffer, {
-      contentType,
-      upsert: false,
-      duplex: "half",
-    });
-
-  if (uploadError) {
-    throw new Error(`[PREVIEW] Upload échoué: ${uploadError.message}`);
+  if (invokeError) {
+    throw new Error(`[PREVIEW] Upload échoué: ${invokeError.message}`);
   }
-
-  // Signed URL 195s — juste le temps que le viewer charge le fichier
-  const { data, error: urlError } = await supabaseAdmin.storage
-    .from("derewol-previews")
-    .createSignedUrl(previewPath, 195);
-
-  if (urlError) {
-    // Nettoyer si la signed URL échoue
-    await supabaseAdmin.storage.from("derewol-previews").remove([previewPath]);
-    throw new Error(`[PREVIEW] Signed URL échouée: ${urlError.message}`);
+  if (!result?.success) {
+    throw new Error(`[PREVIEW] Upload échoué: ${result?.error || "inconnue"}`);
   }
 
   console.log(`[SUPABASE] Preview prête, URL expire dans 195s`);
-  return { signedUrl: data.signedUrl, previewPath };
+  return { signedUrl: result.signedUrl, previewPath: result.previewPath };
 }
 
 /**
@@ -152,11 +130,14 @@ async function uploadTempPreview(decryptedBuffer, fileName) {
 async function cleanupTempPreview(previewPath) {
   if (!previewPath) return;
   try {
-    const { error } = await supabaseAdmin.storage
-      .from("derewol-previews")
-      .remove([previewPath]);
-    if (error) {
-      console.warn(`[SUPABASE] Cleanup preview échoué: ${error.message}`);
+    const { data: result, error: invokeError } =
+      await supabase.functions.invoke("preview-cleanup", {
+        body: { previewPath },
+      });
+    if (invokeError || !result?.success) {
+      console.warn(
+        `[SUPABASE] Cleanup preview échoué: ${invokeError?.message || result?.error}`,
+      );
     } else {
       console.log(`[SUPABASE] Preview supprimée: ${previewPath}`);
     }
@@ -165,19 +146,13 @@ async function cleanupTempPreview(previewPath) {
   }
 }
 
-// Client service_role (bypass RLS)
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!serviceKey) {
-  console.error(
-    "[SUPABASE] SUPABASE_SERVICE_ROLE_KEY manquante — supabaseAdmin sera null. " +
-      "Ne jamais embarquer cette clé en dur dans le code : elle serait distribuée " +
-      "dans le build client (.exe) et extractible par n'importe qui.",
-  );
-}
-const supabaseAdmin = serviceKey ? createClient(url, serviceKey) : null;
+// Aucun client service_role côté Electron : setup:register, uploadTempPreview
+// et cleanupTempPreview passent désormais par des Edge Functions Supabase
+// (register-printer, preview-upload, preview-cleanup), où la clé reste
+// côté serveur. Voir supabase/functions/register-printer/index.ts pour le
+// contexte complet de cette migration.
 module.exports = {
   supabase,
-  supabaseAdmin,
   getSignedUrlForOfficeViewer,
   uploadTempPreview,
   cleanupTempPreview,
