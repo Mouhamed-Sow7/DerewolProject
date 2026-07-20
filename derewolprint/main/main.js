@@ -377,16 +377,33 @@ const processingJobs = new Set();
 const spoolerGuard = new SpoolerGuard();
 
 // ── Vérifier la connectivité réseau dynamiquement ──────────────────────────────
-async function testConnectivity() {
+async function pingUrl(url, timeoutMs) {
   try {
-    await fetch("https://www.google.com/favicon.ico", {
-      signal: AbortSignal.timeout(3000),
-      mode: "no-cors",
-    });
+    await fetch(url, { signal: AbortSignal.timeout(timeoutMs), mode: "no-cors" });
     return true;
   } catch {
     return false;
   }
+}
+
+async function testConnectivity() {
+  // On teste en priorité Supabase, la vraie dépendance de l'app (jobs,
+  // crédits, abonnement) — pas un site tiers sans rapport (Google), qui
+  // peut être lent/bloqué sur certains réseaux/proxys sans que ça reflète
+  // le moindre problème réel pour DerewolPrint.
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const targets = supabaseUrl ? [supabaseUrl] : [];
+  targets.push("https://www.google.com/favicon.ico"); // secours si Supabase down
+
+  // Deux passes (6s puis 6s) avant de conclure au hors-ligne : une coupure
+  // réseau transitoire d'une fraction de seconde ne doit pas déclencher
+  // à tort le mode hors ligne.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const target of targets) {
+      if (await pingUrl(target, 6000)) return true;
+    }
+  }
+  return false;
 }
 
 /**

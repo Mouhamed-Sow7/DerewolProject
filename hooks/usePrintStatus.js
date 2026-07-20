@@ -13,7 +13,7 @@ export default function usePrintStatus(displayId, showToast) {
       .select(
         `
         id, status, approved_at, expires_at,
-        files ( id, file_name, file_hash, modified_at ),
+        files ( id, file_name, file_hash, modified_at, rejected, rejected_at ),
         print_jobs ( id, status, copies_requested, copies_remaining )
       `,
       )

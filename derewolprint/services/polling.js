@@ -51,11 +51,44 @@ async function expireStaleGroups(printerId) {
       .eq("status", "queued");
 
     for (const groupId of groupIds) {
+      const { data: groupInfo } = await supabase
+        .from("file_groups")
+        .select("owner_id, printer_id")
+        .eq("id", groupId)
+        .single();
+
       const { data: files } = await supabase
         .from("files")
-        .select("storage_path")
+        .select("file_name, storage_path")
         .eq("group_id", groupId);
+
       if (files?.length) {
+        // Tracer chaque fichier expiré dans l'historique AVANT suppression —
+        // sans ça, les fichiers expirés disparaissaient silencieusement sans
+        // aucune trace ni pour l'imprimeur ni pour le client.
+        if (groupInfo?.owner_id) {
+          for (const f of files) {
+            try {
+              await supabase.from("history").insert({
+                owner_id: groupInfo.owner_id,
+                display_id: groupInfo.owner_id,
+                file_name: f.file_name || "Fichier inconnu",
+                copies: 0,
+                printer_name: null,
+                status: "expired",
+                group_id: groupId,
+                printer_id: groupInfo.printer_id || null,
+                printed_at: new Date().toISOString(),
+              });
+            } catch (histErr) {
+              console.warn(
+                "[POLLING] Erreur insertion historique (expired):",
+                histErr.message,
+              );
+            }
+          }
+        }
+
         const paths = files.map((f) => f.storage_path).filter(Boolean);
         if (paths.length)
           await supabase.from("files").delete().in("storage_path", paths);
@@ -139,6 +172,30 @@ async function fetchPendingJobs(printerId) {
             .from("derewol-files")
             .remove([storagePath])
             .catch(() => {});
+        }
+
+        // Tracer dans l'historique (même logique que expireStaleGroups)
+        const ownerId = expJob.file_groups?.owner_id;
+        if (ownerId) {
+          try {
+            await supabase.from("history").insert({
+              owner_id: ownerId,
+              display_id: ownerId,
+              file_name:
+                expJob.file_groups?.files?.[0]?.file_name || "Fichier inconnu",
+              copies: 0,
+              printer_name: null,
+              status: "expired",
+              group_id: fgId,
+              printer_id: expJob.file_groups?.printer_id || null,
+              printed_at: new Date().toISOString(),
+            });
+          } catch (histErr) {
+            console.warn(
+              "[POLLING] Erreur insertion historique (expired):",
+              histErr.message,
+            );
+          }
         }
       }
 

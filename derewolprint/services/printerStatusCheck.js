@@ -20,6 +20,30 @@ const VIRTUAL_PRINTERS = [
   "xps document writer",
 ];
 
+// Vérifie si une imprimante est physiquement présente via Plug-and-Play.
+// Contrairement à Get-Printer -> PrinterStatus (qui ne reflète que le
+// dernier état connu et reste souvent "Normal" même débranchée), le statut
+// PnP de Windows se met à jour en temps réel quand un périphérique USB est
+// débranché/rebranché. Ne s'applique qu'aux imprimantes connectées en USB —
+// une imprimante réseau (port TCP/IP) n'apparaît pas comme device PnP, donc
+// on retourne null dans ce cas (aucune conclusion, on garde le check existant).
+async function checkPnpPresence(printerName) {
+  try {
+    const safe = printerName.replace(/'/g, "''").replace(/"/g, '`"');
+    const { stdout } = await runPowerShell(
+      `Get-PnpDevice -Class Printer -FriendlyName '${safe}*' | Select-Object Status | ConvertTo-Json`,
+      4000,
+    );
+    if (!stdout || stdout === "null") return null; // pas un device PnP (ex: imprimante réseau)
+    const parsed = JSON.parse(stdout);
+    const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!entry?.Status) return null;
+    return entry.Status === "OK";
+  } catch {
+    return null; // en cas de doute, on ne bloque pas sur ce signal
+  }
+}
+
 function isVirtualPrinter(name) {
   if (!name) return false;
   const lower = name.toLowerCase();
@@ -121,6 +145,20 @@ async function checkViaPowerShell(printerName) {
   } else {
     dotState = "warning";
     online = false;
+  }
+
+  // Croisement avec la présence Plug-and-Play réelle (utile surtout quand
+  // Get-Printer répond "Normal" par défaut alors que l'appareil USB est
+  // débranché — cf. commentaire de checkPnpPresence()).
+  if (online) {
+    const pnpPresent = await checkPnpPresence(name);
+    if (pnpPresent === false) {
+      dotState = "offline";
+      online = false;
+      console.log(
+        `${LOG_PREFIX} Get-Printer disait "Normal" mais device PnP absent → forcé offline pour "${name}"`,
+      );
+    }
   }
 
   console.log(
