@@ -1510,8 +1510,8 @@ async function convertOfficeToPdf(sourcePath, outputPdfPath) {
   const isWord = [".doc", ".docx"].includes(ext);
 
   const psScript = isWord
-    ? `$ErrorActionPreference='Stop'; try { $w = New-Object -ComObject Word.Application; $w.Visible=$false; $d=$w.Documents.Open('${normalized}'); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit(); Write-Output 'OK' } catch { Write-Output "ERROR: $($_.Exception.Message)"; try{$w.Quit()}catch{} }`
-    : `$ErrorActionPreference='Stop'; try { $x = New-Object -ComObject Excel.Application; $x.Visible=$false; $x.DisplayAlerts=$false; $wb=$x.Workbooks.Open('${normalized}'); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit(); Write-Output 'OK' } catch { Write-Output "ERROR: $($_.Exception.Message)"; try{$x.Quit()}catch{} }`;
+    ? `$ErrorActionPreference='Stop'; try { $w = New-Object -ComObject Word.Application; $w.Visible=$false; $w.DisplayAlerts=0; $d=$w.Documents.Open('${normalized}', $false, $true, $false); $d.ExportAsFixedFormat('${outputNormalized}', 17); $d.Close([ref]$false); $w.Quit(); Write-Output 'OK' } catch { Write-Output "ERROR: $($_.Exception.Message)"; try{$w.Quit()}catch{} }`
+    : `$ErrorActionPreference='Stop'; try { $x = New-Object -ComObject Excel.Application; $x.Visible=$false; $x.DisplayAlerts=$false; $x.AutomationSecurity=3; $wb=$x.Workbooks.Open('${normalized}', 0, $true); $wb.ExportAsFixedFormat(0, '${outputNormalized}'); $wb.Close($false); $x.Quit(); Write-Output 'OK' } catch { Write-Output "ERROR: $($_.Exception.Message)"; try{$x.Quit()}catch{} }`;
 
   const psPath = path.join(os.tmpdir(), `dw-convert-${Date.now()}.ps1`);
   fs.writeFileSync(psPath, psScript, "utf8");
