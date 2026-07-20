@@ -679,6 +679,11 @@ function bindCguModal() {
   document.addEventListener("keydown", cguEscHandler);
 
   acceptBtn.addEventListener("click", () => {
+    try {
+      localStorage.setItem("cgu_accepted_at", new Date().toISOString());
+    } catch (err) {
+      console.warn("[CGU] Impossible d'enregistrer l'acceptation :", err.message);
+    }
     hideCguModal();
   });
 
@@ -1876,6 +1881,14 @@ document.addEventListener("DOMContentLoaded", () => {
       // App is ready — if trial or subscription active, main UI visible
       if (data.status === "active" || data.status === "trial") {
         console.log("[DEREWOL] Access granted — app visible");
+        try {
+          if (!localStorage.getItem("cgu_accepted_at")) {
+            console.log("[CGU] Pas encore acceptées — affichage bloquant");
+            showCguModal();
+          }
+        } catch (err) {
+          console.warn("[CGU] Erreur vérification acceptation :", err.message);
+        }
       }
       // Vérifier le flag offline
       if (data.isOffline === true) {

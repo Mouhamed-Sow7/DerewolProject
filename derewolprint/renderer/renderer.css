@@ -1773,10 +1773,10 @@ body.dark-mode .act-trial-card {
 }
 
 .acc-text {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.6;
-  padding: 12px;
+  font-size: 14.5px;
+  color: var(--text);
+  line-height: 1.7;
+  padding: 14px;
   background: var(--topbar-bg);
   border-left: 3px solid var(--vert);
   border-radius: 6px;

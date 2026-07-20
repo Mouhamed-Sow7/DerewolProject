@@ -47,6 +47,7 @@
       "services/**/*",
       "lib/**/*",
       "assets/**/*",
+      "cgu/**/*",
       "!services/bluetooth.js",
       "!services/bluetoothSync.js",
       "node_modules/**/*",
