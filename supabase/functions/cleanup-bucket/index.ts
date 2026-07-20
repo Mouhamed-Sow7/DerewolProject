@@ -3,10 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 Deno.serve(async () => {
   const supabase = createClient(
-    Deno.env.get("https://bmkvhplsekddrqivpxyy.supabase.co")!,
-    Deno.env.get(
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJta3ZocGxzZWtkZHJxaXZweHl5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyNDE4MiwiZXhwIjoyMDg3MDAwMTgyfQ.7cjOllYm3_p_Anlu32fbj98W19MhtW7anbGVvQC_phU",
-    )!,
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
   // Récupère tous les storage_path référencés en DB (fichiers actifs)

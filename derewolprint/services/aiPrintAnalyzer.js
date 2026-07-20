@@ -78,16 +78,17 @@ function getSupabase() {
     );
   }
 
-  // 2. Fallback — clés embarquées
-  const supabaseUrl =
-    process.env.SUPABASE_URL || "https://bmkvhplsekddrqivpxyy.supabase.co";
-  const supabaseServiceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJta3ZocGxzZWtkZHJxaXZweHl5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyNDE4MiwiZXhwIjoyMDg3MDAwMTgyfQ.7cjOllYm3_p_Anlu32fbj98W19MhtW7anbGVvQC_phU";
-
-  console.warn(
-    "[DEREWOL AI] Utilisation des clés Supabase embarquées pour ce nœud",
-  );
+  // 2. Sans variables d'environnement : échec explicite plutôt qu'un secret
+  // service_role embarqué en dur (ce code fait partie de l'app Electron
+  // distribuée aux clients — jamais de clé admin dans un build packagé).
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error(
+      "[DEREWOL AI] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY manquantes — Derewol AI ne pourra pas fonctionner sans ces variables d'environnement.",
+    );
+    return null;
+  }
   return createClient(supabaseUrl, supabaseServiceKey);
 }
 

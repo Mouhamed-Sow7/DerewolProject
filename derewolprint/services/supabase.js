@@ -42,7 +42,12 @@ function loadConfig() {
     console.error("[SUPABASE] Erreur lecture config.json:", e.message);
   }
 
-  // 3. Fallback hardcodé (production sans config.json) — EMBARQUÉ dans le build
+  // 3. Fallback hardcodé (production sans config.json) — EMBARQUÉ dans le build.
+  // Sans danger ici : c'est la clé "anon" (rôle public), conçue par Supabase
+  // pour être exposée côté client et protégée par les policies RLS — à ne
+  // JAMAIS confondre avec la clé service_role (voir plus bas), qui elle
+  // bypass RLS entièrement et ne doit jamais être embarquée dans un build
+  // distribué.
   console.warn("[SUPABASE] Utilisation des clés hardcodées par défaut");
   return {
     url: "https://bmkvhplsekddrqivpxyy.supabase.co",
@@ -161,9 +166,14 @@ async function cleanupTempPreview(previewPath) {
 }
 
 // Client service_role (bypass RLS)
-const serviceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJta3ZocGxzZWtkZHJxaXZweHl5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyNDE4MiwiZXhwIjoyMDg3MDAwMTgyfQ.7cjOllYm3_p_Anlu32fbj98W19MhtW7anbGVvQC_phU";
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!serviceKey) {
+  console.error(
+    "[SUPABASE] SUPABASE_SERVICE_ROLE_KEY manquante — supabaseAdmin sera null. " +
+      "Ne jamais embarquer cette clé en dur dans le code : elle serait distribuée " +
+      "dans le build client (.exe) et extractible par n'importe qui.",
+  );
+}
 const supabaseAdmin = serviceKey ? createClient(url, serviceKey) : null;
 module.exports = {
   supabase,
