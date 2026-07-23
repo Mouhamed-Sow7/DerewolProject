@@ -106,6 +106,8 @@ function setupAutoUpdater() {
   }
   autoUpdaterInitialized = true;
 
+let isManualUpdateCheck = false; // Distingue check auto (silencieux) vs manuel (visible)
+
   autoUpdater.on("checking-for-update", () => {
     console.log("[UPDATE] Vérification des mises à jour...");
   });
@@ -117,6 +119,10 @@ function setupAutoUpdater() {
 
   autoUpdater.on("update-not-available", () => {
     console.log("[UPDATE] Application à jour ✅");
+    if (isManualUpdateCheck) {
+      mainWindow?.webContents.send("update:not-available");
+    }
+    isManualUpdateCheck = false;
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -138,19 +144,32 @@ function setupAutoUpdater() {
 
   autoUpdater.on("error", (err) => {
     console.error("[UPDATE] Erreur:", err.message);
-    mainWindow?.webContents.send("update:error", { message: err.message });
+    // Une vérification automatique en arrière-plan ne doit JAMAIS alarmer
+    // l'utilisateur pour un simple blip réseau/GitHub passager — seule une
+    // vérification manuelle (bouton "Vérifier maintenant") remonte l'erreur
+    // visuellement. L'erreur reste toujours loguée côté disque (electron-log)
+    // pour diagnostic, silencieuse ou non.
+    if (isManualUpdateCheck) {
+      mainWindow?.webContents.send("update:error", { message: err.message });
+    }
+    isManualUpdateCheck = false;
   });
 
-  function checkForUpdates() {
+  function checkForUpdates(manual = false) {
+    isManualUpdateCheck = manual;
     autoUpdater.checkForUpdates().catch((err) => {
       console.error("[UPDATE] Erreur vérification:", err.message);
+      if (manual) {
+        mainWindow?.webContents.send("update:error", { message: err.message });
+      }
+      isManualUpdateCheck = false;
     });
   }
 
   // Vérifier au démarrage, puis toutes les 4h (un seul planning — voir
   // commentaire ci-dessus sur la garde d'idempotence)
-  setTimeout(checkForUpdates, 10000);
-  setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
+  setTimeout(() => checkForUpdates(false), 10000);
+  setInterval(() => checkForUpdates(false), 4 * 60 * 60 * 1000);
 
   // Handlers IPC côté renderer pour piloter le téléchargement/l'installation.
   // Enregistrés ici (une seule fois, protégés par la garde d'idempotence)
@@ -171,7 +190,7 @@ function setupAutoUpdater() {
   });
 
   ipcMain.handle("update:check-now", () => {
-    checkForUpdates();
+    checkForUpdates(true);
   });
 }
 

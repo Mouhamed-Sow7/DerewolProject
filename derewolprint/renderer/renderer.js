@@ -2284,6 +2284,7 @@ const UPDATE_TEXTS = {
     downloadBtn: "Télécharger maintenant",
     laterBtn: "Plus tard",
     error: "Erreur de mise à jour",
+    upToDate: "Vous avez déjà la dernière version ✓",
   },
   en: {
     available: (v) => `New version ${v} available`,
@@ -2293,6 +2294,7 @@ const UPDATE_TEXTS = {
     downloadBtn: "Download now",
     laterBtn: "Later",
     error: "Update error",
+    upToDate: "You already have the latest version ✓",
   },
   wo: {
     available: (v) => `Versioŋ bu bees ${v} am na`,
@@ -2302,6 +2304,7 @@ const UPDATE_TEXTS = {
     downloadBtn: "Yebbi leegi",
     laterBtn: "Ginnaaw",
     error: "Njuumte ci update bi",
+    upToDate: "Yaangi am nag versioŋ bu mujj bi ✓",
   },
 };
 
@@ -2392,6 +2395,17 @@ function renderUpdateBanner(state, payload = {}) {
     };
   }
 
+  if (state === "up-to-date") {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:18px;">✓</span>
+        <strong style="font-size:13px;color: var(--vert, #2d6a4f);">${t.upToDate}</strong>
+      </div>`;
+    setTimeout(() => {
+      el.style.display = "none";
+    }, 4000);
+  }
+
   if (state === "error") {
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
@@ -2415,6 +2429,7 @@ if (window.derewol?.onUpdateAvailable) {
     renderUpdateBanner("ready", data),
   );
   window.derewol.onUpdateError((data) => renderUpdateBanner("error", data));
+  window.derewol.onUpdateNotAvailable?.(() => renderUpdateBanner("up-to-date"));
 }
 
 // Expose helper functions to the DevTools console for quick testing
